@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.0 - 2026-06-04
+
+- Added a continuous electrical error checker with direct row highlighting and actionable issue navigation.
+- Added an editable connector and terminal catalog that drives housing choices, drawing families, pin capacity, and component metadata.
+- Added automatic wire-material totals, purchasing allowance, component BOM, grouped cut list, CSV export, and production-guide sections.
+
 ## v1.1.10 - 2026-06-04
 
 - Routed every connector wire from a visible bottom cable port.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.1.10";
+const APP_VERSION = "1.2.0";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -22,22 +22,6 @@ const options = {
   legs: ["", "1", "2", "3", "4", "MAIN", "AUX", "PANEL", "MOTOR"],
   pins: ["", ...Array.from({ length: 32 }, (_, index) => String(index + 1))],
   dnp: ["", "DNP"],
-  housings: [
-    "",
-    "A POWER POLE",
-    "B POWER POLE",
-    "PCB",
-    ...subconPinCounts.flatMap((pinCount) => [
-      `SUBCONN ${pinCount} PIN MALE`,
-      `SUBCONN ${pinCount} PIN FEMALE`
-    ]),
-    ...Array.from({ length: 8 }, (_, index) => `MOLEX ${index + 1} POS FRONT LOCK`),
-    ...Array.from({ length: 8 }, (_, index) => `MOLEX ${index + 1} POS SIDE LOCK`),
-    ...Array.from({ length: 12 }, (_, index) => `DUPONT ${index + 1} POS FRONT LOCK`),
-    "MOLEX MINI-FIT",
-    "RING TERMINAL",
-    "SPLICE"
-  ],
   gauges: ["", "10", "12", "14", "16", "18", "20", "22", "24"],
   colors: ["", ...Object.keys(colorMap)],
   spliceIds: ["", ...Array.from({ length: 12 }, (_, index) => `S${index + 1}`)],
@@ -91,10 +75,132 @@ const dom = {
   printButton: document.querySelector("#printButton")
 };
 
+Object.assign(dom, {
+  qualityButton: document.querySelector("#qualityButton"),
+  qualityCount: document.querySelector("#qualityCount"),
+  qualityDialog: document.querySelector("#qualityDialog"),
+  closeQualityDialog: document.querySelector("#closeQualityDialog"),
+  qualitySummary: document.querySelector("#qualitySummary"),
+  qualityIssues: document.querySelector("#qualityIssues"),
+  catalogButton: document.querySelector("#catalogButton"),
+  catalogDialog: document.querySelector("#catalogDialog"),
+  closeCatalogDialog: document.querySelector("#closeCatalogDialog"),
+  newCatalogItem: document.querySelector("#newCatalogItem"),
+  resetCatalog: document.querySelector("#resetCatalog"),
+  catalogSearch: document.querySelector("#catalogSearch"),
+  catalogRows: document.querySelector("#catalogRows"),
+  catalogForm: document.querySelector("#catalogForm"),
+  catalogId: document.querySelector("#catalogId"),
+  catalogName: document.querySelector("#catalogName"),
+  catalogCategory: document.querySelector("#catalogCategory"),
+  catalogFamily: document.querySelector("#catalogFamily"),
+  catalogPositions: document.querySelector("#catalogPositions"),
+  catalogGender: document.querySelector("#catalogGender"),
+  catalogManufacturer: document.querySelector("#catalogManufacturer"),
+  catalogPartNumber: document.querySelector("#catalogPartNumber"),
+  catalogTerminalType: document.querySelector("#catalogTerminalType"),
+  catalogTerminalPart: document.querySelector("#catalogTerminalPart"),
+  catalogSealPart: document.querySelector("#catalogSealPart"),
+  catalogImageUrl: document.querySelector("#catalogImageUrl"),
+  catalogImageUploadButton: document.querySelector("#catalogImageUploadButton"),
+  catalogImageUpload: document.querySelector("#catalogImageUpload"),
+  catalogNotes: document.querySelector("#catalogNotes"),
+  catalogImagePreview: document.querySelector("#catalogImagePreview"),
+  deleteCatalogItem: document.querySelector("#deleteCatalogItem"),
+  bomButton: document.querySelector("#bomButton"),
+  bomDialog: document.querySelector("#bomDialog"),
+  closeBomDialog: document.querySelector("#closeBomDialog"),
+  bomAllowance: document.querySelector("#bomAllowance"),
+  bomSummary: document.querySelector("#bomSummary"),
+  wireMaterialRows: document.querySelector("#wireMaterialRows"),
+  cutListRows: document.querySelector("#cutListRows"),
+  componentBomRows: document.querySelector("#componentBomRows"),
+  exportBom: document.querySelector("#exportBom")
+});
+
 let state = loadState();
 let toastTimer = 0;
 let pendingImportRows = [];
 let currentImageFile = null;
+let selectedCatalogId = "";
+
+function catalogIdFor(name) {
+  return `catalog-${value(name).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+}
+
+function catalogEntry(name, category, family, positions, details = {}) {
+  return {
+    id: details.id || catalogIdFor(name),
+    name,
+    category,
+    family,
+    positions,
+    manufacturer: details.manufacturer || "",
+    partNumber: details.partNumber || "",
+    gender: details.gender || "",
+    terminalType: details.terminalType || "",
+    terminalPart: details.terminalPart || "",
+    sealPart: details.sealPart || "",
+    imageUrl: details.imageUrl || "",
+    notes: details.notes || "",
+    builtIn: details.builtIn !== false
+  };
+}
+
+function defaultCatalog() {
+  return [
+    catalogEntry("A POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
+    catalogEntry("B POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
+    catalogEntry("PCB", "Board", "pcb", 32, { terminalType: "PCB connection" }),
+    ...subconPinCounts.flatMap((positions) => [
+      catalogEntry(`SUBCONN ${positions} PIN MALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Male", terminalType: "Subsea connector contact" }),
+      catalogEntry(`SUBCONN ${positions} PIN FEMALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Female", terminalType: "Subsea connector contact" })
+    ]),
+    ...Array.from({ length: 8 }, (_, index) => catalogEntry(`MOLEX ${index + 1} POS FRONT LOCK`, "Connector", "molex", index + 1, { manufacturer: "Molex", terminalType: "Molex crimp terminal", notes: "Front-lock housing" })),
+    ...Array.from({ length: 8 }, (_, index) => catalogEntry(`MOLEX ${index + 1} POS SIDE LOCK`, "Connector", "molex", index + 1, { manufacturer: "Molex", terminalType: "Molex crimp terminal", notes: "Side-lock housing" })),
+    ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
+    catalogEntry("MOLEX MINI-FIT", "Connector", "molex", 16, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal" }),
+    catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
+    catalogEntry("SPLICE", "Splice", "splice", 1, { terminalType: "Window splice" })
+  ];
+}
+
+function normalizeCatalogEntry(entry) {
+  const name = cleanCell(entry?.name).toUpperCase();
+  return {
+    id: value(entry?.id) || catalogIdFor(name || makeId()),
+    name,
+    category: cleanCell(entry?.category) || "Connector",
+    family: cleanCell(entry?.family).toLowerCase() || "generic",
+    positions: Math.max(1, Math.min(64, numberOrDefault(entry?.positions, 1))),
+    manufacturer: cleanCell(entry?.manufacturer),
+    partNumber: cleanCell(entry?.partNumber),
+    gender: cleanCell(entry?.gender),
+    terminalType: cleanCell(entry?.terminalType),
+    terminalPart: cleanCell(entry?.terminalPart),
+    sealPart: cleanCell(entry?.sealPart),
+    imageUrl: cleanCell(entry?.imageUrl),
+    notes: cleanCell(entry?.notes),
+    builtIn: Boolean(entry?.builtIn)
+  };
+}
+
+function normalizeCatalog(catalog) {
+  const source = Array.isArray(catalog) && catalog.length ? catalog : defaultCatalog();
+  const names = new Set();
+  return source
+    .map(normalizeCatalogEntry)
+    .filter((entry) => entry.name && !names.has(entry.name) && names.add(entry.name));
+}
+
+function housingChoices() {
+  return ["", ...state.catalog.map((entry) => entry.name).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))];
+}
+
+function catalogEntryByName(name) {
+  const target = value(name).trim().toUpperCase();
+  return state.catalog.find((entry) => entry.name === target) || null;
+}
 
 function makeId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -154,7 +260,9 @@ function starterState() {
   return {
     harnessName: "CPC Power Harness",
     selectedId: rows[0]?.id || "",
-    rows
+    rows,
+    catalog: defaultCatalog(),
+    bomAllowance: 10
   };
 }
 
@@ -194,10 +302,13 @@ function normalizeState(incoming) {
     rightHousing: value(row.rightHousing)
   }));
 
+  const incomingAllowance = Number(incoming.bomAllowance);
   return {
     harnessName: value(incoming.harnessName) || "Untitled Harness",
     selectedId: rows.some((row) => row.id === incoming.selectedId) ? incoming.selectedId : rows[0]?.id || "",
-    rows
+    rows,
+    catalog: normalizeCatalog(incoming.catalog),
+    bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10
   };
 }
 
@@ -235,7 +346,13 @@ function nextSpliceId() {
 }
 
 function saveState() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    return true;
+  } catch (error) {
+    showToast("Browser storage is full. Export the project JSON, then remove large catalog images.");
+    return false;
+  }
 }
 
 function selectedRow() {
@@ -251,8 +368,18 @@ function render() {
   renderSummary();
   renderPreview();
   renderLegend();
+  renderQualityBadge();
   renderTable();
   updateActionState();
+  if (dom.qualityDialog.open) {
+    renderQualityDialog();
+  }
+  if (dom.catalogDialog.open) {
+    renderCatalog();
+  }
+  if (dom.bomDialog.open) {
+    renderBom();
+  }
 }
 
 function renderSummary() {
@@ -576,6 +703,11 @@ function buildConnectors(keys, side, rows, selected) {
 }
 
 function housingPositionCount(housing) {
+  const catalogItem = catalogEntryByName(housing);
+  if (catalogItem) {
+    return catalogItem.positions;
+  }
+
   const match = value(housing).toUpperCase().match(/\b(\d{1,2})\s+(?:POS|PIN)\b/);
   if (match) {
     return Math.max(1, Math.min(32, Number(match[1])));
@@ -590,6 +722,10 @@ function housingPositionCount(housing) {
 
 function housingFamily(housing) {
   const text = value(housing).trim().toUpperCase();
+  const catalogItem = catalogEntryByName(text);
+  if (catalogItem) {
+    return catalogItem.family;
+  }
   if (text.startsWith("SUBCONN ")) {
     return "subconn";
   }
@@ -616,6 +752,10 @@ function housingFamily(housing) {
 
 function housingGender(housing) {
   const text = value(housing).trim().toUpperCase();
+  const catalogItem = catalogEntryByName(text);
+  if (catalogItem?.gender) {
+    return catalogItem.gender.toLowerCase();
+  }
   if (text.endsWith(" FEMALE")) {
     return "female";
   }
@@ -1182,9 +1322,414 @@ function renderLegend() {
   `).join("");
 }
 
+function validateHarness() {
+  const issues = [];
+  const active = activeRows();
+  const add = (row, severity, code, message) => {
+    issues.push({
+      id: `${code}-${row?.id || issues.length}`,
+      rowId: row?.id || "",
+      severity,
+      code,
+      message
+    });
+  };
+
+  active.forEach((row) => {
+    const role = normalizedSpliceRole(row);
+    const spliceId = normalizedSpliceId(row);
+    const needsLeft = role !== "BRANCH";
+    const needsRight = role !== "PARENT";
+
+    if (needsLeft) {
+      validateEndpoint(row, "left", add);
+    }
+
+    const hasAnyRight = Boolean(row.rightLeg || row.rightPin || row.rightHousing);
+    if (needsRight && (role === "BRANCH" || hasAnyRight)) {
+      validateEndpoint(row, "right", add);
+    } else if (!role && !hasAnyRight) {
+      add(row, "warning", "missing-destination", "Active wire has no right-side destination.");
+    }
+
+    if (!row.name) {
+      add(row, "warning", "missing-name", "Active wire has no wire name or identifier.");
+    }
+    if (!row.awg) {
+      add(row, "warning", "missing-awg", "Active wire has no AWG value.");
+    }
+    if (!row.color) {
+      add(row, "warning", "missing-color", "Active wire has no color.");
+    }
+    if (!(Number(row.length) > 0)) {
+      add(row, "warning", "missing-length", "Active wire needs a positive cut length.");
+    }
+    if (role && !spliceId) {
+      add(row, "error", "missing-splice-id", `${role} row has no splice ID.`);
+    }
+    if (spliceId && !role) {
+      add(row, "warning", "missing-splice-role", `${spliceId} has no parent or branch role.`);
+    }
+  });
+
+  ["left", "right"].forEach((side) => {
+    const endpointRows = new Map();
+    const legRows = new Map();
+
+    active.filter((row) => rowUsesSide(row, side)).forEach((row) => {
+      const leg = cleanCell(side === "left" ? row.leftLeg : row.rightLeg).toUpperCase();
+      const pin = cleanCell(side === "left" ? row.leftPin : row.rightPin).toUpperCase();
+      const housing = cleanCell(side === "left" ? row.housing : row.rightHousing).toUpperCase();
+      if (leg && pin) {
+        const key = `${leg}|${pin}`;
+        if (!endpointRows.has(key)) {
+          endpointRows.set(key, []);
+        }
+        endpointRows.get(key).push(row);
+      }
+      if (leg && housing) {
+        if (!legRows.has(leg)) {
+          legRows.set(leg, []);
+        }
+        legRows.get(leg).push({ row, housing });
+      }
+    });
+
+    endpointRows.forEach((rows, endpoint) => {
+      if (rows.length > 1) {
+        rows.forEach((row) => add(row, "error", `duplicate-${side}-${endpoint}`, `Duplicate ${side} endpoint ${endpoint.replace("|", " / pin ")}.`));
+      }
+    });
+
+    legRows.forEach((entries, leg) => {
+      const housings = new Set(entries.map((entry) => entry.housing));
+      if (housings.size > 1) {
+        entries.forEach(({ row }) => add(row, "error", `housing-conflict-${side}-${leg}`, `${side === "left" ? "Left" : "Right"} leg ${leg} uses conflicting housing types.`));
+      }
+    });
+  });
+
+  const spliceGroups = new Map();
+  active.filter((row) => normalizedSpliceId(row)).forEach((row) => {
+    const id = normalizedSpliceId(row);
+    if (!spliceGroups.has(id)) {
+      spliceGroups.set(id, []);
+    }
+    spliceGroups.get(id).push(row);
+  });
+  spliceGroups.forEach((rows, spliceId) => {
+    const parentCount = rows.filter((row) => normalizedSpliceRole(row) === "PARENT").length;
+    const branchCount = rows.filter((row) => normalizedSpliceRole(row) === "BRANCH").length;
+    if (parentCount !== 1) {
+      rows.forEach((row) => add(row, "error", `splice-parent-${spliceId}`, `${spliceId} requires exactly one parent wire; found ${parentCount}.`));
+    }
+    if (branchCount < 1) {
+      rows.forEach((row) => add(row, "error", `splice-branch-${spliceId}`, `${spliceId} requires at least one branch wire.`));
+    }
+  });
+
+  const rowOrder = new Map(state.rows.map((row, index) => [row.id, index]));
+  return issues.sort((left, right) => {
+    const severity = (left.severity === "error" ? 0 : 1) - (right.severity === "error" ? 0 : 1);
+    return severity || (rowOrder.get(left.rowId) || 0) - (rowOrder.get(right.rowId) || 0);
+  });
+}
+
+function validateEndpoint(row, side, add) {
+  const left = side === "left";
+  const label = left ? "Left" : "Right";
+  const leg = left ? row.leftLeg : row.rightLeg;
+  const pin = left ? row.leftPin : row.rightPin;
+  const housing = left ? row.housing : row.rightHousing;
+  if (!leg) {
+    add(row, "error", `missing-${side}-leg`, `${label} endpoint has no leg.`);
+  }
+  if (!pin) {
+    add(row, "error", `missing-${side}-pin`, `${label} endpoint has no pin.`);
+  }
+  if (!housing) {
+    add(row, "error", `missing-${side}-housing`, `${label} endpoint has no housing.`);
+    return;
+  }
+
+  const catalogItem = catalogEntryByName(housing);
+  if (!catalogItem) {
+    add(row, "warning", `uncataloged-${side}-housing`, `${label} housing "${housing}" is not in the catalog.`);
+    return;
+  }
+
+  const pinNumber = numberOrDefault(pin, 0);
+  if (pinNumber > catalogItem.positions) {
+    add(row, "error", `pin-overflow-${side}`, `${label} pin ${pinNumber} exceeds the ${catalogItem.positions}-position ${catalogItem.name} housing.`);
+  }
+}
+
+function qualityIssuesByRow(issues = validateHarness()) {
+  return issues.reduce((map, issue) => {
+    if (issue.rowId) {
+      if (!map.has(issue.rowId)) {
+        map.set(issue.rowId, []);
+      }
+      map.get(issue.rowId).push(issue);
+    }
+    return map;
+  }, new Map());
+}
+
+function renderQualityBadge() {
+  const issues = validateHarness();
+  const errors = issues.filter((issue) => issue.severity === "error").length;
+  const warnings = issues.length - errors;
+  dom.qualityCount.textContent = String(issues.length);
+  dom.qualityButton.classList.toggle("has-errors", errors > 0);
+  dom.qualityButton.classList.toggle("has-warnings", warnings > 0);
+  dom.qualityButton.title = issues.length
+    ? `${errors} error(s), ${warnings} warning(s)`
+    : "No electrical issues found";
+}
+
+function renderQualityDialog() {
+  const issues = validateHarness();
+  const errors = issues.filter((issue) => issue.severity === "error").length;
+  const warnings = issues.length - errors;
+  dom.qualitySummary.innerHTML = `
+    ${summaryMetric("Active wires", activeRows().length)}
+    ${summaryMetric("Errors", errors, "error")}
+    ${summaryMetric("Warnings", warnings, "warning")}
+    ${summaryMetric("Status", errors ? "Fix errors" : warnings ? "Review warnings" : "Ready")}
+  `;
+  dom.qualityIssues.innerHTML = issues.length
+    ? issues.map((issue) => {
+      const rowNumber = state.rows.findIndex((row) => row.id === issue.rowId) + 1;
+      return `
+        <button class="issue-item ${issue.severity}" type="button" data-row-id="${escapeHtml(issue.rowId)}">
+          <span class="issue-severity">${issue.severity}</span>
+          <strong>${escapeHtml(issue.message)}</strong>
+          <span class="issue-row">${rowNumber ? `Row ${rowNumber}` : "Harness"}</span>
+        </button>
+      `;
+    }).join("")
+    : `<div class="empty-workspace"><strong>No electrical issues found.</strong><br>The active harness passes the current checks.</div>`;
+}
+
+function summaryMetric(label, valueText, className = "") {
+  return `<div class="summary-metric ${className}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(valueText)}</strong></div>`;
+}
+
+function focusIssueRow(rowId) {
+  if (!state.rows.some((row) => row.id === rowId)) {
+    return;
+  }
+  state.selectedId = rowId;
+  dom.searchRows.value = "";
+  dom.activeOnly.checked = false;
+  saveState();
+  render();
+  const row = dom.wireRows.querySelector(`tr[data-id="${CSS.escape(rowId)}"]`);
+  row?.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function safeImageUrl(input) {
+  const url = cleanCell(input);
+  return /^(https?:\/\/|data:image\/)/i.test(url) ? url : "";
+}
+
+function openCatalog() {
+  const selected = selectedRow();
+  const matching = catalogEntryByName(selected?.housing) || catalogEntryByName(selected?.rightHousing);
+  selectedCatalogId = matching?.id || state.catalog[0]?.id || "";
+  dom.catalogSearch.value = "";
+  renderCatalog();
+  dom.catalogDialog.showModal();
+}
+
+function renderCatalog() {
+  const query = dom.catalogSearch.value.trim().toLowerCase();
+  const rows = state.catalog.filter((entry) => [
+    entry.name,
+    entry.category,
+    entry.manufacturer,
+    entry.partNumber,
+    entry.terminalType,
+    entry.terminalPart
+  ].join(" ").toLowerCase().includes(query));
+  dom.catalogRows.innerHTML = rows.length
+    ? rows.map((entry) => `
+      <tr class="catalog-row ${entry.id === selectedCatalogId ? "selected" : ""}" data-catalog-id="${escapeHtml(entry.id)}">
+        <td><strong>${escapeHtml(entry.name)}</strong><br><span class="catalog-kind">${entry.builtIn ? "Built in" : "Custom"}</span></td>
+        <td>${escapeHtml(entry.category)}</td>
+        <td>${entry.positions}</td>
+        <td>${escapeHtml(entry.partNumber || "-")}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="4" class="empty-workspace">No catalog items found.</td></tr>`;
+
+  const selected = state.catalog.find((entry) => entry.id === selectedCatalogId);
+  if (selected) {
+    populateCatalogForm(selected);
+  } else if (!dom.catalogId.value) {
+    clearCatalogForm();
+  }
+}
+
+function populateCatalogForm(entry) {
+  selectedCatalogId = entry.id;
+  dom.catalogId.value = entry.id;
+  dom.catalogName.value = entry.name;
+  dom.catalogCategory.value = entry.category;
+  dom.catalogFamily.value = entry.family;
+  dom.catalogPositions.value = entry.positions;
+  dom.catalogGender.value = entry.gender;
+  dom.catalogManufacturer.value = entry.manufacturer;
+  dom.catalogPartNumber.value = entry.partNumber;
+  dom.catalogTerminalType.value = entry.terminalType;
+  dom.catalogTerminalPart.value = entry.terminalPart;
+  dom.catalogSealPart.value = entry.sealPart;
+  dom.catalogImageUrl.value = entry.imageUrl;
+  dom.catalogNotes.value = entry.notes;
+  dom.deleteCatalogItem.disabled = entry.builtIn;
+  renderCatalogImage(entry.imageUrl);
+}
+
+function clearCatalogForm() {
+  selectedCatalogId = "";
+  dom.catalogForm.reset();
+  dom.catalogId.value = "";
+  dom.catalogPositions.value = "1";
+  dom.catalogCategory.value = "Connector";
+  dom.catalogFamily.value = "generic";
+  dom.deleteCatalogItem.disabled = true;
+  renderCatalogImage("");
+  dom.catalogName.focus();
+}
+
+function renderCatalogImage(imageUrl) {
+  const safeUrl = safeImageUrl(imageUrl);
+  dom.catalogImagePreview.innerHTML = safeUrl
+    ? `<img src="${escapeHtml(safeUrl)}" alt="Catalog connector image">`
+    : `<span>No image</span>`;
+  const image = dom.catalogImagePreview.querySelector("img");
+  if (image) {
+    image.addEventListener("error", () => {
+      dom.catalogImagePreview.innerHTML = `<span>Image could not be loaded</span>`;
+    }, { once: true });
+  }
+}
+
+function compactCatalogImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("error", reject);
+    reader.addEventListener("load", () => {
+      const image = new Image();
+      image.addEventListener("error", reject);
+      image.addEventListener("load", () => {
+        const scale = Math.min(1, 640 / image.naturalWidth, 420 / image.naturalHeight);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+        canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+        const context = canvas.getContext("2d");
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      }, { once: true });
+      image.src = reader.result;
+    }, { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+function saveCatalogItem(event) {
+  event.preventDefault();
+  const name = cleanCell(dom.catalogName.value).toUpperCase();
+  if (!name) {
+    showToast("Catalog item needs a name.");
+    return;
+  }
+
+  const existingId = dom.catalogId.value;
+  const existing = state.catalog.find((entry) => entry.id === existingId);
+  const duplicate = state.catalog.find((entry) => entry.name === name && entry.id !== existingId);
+  if (duplicate) {
+    showToast("A catalog item with that name already exists.");
+    return;
+  }
+
+  const entry = normalizeCatalogEntry({
+    id: existingId || `${catalogIdFor(name)}-${Date.now().toString(36)}`,
+    name,
+    category: dom.catalogCategory.value,
+    family: dom.catalogFamily.value,
+    positions: dom.catalogPositions.value,
+    gender: dom.catalogGender.value,
+    manufacturer: dom.catalogManufacturer.value,
+    partNumber: dom.catalogPartNumber.value,
+    terminalType: dom.catalogTerminalType.value,
+    terminalPart: dom.catalogTerminalPart.value,
+    sealPart: dom.catalogSealPart.value,
+    imageUrl: safeImageUrl(dom.catalogImageUrl.value),
+    notes: dom.catalogNotes.value,
+    builtIn: existing?.builtIn || false
+  });
+
+  if (existing) {
+    const oldName = existing.name;
+    Object.assign(existing, entry);
+    if (oldName !== entry.name) {
+      state.rows.forEach((row) => {
+        if (row.housing === oldName) {
+          row.housing = entry.name;
+        }
+        if (row.rightHousing === oldName) {
+          row.rightHousing = entry.name;
+        }
+      });
+    }
+  } else {
+    state.catalog.push(entry);
+  }
+  selectedCatalogId = entry.id;
+  saveState();
+  render();
+  renderCatalog();
+  showToast(existing ? "Catalog item updated." : "Custom catalog item added.");
+}
+
+function deleteCatalogItem() {
+  const entry = state.catalog.find((item) => item.id === dom.catalogId.value);
+  if (!entry || entry.builtIn) {
+    return;
+  }
+  const used = state.rows.some((row) => row.housing === entry.name || row.rightHousing === entry.name);
+  if (used) {
+    showToast("This catalog item is used by the harness and cannot be deleted.");
+    return;
+  }
+  state.catalog = state.catalog.filter((item) => item.id !== entry.id);
+  selectedCatalogId = state.catalog[0]?.id || "";
+  saveState();
+  render();
+  renderCatalog();
+  showToast("Custom catalog item deleted.");
+}
+
+function resetCatalogDefaults() {
+  if (!window.confirm("Restore the built-in catalog and remove custom catalog items?")) {
+    return;
+  }
+  state.catalog = defaultCatalog();
+  selectedCatalogId = state.catalog[0]?.id || "";
+  saveState();
+  render();
+  renderCatalog();
+  showToast("Catalog defaults restored.");
+}
+
 function renderTable() {
   const query = dom.searchRows.value.trim().toLowerCase();
   const onlyActive = dom.activeOnly.checked;
+  const issuesByRow = qualityIssuesByRow();
   let previousLeg = "";
 
   const rows = state.rows
@@ -1218,22 +1763,28 @@ function renderTable() {
   dom.wireRows.innerHTML = rows.map(({ row, index }) => {
     const groupStart = previousLeg && previousLeg !== row.leftLeg;
     previousLeg = row.leftLeg;
+    const rowIssues = issuesByRow.get(row.id) || [];
+    const hasError = rowIssues.some((issue) => issue.severity === "error");
     const classes = [
       row.id === state.selectedId ? "selected-row" : "",
       isDnp(row.dnp) ? "dnp-row" : "",
-      groupStart ? "group-start" : ""
+      groupStart ? "group-start" : "",
+      hasError ? "issue-error" : rowIssues.length ? "issue-warning" : ""
     ].filter(Boolean).join(" ");
+    const issueTitle = rowIssues.map((issue) => issue.message).join(" ");
+    const issueCount = rowIssues.length ? `<span class="row-issue-count" title="${escapeHtml(issueTitle)}">${rowIssues.length}</span>` : "";
 
     return `
       <tr class="${classes}" data-id="${row.id}">
         <td class="row-index">
           <button class="clear-row-button" type="button" data-action="clear-row" title="Clear row ${index + 1} and remove its wire" aria-label="Clear row ${index + 1}">${index + 1}</button>
+          ${issueCount}
         </td>
         <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td class="field-name"><input data-field="name" list="nameChoices" value="${escapeHtml(row.name)}" aria-label="Name"></td>
         <td>${selectField(row, "leftPin", options.pins, "Left pin")}</td>
         <td>${selectField(row, "dnp", options.dnp, "Do not place", isDnp(row.dnp) ? "DNP" : "")}</td>
-        <td class="field-housing">${selectField(row, "housing", options.housings, "Housing type")}</td>
+        <td class="field-housing">${selectField(row, "housing", housingChoices(), "Housing type")}</td>
         <td>${selectField(row, "awg", options.gauges, "AW gauge")}</td>
         <td class="field-color">
           <div class="color-cell">
@@ -1247,7 +1798,7 @@ function renderTable() {
         <td class="divider-cell"></td>
         <td>${selectField(row, "rightLeg", options.legs, "Right leg")}</td>
         <td>${selectField(row, "rightPin", options.pins, "Right pin")}</td>
-        <td class="field-right-housing">${selectField(row, "rightHousing", options.housings, "Right housing type")}</td>
+        <td class="field-right-housing">${selectField(row, "rightHousing", housingChoices(), "Right housing type")}</td>
       </tr>
     `;
   }).join("");
@@ -1316,6 +1867,13 @@ function handleCellChange(target, shouldRenderTable) {
     renderSummary();
     renderPreview();
     renderLegend();
+    renderQualityBadge();
+    if (dom.qualityDialog.open) {
+      renderQualityDialog();
+    }
+    if (dom.bomDialog.open) {
+      renderBom();
+    }
     updateActionState();
   }
 }
@@ -1433,12 +1991,164 @@ function resetSample() {
     return;
   }
 
+  const catalog = state.catalog;
+  const bomAllowance = state.bomAllowance;
   state = starterState();
+  state.catalog = catalog;
+  state.bomAllowance = bomAllowance;
   saveState();
   dom.searchRows.value = "";
   dom.activeOnly.checked = false;
   render();
   showToast("Starter layout restored.");
+}
+
+function calculateBom() {
+  const wires = activeRows();
+  const allowance = Math.max(0, Math.min(100, Number(state.bomAllowance) || 0));
+  const wireMaterials = new Map();
+  const cutList = new Map();
+  const components = new Map();
+  const housingInstances = new Set();
+  const spliceIds = new Set();
+
+  const addComponent = (type, item, manufacturer = "", partNumber = "", quantity = 1) => {
+    if (!item || quantity <= 0) {
+      return;
+    }
+    const key = [type, item, manufacturer, partNumber].join("|");
+    if (!components.has(key)) {
+      components.set(key, { type, item, manufacturer, partNumber, quantity: 0 });
+    }
+    components.get(key).quantity += quantity;
+  };
+
+  wires.forEach((row) => {
+    const length = Math.max(0, Number(row.length) || 0);
+    const awg = row.awg || "UNSET";
+    const color = row.color || "UNSET";
+    const materialKey = `${awg}|${color}`;
+    if (!wireMaterials.has(materialKey)) {
+      wireMaterials.set(materialKey, { awg, color, wires: 0, exactInches: 0, purchaseInches: 0 });
+    }
+    const material = wireMaterials.get(materialKey);
+    material.wires += 1;
+    material.exactInches += length;
+    material.purchaseInches += length * (1 + allowance / 100);
+
+    const cutKey = `${awg}|${color}|${length}`;
+    if (!cutList.has(cutKey)) {
+      cutList.set(cutKey, { awg, color, length, quantity: 0, totalInches: 0 });
+    }
+    const cut = cutList.get(cutKey);
+    cut.quantity += 1;
+    cut.totalInches += length;
+
+    ["left", "right"].forEach((side) => {
+      if (!rowUsesSide(row, side)) {
+        return;
+      }
+      const leg = side === "left" ? row.leftLeg : row.rightLeg;
+      const pin = side === "left" ? row.leftPin : row.rightPin;
+      const housing = side === "left" ? row.housing : row.rightHousing;
+      if (!housing || !leg || !pin) {
+        return;
+      }
+      const item = catalogEntryByName(housing);
+      if (!item) {
+        addComponent("Uncataloged", housing, "", "", 1);
+        return;
+      }
+
+      const perEndpointHousing = ["powerpole", "ring"].includes(item.family) || item.category === "Terminal";
+      const housingKey = perEndpointHousing
+        ? `${side}|${leg}|${pin}|${item.name}`
+        : `${side}|${leg}|${item.name}`;
+      if (!housingInstances.has(housingKey)) {
+        housingInstances.add(housingKey);
+        addComponent(item.category === "Terminal" ? "Terminal" : "Housing", item.name, item.manufacturer, item.partNumber, 1);
+      }
+
+      if (item.category !== "Terminal" && item.terminalType) {
+        addComponent("Terminal", item.terminalType, item.manufacturer, item.terminalPart, 1);
+      }
+      if (item.sealPart) {
+        addComponent("Seal", `${item.name} seal`, item.manufacturer, item.sealPart, 1);
+      }
+    });
+
+    const spliceId = normalizedSpliceId(row);
+    if (spliceId) {
+      spliceIds.add(spliceId);
+    }
+  });
+
+  const spliceCatalog = catalogEntryByName("SPLICE");
+  spliceIds.forEach((spliceId) => addComponent("Splice", spliceId, spliceCatalog?.manufacturer || "", spliceCatalog?.partNumber || "", 1));
+
+  const sortedWireMaterials = [...wireMaterials.values()].sort((left, right) => numberOrDefault(left.awg, 99) - numberOrDefault(right.awg, 99) || left.color.localeCompare(right.color));
+  const sortedCutList = [...cutList.values()].sort((left, right) => numberOrDefault(left.awg, 99) - numberOrDefault(right.awg, 99) || left.color.localeCompare(right.color) || left.length - right.length);
+  const sortedComponents = [...components.values()].sort((left, right) => left.type.localeCompare(right.type) || left.item.localeCompare(right.item, undefined, { numeric: true }));
+  return {
+    allowance,
+    wireMaterials: sortedWireMaterials,
+    cutList: sortedCutList,
+    components: sortedComponents,
+    exactInches: sortedWireMaterials.reduce((sum, item) => sum + item.exactInches, 0),
+    purchaseInches: sortedWireMaterials.reduce((sum, item) => sum + item.purchaseInches, 0),
+    componentQuantity: sortedComponents.reduce((sum, item) => sum + item.quantity, 0)
+  };
+}
+
+function formatLength(inches) {
+  const clean = Number(inches) || 0;
+  return `${Number.isInteger(clean) ? clean : clean.toFixed(2)} in / ${(clean / 12).toFixed(2)} ft`;
+}
+
+function openBom() {
+  dom.bomAllowance.value = state.bomAllowance;
+  renderBom();
+  dom.bomDialog.showModal();
+}
+
+function renderBom() {
+  const bom = calculateBom();
+  dom.bomAllowance.value = bom.allowance;
+  dom.bomSummary.innerHTML = `
+    ${summaryMetric("Active wires", activeRows().length)}
+    ${summaryMetric("Exact wire", formatLength(bom.exactInches))}
+    ${summaryMetric("Purchase wire", formatLength(bom.purchaseInches))}
+    ${summaryMetric("Component pieces", bom.componentQuantity)}
+  `;
+  dom.wireMaterialRows.innerHTML = bom.wireMaterials.length
+    ? bom.wireMaterials.map((item) => `<tr><td>${escapeHtml(item.awg)}</td><td>${escapeHtml(item.color)}</td><td>${item.wires}</td><td>${formatLength(item.exactInches)}</td><td>${formatLength(item.purchaseInches)}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty-workspace">No active wire material.</td></tr>`;
+  dom.cutListRows.innerHTML = bom.cutList.length
+    ? bom.cutList.map((item) => `<tr><td>${escapeHtml(item.awg)}</td><td>${escapeHtml(item.color)}</td><td>${formatLength(item.length)}</td><td>${item.quantity}</td><td>${formatLength(item.totalInches)}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty-workspace">No active wire cuts.</td></tr>`;
+  dom.componentBomRows.innerHTML = bom.components.length
+    ? bom.components.map((item) => `<tr><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.manufacturer || "-")}</td><td>${escapeHtml(item.partNumber || "-")}</td><td>${item.quantity}</td></tr>`).join("")
+    : `<tr><td colspan="5" class="empty-workspace">No components calculated.</td></tr>`;
+}
+
+function exportBomCsv() {
+  const bom = calculateBom();
+  const lines = [
+    ["WIRE MATERIAL"],
+    ["AWG", "Color", "Wire count", "Exact inches", `Purchase inches (${bom.allowance}% allowance)`],
+    ...bom.wireMaterials.map((item) => [item.awg, item.color, item.wires, item.exactInches.toFixed(2), item.purchaseInches.toFixed(2)]),
+    [],
+    ["WIRE CUT LIST"],
+    ["AWG", "Color", "Cut length inches", "Quantity", "Total inches"],
+    ...bom.cutList.map((item) => [item.awg, item.color, item.length.toFixed(2), item.quantity, item.totalInches.toFixed(2)]),
+    [],
+    ["COMPONENTS"],
+    ["Type", "Item", "Manufacturer", "Part number", "Quantity"],
+    ...bom.components.map((item) => [item.type, item.item, item.manufacturer, item.partNumber, item.quantity])
+  ];
+  const csv = lines.map((line) => line.map(csvCell).join(",")).join("\r\n");
+  downloadText(`${fileSafeName(state.harnessName)}-bom-cut-list.csv`, csv, "text/csv");
+  showToast("BOM and cut list exported.");
 }
 
 function exportJson() {
@@ -1554,7 +2264,9 @@ function applyImportedRows() {
   state = normalizeState({
     harnessName: state.harnessName || "Imported Harness",
     selectedId: pendingImportRows[0].id,
-    rows: pendingImportRows
+    rows: pendingImportRows,
+    catalog: state.catalog,
+    bomAllowance: state.bomAllowance
   });
   saveState();
   dom.searchRows.value = "";
@@ -1794,7 +2506,7 @@ function extractRightFields(tokens) {
 
 function extractHousingFromEnd(tokens) {
   const upperTokens = tokens.map((token) => token.toUpperCase());
-  const housings = options.housings
+  const housings = housingChoices()
     .filter(Boolean)
     .sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length);
 
@@ -1873,7 +2585,7 @@ function matchColor(input) {
 
 function matchHousing(input) {
   const housing = cleanCell(input).toUpperCase();
-  return options.housings.find((choice) => choice && choice.toUpperCase() === housing) || "";
+  return housingChoices().find((choice) => choice && choice.toUpperCase() === housing) || "";
 }
 
 function parseCsvLine(line) {
@@ -1916,6 +2628,8 @@ function exportInstructions() {
   renderPreview();
   const svg = new XMLSerializer().serializeToString(dom.wirePreview);
   const rows = activeRows();
+  const issues = validateHarness();
+  const bom = calculateBom();
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -1939,6 +2653,16 @@ function exportInstructions() {
   <div class="meta">Wiring Harness Designer v${APP_VERSION} | ${rows.length} active wire(s), ${state.rows.length - rows.length} DNP row(s), ${escapeHtml(dom.totalLength.textContent)} total inches</div>
   <h2>Drawing</h2>
   <div class="drawing">${svg}</div>
+  <h2>Electrical Check Report</h2>
+  <div class="meta">${issues.filter((issue) => issue.severity === "error").length} error(s), ${issues.filter((issue) => issue.severity === "warning").length} warning(s)</div>
+  <table>
+    <thead><tr><th>Severity</th><th>Row</th><th>Issue</th></tr></thead>
+    <tbody>
+      ${issues.length ? issues.map((issue) => `
+        <tr><td>${escapeHtml(issue.severity)}</td><td>${state.rows.findIndex((row) => row.id === issue.rowId) + 1 || "-"}</td><td>${escapeHtml(issue.message)}</td></tr>
+      `).join("") : `<tr><td colspan="3">No electrical issues found.</td></tr>`}
+    </tbody>
+  </table>
   <h2>Wire Instructions</h2>
   <table>
     <thead>
@@ -1964,6 +2688,21 @@ function exportInstructions() {
           <td>${escapeHtml(row.rightHousing)}</td>
         </tr>
       `).join("")}
+    </tbody>
+  </table>
+  <h2>Wire Cut List</h2>
+  <table>
+    <thead><tr><th>AWG</th><th>Color</th><th>Cut Length</th><th>Quantity</th><th>Total</th></tr></thead>
+    <tbody>
+      ${bom.cutList.map((item) => `<tr><td>${escapeHtml(item.awg)}</td><td>${escapeHtml(item.color)}</td><td>${formatLength(item.length)}</td><td>${item.quantity}</td><td>${formatLength(item.totalInches)}</td></tr>`).join("")}
+    </tbody>
+  </table>
+  <h2>Bill of Materials</h2>
+  <div class="meta">Wire purchasing totals include ${bom.allowance}% allowance.</div>
+  <table>
+    <thead><tr><th>Type</th><th>Item</th><th>Manufacturer</th><th>Part #</th><th>Quantity</th></tr></thead>
+    <tbody>
+      ${bom.components.map((item) => `<tr><td>${escapeHtml(item.type)}</td><td>${escapeHtml(item.item)}</td><td>${escapeHtml(item.manufacturer)}</td><td>${escapeHtml(item.partNumber)}</td><td>${item.quantity}</td></tr>`).join("")}
     </tbody>
   </table>
 </body>
@@ -2097,6 +2836,58 @@ dom.addRow.addEventListener("click", addRow);
 dom.duplicateRow.addEventListener("click", duplicateRow);
 dom.deleteRow.addEventListener("click", deleteSelectedRow);
 dom.resetSample.addEventListener("click", resetSample);
+dom.qualityButton.addEventListener("click", () => {
+  renderQualityDialog();
+  dom.qualityDialog.showModal();
+});
+dom.closeQualityDialog.addEventListener("click", () => dom.qualityDialog.close());
+dom.qualityIssues.addEventListener("click", (event) => {
+  const issue = event.target.closest("[data-row-id]");
+  if (issue) {
+    dom.qualityDialog.close();
+    focusIssueRow(issue.dataset.rowId);
+  }
+});
+dom.catalogButton.addEventListener("click", openCatalog);
+dom.closeCatalogDialog.addEventListener("click", () => dom.catalogDialog.close());
+dom.newCatalogItem.addEventListener("click", clearCatalogForm);
+dom.resetCatalog.addEventListener("click", resetCatalogDefaults);
+dom.catalogSearch.addEventListener("input", renderCatalog);
+dom.catalogRows.addEventListener("click", (event) => {
+  const row = event.target.closest("[data-catalog-id]");
+  if (!row) {
+    return;
+  }
+  selectedCatalogId = row.dataset.catalogId;
+  renderCatalog();
+});
+dom.catalogForm.addEventListener("submit", saveCatalogItem);
+dom.deleteCatalogItem.addEventListener("click", deleteCatalogItem);
+dom.catalogImageUrl.addEventListener("input", () => renderCatalogImage(dom.catalogImageUrl.value));
+dom.catalogImageUploadButton.addEventListener("click", () => dom.catalogImageUpload.click());
+dom.catalogImageUpload.addEventListener("change", async () => {
+  const [file] = dom.catalogImageUpload.files;
+  if (!file) {
+    return;
+  }
+  try {
+    const imageData = await compactCatalogImage(file);
+    dom.catalogImageUrl.value = imageData;
+    renderCatalogImage(imageData);
+    showToast("Connector image added to the catalog form.");
+  } catch (error) {
+    showToast("That connector image could not be loaded.");
+  }
+  dom.catalogImageUpload.value = "";
+});
+dom.bomButton.addEventListener("click", openBom);
+dom.closeBomDialog.addEventListener("click", () => dom.bomDialog.close());
+dom.bomAllowance.addEventListener("change", () => {
+  state.bomAllowance = Math.max(0, Math.min(100, Number(dom.bomAllowance.value) || 0));
+  saveState();
+  renderBom();
+});
+dom.exportBom.addEventListener("click", exportBomCsv);
 dom.imageImportButton.addEventListener("click", openImageImport);
 dom.closeImageDialog.addEventListener("click", closeImageImport);
 dom.chooseImageButton.addEventListener("click", chooseImage);

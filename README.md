@@ -4,7 +4,7 @@ An open-source, browser-based wiring harness diagram editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.1.10**
+Current release: **v1.2.0**
 
 ## Use The App
 
@@ -26,6 +26,9 @@ Data saved by the former Windows desktop version does not automatically move to 
 - JSON project import/export.
 - CSV, SVG drawing, printable guide, and browser print exports.
 - Local browser storage and no server-side project database.
+- Continuous electrical checks for duplicate endpoints, housing conflicts, pin capacity, incomplete splices, and missing wire details.
+- Editable connector and terminal catalog with manufacturer, part number, gender, terminal, seal, notes, and image metadata.
+- Automatic wire-material totals, purchasing allowance, component BOM, and grouped wire cut list.
 
 ## Run Locally
 

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.1.10</title>
+    <title>Wiring Harness Designer v1.2.0</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.1.10</span>
+              <span class="version-badge">v1.2.0</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -41,6 +41,19 @@
           <button id="resetSample" type="button" title="Reset to the starter harness">
             <span class="tool-icon">R</span>
             <span>Reset</span>
+          </button>
+          <button id="qualityButton" class="quality-button" type="button" title="Review electrical checks">
+            <span class="tool-icon">CHK</span>
+            <span>Checks</span>
+            <strong id="qualityCount" class="toolbar-count">0</strong>
+          </button>
+          <button id="catalogButton" type="button" title="Open connector and terminal catalog">
+            <span class="tool-icon">CAT</span>
+            <span>Catalog</span>
+          </button>
+          <button id="bomButton" type="button" title="Open bill of materials and wire cut list">
+            <span class="tool-icon">BOM</span>
+            <span>BOM</span>
           </button>
           <button id="imageImportButton" type="button" title="Import from an Excel screenshot or image">
             <span class="tool-icon">IMG</span>
@@ -262,6 +275,133 @@
             <tbody id="importPreviewRows"></tbody>
           </table>
         </div>
+      </div>
+    </dialog>
+
+    <dialog id="qualityDialog" class="workspace-dialog">
+      <div class="dialog-head">
+        <div>
+          <span class="section-label">Electrical error checker</span>
+          <strong>Harness checks</strong>
+        </div>
+        <button id="closeQualityDialog" type="button" title="Close checks">
+          <span class="tool-icon">x</span>
+          <span>Close</span>
+        </button>
+      </div>
+      <div id="qualitySummary" class="workspace-summary"></div>
+      <div id="qualityIssues" class="issue-list"></div>
+    </dialog>
+
+    <dialog id="catalogDialog" class="workspace-dialog catalog-dialog">
+      <div class="dialog-head">
+        <div>
+          <span class="section-label">Connector and terminal catalog</span>
+          <strong>Parts library</strong>
+        </div>
+        <div class="dialog-actions">
+          <button id="newCatalogItem" type="button" title="Create a custom catalog item">
+            <span class="tool-icon">+</span>
+            <span>New</span>
+          </button>
+          <button id="resetCatalog" type="button" title="Restore the built-in catalog">
+            <span class="tool-icon">R</span>
+            <span>Defaults</span>
+          </button>
+          <button id="closeCatalogDialog" type="button" title="Close catalog">
+            <span class="tool-icon">x</span>
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+      <div class="catalog-workspace">
+        <div class="catalog-list-pane">
+          <label class="workspace-search">
+            <span>Find part</span>
+            <input id="catalogSearch" type="search" placeholder="Housing, manufacturer, part number">
+          </label>
+          <div class="workspace-table-scroll">
+            <table class="workspace-table">
+              <thead>
+                <tr><th>Item</th><th>Type</th><th>Positions</th><th>Part #</th></tr>
+              </thead>
+              <tbody id="catalogRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <form id="catalogForm" class="catalog-form">
+          <input id="catalogId" type="hidden">
+          <div id="catalogImagePreview" class="catalog-image-preview">
+            <span>No image</span>
+          </div>
+          <label class="wide"><span>Name</span><input id="catalogName" required></label>
+          <label><span>Type</span>
+            <select id="catalogCategory">
+              <option>Connector</option><option>Terminal</option><option>Board</option><option>Splice</option>
+            </select>
+          </label>
+          <label><span>Drawing family</span>
+            <select id="catalogFamily">
+              <option>generic</option><option>molex</option><option>dupont</option><option>powerpole</option><option>subconn</option><option>pcb</option><option>ring</option><option>splice</option>
+            </select>
+          </label>
+          <label><span>Positions</span><input id="catalogPositions" type="number" min="1" max="64" value="1"></label>
+          <label><span>Gender</span>
+            <select id="catalogGender"><option value="">-</option><option>Male</option><option>Female</option></select>
+          </label>
+          <label><span>Manufacturer</span><input id="catalogManufacturer"></label>
+          <label><span>Housing part #</span><input id="catalogPartNumber"></label>
+          <label><span>Terminal type</span><input id="catalogTerminalType"></label>
+          <label><span>Terminal part #</span><input id="catalogTerminalPart"></label>
+          <label><span>Seal part #</span><input id="catalogSealPart"></label>
+          <label class="wide"><span>Connector image URL or uploaded image</span><input id="catalogImageUrl" type="text" placeholder="https://..."></label>
+          <div class="catalog-image-actions wide">
+            <button id="catalogImageUploadButton" type="button"><span class="tool-icon">IMG</span><span>Upload connector image</span></button>
+            <input id="catalogImageUpload" class="sr-only" type="file" accept="image/*">
+          </div>
+          <label class="wide"><span>Notes</span><textarea id="catalogNotes" rows="3"></textarea></label>
+          <div class="catalog-form-actions wide">
+            <button id="saveCatalogItem" type="submit"><span class="tool-icon">SAVE</span><span>Save item</span></button>
+            <button id="deleteCatalogItem" type="button"><span class="tool-icon">x</span><span>Delete custom item</span></button>
+          </div>
+        </form>
+      </div>
+    </dialog>
+
+    <dialog id="bomDialog" class="workspace-dialog bom-dialog">
+      <div class="dialog-head">
+        <div>
+          <span class="section-label">Automatic production totals</span>
+          <strong>Bill of materials and cut list</strong>
+        </div>
+        <div class="dialog-actions">
+          <button id="exportBom" type="button" title="Download BOM and cut list CSV">
+            <span class="tool-icon">CSV</span>
+            <span>Export</span>
+          </button>
+          <button id="closeBomDialog" type="button" title="Close BOM">
+            <span class="tool-icon">x</span>
+            <span>Close</span>
+          </button>
+        </div>
+      </div>
+      <div class="bom-controls">
+        <label><span>Wire allowance</span><input id="bomAllowance" type="number" min="0" max="100" step="1"><strong>%</strong></label>
+      </div>
+      <div id="bomSummary" class="workspace-summary"></div>
+      <div class="bom-sections">
+        <section>
+          <div class="workspace-section-title"><strong>Wire material</strong><span>Grouped by gauge and color</span></div>
+          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>AWG</th><th>Color</th><th>Wires</th><th>Exact</th><th>With allowance</th></tr></thead><tbody id="wireMaterialRows"></tbody></table></div>
+        </section>
+        <section>
+          <div class="workspace-section-title"><strong>Wire cut list</strong><span>Grouped by gauge, color, and cut length</span></div>
+          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>AWG</th><th>Color</th><th>Cut length</th><th>Quantity</th><th>Total</th></tr></thead><tbody id="cutListRows"></tbody></table></div>
+        </section>
+        <section class="wide">
+          <div class="workspace-section-title"><strong>Components</strong><span>Housings, terminals, seals, and splices</span></div>
+          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>Type</th><th>Item</th><th>Manufacturer</th><th>Part #</th><th>Quantity</th></tr></thead><tbody id="componentBomRows"></tbody></table></div>
+        </section>
       </div>
     </dialog>
 
