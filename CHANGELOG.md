@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.10 - 2026-06-04
+
+- Routed every connector wire from a visible bottom cable port.
+- Replaced overlapping curves with separated schematic lanes and 90-degree bends.
+- Increased background-wire contrast and removed the 18-wire preview limit.
+
 ## v1.1.9 - 2026-06-04
 
 - Arranged Molex and Dupont housing pin cavities horizontally from left to right.

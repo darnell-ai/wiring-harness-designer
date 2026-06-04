@@ -1,8 +1,9 @@
 "use strict";
 
-const APP_VERSION = "1.1.9";
+const APP_VERSION = "1.1.10";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
+const WIRE_LANE_GAP = 20;
 
 const colorMap = {
   BLACK: "#050505",
@@ -312,11 +313,13 @@ function renderPreview() {
   const rightConnectors = buildConnectors(legKeys(previewRows, "right", selected), "right", previewRows, selected);
   const leftMap = new Map(leftConnectors.map((connector) => [connector.key, connector]));
   const rightMap = new Map(rightConnectors.map((connector) => [connector.key, connector]));
-  const previewHeight = previewCanvasHeight(leftConnectors, rightConnectors);
+  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors);
+  const previewHeight = previewCanvasHeight(leftConnectors, rightConnectors, active.length);
+  const selectedWireIndex = Math.max(0, previewRows.findIndex((item) => item.id === selected.id));
   const splicePoints = buildSplicePoints(previewRows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight);
   const selectedEndpoints = wireEndpoints(
     selected,
-    previewRows.findIndex((item) => item.id === selected.id),
+    selectedWireIndex,
     leftMap,
     rightMap,
     leftConnectors,
@@ -329,7 +332,7 @@ function renderPreview() {
   const labelX = spliceSelected ? 205 : 384;
   const labelY = spliceSelected
     ? clamp((selectedStart.exit === "splice" ? selectedStart.y : selectedEnd.y) - 140, 74, previewHeight - 112)
-    : clamp(((selectedStart.y || 180) + (selectedEnd.y || 180)) / 2 - 38, 74, previewHeight - 112);
+    : 54;
   const wireColor = colorMap[selected.color] || "#aeb8b0";
 
   const connectors = [
@@ -338,19 +341,23 @@ function renderPreview() {
   ].join("");
 
   const backgroundWires = active
-    .filter((item) => item.id !== selected.id)
-    .slice(0, 18)
-    .map((item, index) => {
+    .map((item, index) => ({ item, index }))
+    .filter(({ item }) => item.id !== selected.id)
+    .map(({ item, index }) => {
       const endpoints = wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight);
       const { start, end } = endpoints;
       const color = colorMap[item.color] || "#7e8a82";
-      const path = wirePath(start, end, index);
-      return `<path d="${path}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" opacity="0.34" />`;
+      const path = wirePath(start, end, index, routeBaseY);
+      const outline = item.color === "BLACK" ? "#edf4ef" : "#07100b";
+      return `
+        <path d="${path}" fill="none" stroke="${outline}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.78" />
+        <path d="${path}" fill="none" stroke="${color}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+      `;
     })
     .join("");
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
-  const mainPath = wirePath(selectedStart, selectedEnd, 99);
+  const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
   const endpointLabel = selectedEnd.exit === "splice"
     ? `${escapeXml(normalizedSpliceId(selected))} WINDOW SPLICE`
     : selected.rightLeg
@@ -366,8 +373,8 @@ function renderPreview() {
     <text x="${Math.min(selectedEnd.x + 16, 820)}" y="${selectedEnd.y - 18}" class="wire-sub">${endpointLabel}</text>
   `;
   const selectedWireMarkup = hasSelectedWire ? `
-    <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.46)"}" stroke-width="17" stroke-linecap="round" opacity="0.9" />
-    <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="11" stroke-linecap="round" opacity="1" filter="url(#wireGlow)" />
+    <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+    <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="#f2c84b" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="#15201b" stroke="#41b883" stroke-width="3" />`}
@@ -539,7 +546,7 @@ function buildConnectors(keys, side, rows, selected) {
     return [];
   }
 
-  const gap = 58;
+  const gap = 90;
   const top = 54;
   let y = top;
 
@@ -663,15 +670,24 @@ function connectorHeight(pinCount) {
   return Math.max(104, Math.min(276, 52 + pinCount * 14));
 }
 
-function previewCanvasHeight(leftConnectors, rightConnectors) {
+function connectorBottom(leftConnectors, rightConnectors) {
   const allConnectors = [...leftConnectors, ...rightConnectors];
   if (!allConnectors.length) {
-    return 360;
+    return 180;
   }
 
+  return Math.ceil(Math.max(...allConnectors.map((connector) => connector.y + connector.height)));
+}
+
+function wireRouteBase(leftConnectors, rightConnectors) {
+  return connectorBottom(leftConnectors, rightConnectors) + 74;
+}
+
+function previewCanvasHeight(leftConnectors, rightConnectors, wireCount = 0) {
+  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors);
   return Math.max(
     360,
-    Math.ceil(Math.max(...allConnectors.map((connector) => connector.y + connector.height + 58)))
+    routeBaseY + Math.max(1, wireCount) * WIRE_LANE_GAP + 54
   );
 }
 
@@ -776,25 +792,41 @@ function renderConnector(connector, side, rows, selected) {
   }
   const pins = visiblePositions.map((position) => {
     const pin = String(position);
-    const point = pinPoint(connector, pin, side);
+    const point = connectorContactPoint(connector, pin, side);
+    const port = pinPoint(connector, pin, side);
     const isSelected = selectedPosition === position;
     const isUsed = usedPins.has(position);
-    return renderConnectorPin(connector, point, pin, isSelected, isUsed, side);
+    return `
+      ${renderConnectorLead(connector, point, port, isSelected, isUsed, side)}
+      ${renderConnectorPin(connector, point, pin, isSelected, isUsed, side)}
+    `;
   }).join("");
   const labelX = connector.x + connector.width / 2;
-  const housingLabelY = connector.family === "powerpole"
-    ? connector.y - 2
-    : connector.y + connector.height + 20;
+  const housingLabelY = connector.y - 11;
   const housingLines = housingLabelLines(housing);
   const housingLabel = housingLines.map((line, index) => `
     <tspan x="${labelX}" dy="${index === 0 ? 0 : 11}">${escapeXml(line)}</tspan>
   `).join("");
 
   return `
-    <text x="${labelX}" y="${connector.y - 14}" class="connector-label" text-anchor="middle">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
+    <text x="${labelX}" y="${connector.y - 28}" class="connector-label" text-anchor="middle">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
     ${renderConnectorBody(connector)}
     ${pins}
     <text x="${labelX}" y="${housingLabelY}" class="housing-label" text-anchor="middle">${housingLabel}</text>
+  `;
+}
+
+function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {
+  if (connector.family === "powerpole" || (!isUsed && !isSelected)) {
+    return "";
+  }
+
+  const selectedColor = side === "left" ? "#f2c84b" : "#41b883";
+  const bendY = connector.y + connector.height - 12;
+  const stroke = isSelected ? selectedColor : "#87958c";
+  return `
+    <path d="M ${contact.x} ${contact.y} V ${bendY} H ${port.x} V ${port.y}" fill="none" stroke="${stroke}" stroke-width="${isSelected ? 2.5 : 1.7}" stroke-linecap="round" stroke-linejoin="round" opacity="${isSelected ? 0.95 : 0.72}" />
+    <circle cx="${port.x}" cy="${port.y}" r="${isSelected ? 5.5 : 4.5}" fill="#dce3de" stroke="${stroke}" stroke-width="2" />
   `;
 }
 
@@ -975,7 +1007,7 @@ function connectorHousing(key, side, rows, selected) {
     : match?.rightHousing || "Right housing not set";
 }
 
-function pinPoint(connector, pin, side) {
+function connectorContactPoint(connector, pin, side) {
   if (!connector) {
     return { x: side === "left" ? 150 : 850, y: 180 };
   }
@@ -988,7 +1020,9 @@ function pinPoint(connector, pin, side) {
       x: module.x + module.width / 2,
       y: module.y + module.height + 5,
       exit: "bottom",
-      lane: module.index
+      lane: module.index,
+      side,
+      edgeX: side === "left" ? connector.x + connector.width + 26 : connector.x - 26
     };
   }
 
@@ -1020,6 +1054,32 @@ function pinPoint(connector, pin, side) {
   return { x, y };
 }
 
+function pinPoint(connector, pin, side) {
+  const contact = connectorContactPoint(connector, pin, side);
+  if (!connector || connector.family === "powerpole") {
+    return contact;
+  }
+
+  const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
+  const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
+  const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
+  const portCount = Math.max(1, connector.positionData.length);
+  const x = ["molex", "dupont"].includes(connector.family)
+    ? contact.x
+    : portCount === 1
+      ? connector.x + connector.width / 2
+      : connector.x + 20 + lane * ((connector.width - 40) / (portCount - 1));
+
+  return {
+    x,
+    y: connector.y + connector.height + 6,
+    exit: "bottom",
+    lane,
+    side,
+    edgeX: side === "left" ? connector.x + connector.width + 26 : connector.x - 26
+  };
+}
+
 function unassignedPoint(index, previewHeight) {
   const safeIndex = Math.max(0, index);
   return {
@@ -1032,41 +1092,61 @@ function clamp(input, min, max) {
   return Math.max(min, Math.min(max, input));
 }
 
-function wirePath(start, end, index) {
+function wirePath(start, end, index, routeBaseY) {
   if (start.exit === "bottom" && end.exit === "bottom") {
-    const lane = Number.isFinite(start.lane) ? start.lane % 4 : Math.abs(index) % 4;
-    const routeY = Math.max(start.y, end.y) + 44 + lane * 14;
-    const direction = end.x >= start.x ? 1 : -1;
+    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
+    const startDropY = bottomDropY(start, index);
+    const endDropY = bottomDropY(end, index);
+    const startBusX = bottomBusX(start, index);
+    const endBusX = bottomBusX(end, index);
     return `M ${start.x} ${start.y}
-      C ${start.x} ${routeY - 18}, ${start.x} ${routeY}, ${start.x + 34 * direction} ${routeY}
-      C ${start.x + 120 * direction} ${routeY}, ${end.x - 120 * direction} ${routeY}, ${end.x - 34 * direction} ${routeY}
-      C ${end.x} ${routeY}, ${end.x} ${routeY - 18}, ${end.x} ${end.y}`;
+      V ${startDropY}
+      H ${startBusX}
+      V ${laneY}
+      H ${endBusX}
+      V ${endDropY}
+      H ${end.x}
+      V ${end.y}`;
   }
 
   if (start.exit === "bottom") {
-    return bottomExitWirePath(start, end, index);
+    return bottomExitWirePath(start, end, index, routeBaseY);
   }
 
   if (end.exit === "bottom") {
-    return bottomExitWirePath(end, start, index);
+    return bottomExitWirePath(end, start, index, routeBaseY);
   }
 
-  const distance = Math.max(160, Math.abs(end.x - start.x));
-  const wiggle = ((index % 5) - 2) * 12;
-  const startCurve = start.x + distance * 0.34;
-  const endCurve = end.x - distance * 0.34;
-  return `M ${start.x} ${start.y} C ${startCurve} ${start.y - 44 + wiggle}, ${endCurve} ${end.y + 44 - wiggle}, ${end.x} ${end.y}`;
+  const middleX = 500 + ((Math.max(0, index) % 7) - 3) * 12;
+  return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
 }
 
-function bottomExitWirePath(bottom, other, index) {
-  const lane = Number.isFinite(bottom.lane) ? bottom.lane % 4 : Math.abs(index) % 4;
-  const routeY = bottom.y + 42 + lane * 14;
-  const direction = other.x >= bottom.x ? 1 : -1;
-  const distance = Math.max(180, Math.abs(other.x - bottom.x));
-  const approachX = other.x - direction * Math.min(150, distance * 0.3);
+function bottomDropY(point, index) {
+  const localLane = Number.isFinite(point.lane) ? point.lane : Math.max(0, index);
+  return point.y + 20 + (localLane % 5) * 6;
+}
+
+function bottomBusX(point, index) {
+  const nudge = (Math.max(0, index) % 6) * 4;
+  if (point.side === "left") {
+    return point.edgeX + nudge;
+  }
+  if (point.side === "right") {
+    return point.edgeX - nudge;
+  }
+  return point.x;
+}
+
+function bottomExitWirePath(bottom, other, index, routeBaseY) {
+  const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
+  const dropY = bottomDropY(bottom, index);
+  const busX = bottomBusX(bottom, index);
   return `M ${bottom.x} ${bottom.y}
-    C ${bottom.x} ${routeY - 16}, ${bottom.x} ${routeY}, ${bottom.x + 38 * direction} ${routeY}
-    C ${bottom.x + distance * 0.38 * direction} ${routeY}, ${approachX} ${other.y}, ${other.x} ${other.y}`;
+    V ${dropY}
+    H ${busX}
+    V ${laneY}
+    H ${other.x}
+    V ${other.y}`;
 }
 
 function numberOrDefault(input, fallback) {
