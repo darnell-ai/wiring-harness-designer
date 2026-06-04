@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.9 - 2026-06-04
+
+- Arranged Molex and Dupont housing pin cavities horizontally from left to right.
+- Moved pin numbers below horizontal housing cavities for clearer wire landing points.
+- Kept Powerpole bottom exits and Subconn circular layouts unchanged.
+
 ## v1.1.8 - 2026-06-04
 
 - Added shared window-splice IDs with explicit parent and branch wire roles.

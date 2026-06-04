@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.1.8";
+const APP_VERSION = "1.1.9";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 
@@ -637,6 +637,18 @@ function connectorDimensions(family, pinCount, positionCount) {
   if (family === "splice") {
     return { width: 164, height: 88 };
   }
+  if (family === "molex") {
+    return {
+      width: clamp(72 + Math.max(0, pinCount - 1) * 34, 124, 360),
+      height: 112
+    };
+  }
+  if (family === "dupont") {
+    return {
+      width: clamp(60 + Math.max(0, pinCount - 1) * 24, 100, 360),
+      height: 88
+    };
+  }
   return {
     width: family === "pcb" ? 164 : 148,
     height: connectorHeight(pinCount)
@@ -888,6 +900,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const selectedColor = side === "left" ? "#f2c84b" : "#41b883";
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
+  const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
   let contact = "";
 
   if (connector.family === "powerpole") {
@@ -918,14 +931,17 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   }
 
   const radialSide = point.x >= centerX;
-  const textX = isSubconn
+  const textX = isHorizontalHousing
+    ? point.x
+    : isSubconn
     ? point.x + (radialSide ? 12 : -12)
     : side === "left" ? point.x - 31 : point.x + 18;
-  const anchor = isSubconn ? (radialSide ? "start" : "end") : "start";
+  const textY = isHorizontalHousing ? point.y + 24 : point.y + 4;
+  const anchor = isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
 
   return `
     ${contact}
-    <text x="${textX}" y="${point.y + 4}" class="pin-number" text-anchor="${anchor}">${pin}</text>
+    <text x="${textX}" y="${textY}" class="pin-number" text-anchor="${anchor}">${pin}</text>
   `;
 }
 
@@ -984,6 +1000,16 @@ function pinPoint(connector, pin, side) {
     return {
       x: centerX + Math.cos(angle) * radius,
       y: centerY + Math.sin(angle) * radius
+    };
+  }
+
+  if (["molex", "dupont"].includes(connector.family)) {
+    const x = pinCount === 1
+      ? connector.x + connector.width / 2
+      : connector.x + 32 + (safePin - 1) * ((connector.width - 64) / (pinCount - 1));
+    return {
+      x,
+      y: connector.y + connector.height / 2
     };
   }
 
