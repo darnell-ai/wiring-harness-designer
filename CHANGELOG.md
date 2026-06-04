@@ -1,0 +1,72 @@
+# Changelog
+
+## v1.1.8 - 2026-06-04
+
+- Added shared window-splice IDs with explicit parent and branch wire roles.
+- Added automatic branch creation when copying a parent or existing branch row.
+- Rendered one labeled splice node with parent and branch segments fanning to separate destinations.
+- Added splice fields to CSV, JSON, picture-import previews, and printable instructions.
+
+## v1.1.7 - 2026-06-04
+
+- Routed Powerpole wires from bottom-center cable ports instead of across the connector faces.
+- Added short separated vertical drop lanes before Powerpole wires curve toward their destinations.
+- Moved Powerpole housing labels above the modules and removed redundant endpoint text from bottom-exit wires.
+
+## v1.1.6 - 2026-06-04
+
+- Replaced the giant A/B Powerpole preview body with individual single-position housing modules.
+- Colored each Powerpole module from its wire color and ordered modules by pin number.
+- Arranged Powerpole modules side-by-side in groups of up to four, with additional positions wrapping below.
+
+## v1.1.5 - 2026-06-03
+
+- Hid DNP pin contacts and pin numbers from the live harness preview.
+- Ensured DNP-only legs and housings do not appear in the preview.
+- Hardened DNP handling for imported and older saved project values.
+
+## v1.1.4 - 2026-06-03
+
+- Made every leftmost row number a clear-row control.
+- Clearing a row preserves its left leg and pin location, resets its wiring fields, and marks it DNP for reuse.
+- Cleared and DNP rows no longer appear as selected wires in the live preview.
+
+## v1.1.3 - 2026-06-03
+
+- Added SubConn 2, 4, 6, 8, 10, 12, 14, and 16-pin male and female housing choices.
+- Added recognizable offline vector illustrations for SubConn, Molex, Dupont, PCB, Power Pole, ring terminal, and splice housings.
+- Made SubConn previews circular with keyed faces, radial contacts, and distinct male pins/female sockets.
+
+## v1.1.2 - 2026-06-03
+
+- Removed `CPC 1`, `CPC 2`, `DTM06`, `DEUTSCH DT`, and generic `DUPONT` from new housing choices.
+- Added Molex 1-8 position front-lock and side-lock housing choices.
+- Added Dupont 1-12 position front-lock housing choices.
+- Made position-specific housings display their actual number of connector positions in the preview.
+
+## v1.1.1 - 2026-06-03
+
+- Added `PCB` and `DUPONT` housing types.
+
+## v1.1 - 2026-06-03
+
+- Added a real Windows `WiringHarnessDesigner.exe`.
+- Added an offline native launcher with embedded fallback application files.
+- Added a repeatable `Build EXE.cmd` update process.
+- Preserved the editable program-file structure for easy updates.
+- Hardened copied EXE launches so a Desktop EXE finds the main Documents app folder and existing saved data.
+
+## v1.0 - 2026-06-03
+
+- Created the offline Wiring Harness Designer desktop-style app.
+- Added editable Excel-style harness rows.
+- Added live wire and connector preview.
+- Added vertically stacked left and right legs.
+- Added project JSON save/import and CSV export.
+- Added picture import review and row translation.
+- Added SVG drawing, printable guide, and print output.
+- Added Windows launcher and Desktop shortcut.
+
+## Next
+
+The next release will be v1.2.

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Wiring Harness Designer v1.1.8</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">WH</div>
+          <div>
+            <div class="brand-title">
+              <h1>Wiring Harness Designer</h1>
+              <span class="version-badge">v1.1.8</span>
+            </div>
+            <p>Interactive harness layout editor</p>
+          </div>
+        </div>
+
+        <label class="harness-name">
+          <span>Harness</span>
+          <input id="harnessName" type="text" autocomplete="off">
+        </label>
+
+        <div class="toolbar" aria-label="Harness actions">
+          <button id="addRow" type="button" title="Add a new row">
+            <span class="tool-icon">+</span>
+            <span>Add</span>
+          </button>
+          <button id="duplicateRow" type="button" title="Duplicate selected row">
+            <span class="tool-icon">[]</span>
+            <span>Copy</span>
+          </button>
+          <button id="deleteRow" type="button" title="Delete selected row">
+            <span class="tool-icon">x</span>
+            <span>Delete</span>
+          </button>
+          <button id="resetSample" type="button" title="Reset to the starter harness">
+            <span class="tool-icon">R</span>
+            <span>Reset</span>
+          </button>
+          <button id="imageImportButton" type="button" title="Import from an Excel screenshot or image">
+            <span class="tool-icon">IMG</span>
+            <span>Picture</span>
+          </button>
+          <button id="exportJson" type="button" title="Save project JSON">
+            <span class="tool-icon">SAVE</span>
+            <span>Save</span>
+          </button>
+          <button id="exportCsv" type="button" title="Export table CSV">
+            <span class="tool-icon">CSV</span>
+            <span>CSV</span>
+          </button>
+          <button id="exportDrawing" type="button" title="Download the current drawing as SVG">
+            <span class="tool-icon">SVG</span>
+            <span>Drawing</span>
+          </button>
+          <button id="exportInstructions" type="button" title="Download printable drawing and instructions">
+            <span class="tool-icon">DOC</span>
+            <span>Guide</span>
+          </button>
+          <button id="printButton" type="button" title="Print the current harness">
+            <span class="tool-icon">PRN</span>
+            <span>Print</span>
+          </button>
+          <button id="importJsonButton" type="button" title="Import project JSON">
+            <span class="tool-icon">IN</span>
+            <span>Import</span>
+          </button>
+          <input id="importJson" class="sr-only" type="file" accept="application/json">
+          <input id="imageUpload" class="sr-only" type="file" accept="image/*">
+        </div>
+      </header>
+
+      <section class="preview-shell" aria-label="Harness preview">
+        <aside class="wire-summary">
+          <div class="summary-header">
+            <span class="section-label">Selected wire</span>
+            <strong id="selectedTitle">Pin 1</strong>
+          </div>
+          <dl class="summary-grid">
+            <div>
+              <dt>Status</dt>
+              <dd id="summaryStatus">Active</dd>
+            </div>
+            <div>
+              <dt>Gauge</dt>
+              <dd id="summaryGauge">16 AWG</dd>
+            </div>
+            <div>
+              <dt>Color</dt>
+              <dd>
+                <span id="summaryColorSwatch" class="swatch"></span>
+                <span id="summaryColor">BLACK</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Length</dt>
+              <dd id="summaryLength">8 in</dd>
+            </div>
+            <div>
+              <dt>Left</dt>
+              <dd id="summaryLeft">Leg 1 / Pin 1</dd>
+            </div>
+            <div>
+              <dt>Right</dt>
+              <dd id="summaryRight">Not assigned</dd>
+            </div>
+            <div class="wide">
+              <dt>Housing</dt>
+              <dd id="summaryHousing">A POWER POLE</dd>
+            </div>
+          </dl>
+        </aside>
+
+        <div class="diagram-panel">
+          <div class="diagram-topline">
+            <div>
+              <span class="section-label">Live harness preview</span>
+              <strong id="previewName">CPC 1 POWER</strong>
+            </div>
+            <div class="metric-row">
+              <span><strong id="activeCount">0</strong> active</span>
+              <span><strong id="dnpCount">0</strong> DNP</span>
+              <span><strong id="totalLength">0</strong> total inches</span>
+            </div>
+          </div>
+          <div class="svg-wrap">
+            <svg id="wirePreview" viewBox="0 0 1000 360" role="img" aria-label="Current wiring harness preview"></svg>
+          </div>
+        </div>
+
+        <aside class="legend-panel">
+          <div class="legend-title">
+            <span class="section-label">Color rack</span>
+            <strong>Wire colors</strong>
+          </div>
+          <div id="colorLegend" class="color-legend"></div>
+        </aside>
+      </section>
+
+      <section class="editor-shell" aria-label="Editable harness table">
+        <div class="editor-bar">
+          <div>
+            <span class="section-label">Editable table</span>
+            <strong>Excel-style wiring rows</strong>
+          </div>
+          <div class="filter-tools">
+            <label>
+              <span>Find</span>
+              <input id="searchRows" type="search" placeholder="Name, pin, color, housing">
+            </label>
+            <label class="check-label">
+              <input id="activeOnly" type="checkbox">
+              <span>Active only</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table class="harness-table">
+            <thead>
+              <tr>
+                <th class="row-number" title="Click a row number to clear that row">#</th>
+                <th>Left Leg</th>
+                <th>Name</th>
+                <th>Pin #</th>
+                <th>DNP</th>
+                <th>Housing Type</th>
+                <th>AWGauge</th>
+                <th>Color</th>
+                <th>Length inches</th>
+                <th>Splice ID</th>
+                <th>Role</th>
+                <th class="divider-head" aria-label="Divider"></th>
+                <th>Right Leg</th>
+                <th>Pin #</th>
+                <th>Housing Type</th>
+              </tr>
+            </thead>
+            <tbody id="wireRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <dialog id="imageDialog" class="import-dialog">
+      <div class="dialog-head">
+        <div>
+          <span class="section-label">Picture import</span>
+          <strong>Translate screenshot to rows</strong>
+        </div>
+        <button id="closeImageDialog" type="button" title="Close picture import">
+          <span class="tool-icon">x</span>
+          <span>Close</span>
+        </button>
+      </div>
+
+      <div class="import-grid">
+        <div class="image-card">
+          <div class="image-preview-box">
+            <img id="importImagePreview" alt="Uploaded wiring table preview">
+          </div>
+          <div class="import-actions">
+            <button id="chooseImageButton" type="button">
+              <span class="tool-icon">IMG</span>
+              <span>Upload</span>
+            </button>
+            <button id="readImageButton" type="button">
+              <span class="tool-icon">OCR</span>
+              <span>Read</span>
+            </button>
+            <button id="translateImageText" type="button">
+              <span class="tool-icon">ROW</span>
+              <span>Translate</span>
+            </button>
+            <button id="applyImageRows" type="button">
+              <span class="tool-icon">OK</span>
+              <span>Apply</span>
+            </button>
+          </div>
+          <p id="imageStatus" class="import-status">Upload a screenshot or paste copied Excel rows.</p>
+        </div>
+
+        <label class="ocr-card">
+          <span class="section-label">Read text</span>
+          <textarea id="importText" spellcheck="false" placeholder="Paste OCR text, CSV, or copied Excel rows here"></textarea>
+        </label>
+      </div>
+
+      <div class="import-preview">
+        <div class="dialog-head compact">
+          <div>
+            <span class="section-label">Import preview</span>
+            <strong id="importPreviewCount">0 rows ready</strong>
+          </div>
+        </div>
+        <div class="import-preview-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Left</th>
+                <th>Name</th>
+                <th>Pin</th>
+                <th>DNP</th>
+                <th>Housing</th>
+                <th>AWG</th>
+                <th>Color</th>
+                <th>Length</th>
+                <th>Splice ID</th>
+                <th>Role</th>
+                <th>Right</th>
+                <th>Pin</th>
+                <th>Housing</th>
+              </tr>
+            </thead>
+            <tbody id="importPreviewRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </dialog>
+
+    <datalist id="nameChoices">
+      <option value="CPC 1 POWER"></option>
+      <option value="CPC 2 SIGNAL"></option>
+      <option value="MAIN FEED"></option>
+      <option value="GROUND RETURN"></option>
+      <option value="SPARE"></option>
+    </datalist>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

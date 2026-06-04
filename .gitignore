@@ -1,0 +1,12 @@
+dist/
+*.exe
+*.lnk
+CSC*.TMP
+*.user
+*.suo
+.vs/
+.vscode/
+.github-auth-*
+*.zip
+.DS_Store
+Thumbs.db
