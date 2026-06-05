@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.11 - 2026-06-05
+
+- Added a draggable horizontal splitter between the live preview and editable table.
+- Saved the preview/table split height in browser storage so the adjusted layout persists after refresh.
+
 ## v1.2.10 - 2026-06-05
 
 - Reduced top toolbar clutter by hiding Add, Copy, Delete, BOM, CSV, Drawing, Guide, Print, and Import buttons.

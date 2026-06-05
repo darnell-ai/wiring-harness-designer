@@ -77,7 +77,7 @@ button:disabled {
 
 .app-shell {
   display: grid;
-  grid-template-rows: auto minmax(330px, 46vh) minmax(300px, 1fr);
+  grid-template-rows: auto minmax(220px, var(--preview-pane-height, 46vh)) 16px minmax(260px, 1fr);
   height: 100vh;
   min-width: 960px;
 }
@@ -234,6 +234,46 @@ button:disabled {
   padding: 14px 18px;
   background: #e8eee5;
   min-height: 0;
+}
+
+.layout-splitter {
+  display: grid;
+  place-items: center;
+  margin: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(24, 33, 29, 0.12), transparent);
+  cursor: row-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.layout-splitter::before {
+  content: "";
+  display: block;
+  width: min(180px, 28vw);
+  height: 6px;
+  border-radius: 999px;
+  background: #9fab9f;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.72) inset,
+    0 1px 7px rgba(24, 33, 29, 0.22);
+}
+
+.layout-splitter:hover::before,
+.layout-splitter:focus-visible::before,
+body.is-resizing-layout .layout-splitter::before {
+  background: var(--green);
+}
+
+.layout-splitter:focus-visible {
+  outline: 3px solid rgba(65, 184, 131, 0.28);
+  outline-offset: 2px;
+}
+
+body.is-resizing-layout,
+body.is-resizing-layout * {
+  cursor: row-resize !important;
 }
 
 .wire-summary,
@@ -1271,6 +1311,7 @@ body.is-resizing-column {
   .topbar,
   .wire-summary,
   .legend-panel,
+  .layout-splitter,
   .filter-tools,
   .toast,
   .import-dialog,
@@ -1344,6 +1385,10 @@ body.is-resizing-column {
     height: auto;
     min-width: 0;
     grid-template-rows: auto auto auto;
+  }
+
+  .layout-splitter {
+    display: none;
   }
 
   .topbar {

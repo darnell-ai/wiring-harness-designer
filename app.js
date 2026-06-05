@@ -1,12 +1,15 @@
 "use strict";
 
-const APP_VERSION = "1.2.10";
+const APP_VERSION = "1.2.11";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
+const MIN_PREVIEW_PANE_HEIGHT = 220;
+const MIN_EDITOR_PANE_HEIGHT = 260;
+const LAYOUT_SPLITTER_HEIGHT = 16;
 const SELECTED_START_COLOR = "#d6e8fb";
 const SELECTED_END_COLOR = "#f6bd75";
 
@@ -81,6 +84,9 @@ const DEFAULT_COLUMN_WIDTHS = [
 ];
 
 const dom = {
+  appShell: document.querySelector(".app-shell"),
+  topbar: document.querySelector(".topbar"),
+  layoutSplitter: document.querySelector("#layoutSplitter"),
   harnessName: document.querySelector("#harnessName"),
   selectedTitle: document.querySelector("#selectedTitle"),
   summaryStatus: document.querySelector("#summaryStatus"),
@@ -403,7 +409,8 @@ function starterState() {
     rows,
     catalog: defaultCatalog(),
     bomAllowance: 10,
-    tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS]
+    tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
+    previewPaneHeight: defaultPreviewPaneHeight()
   };
 }
 
@@ -457,8 +464,28 @@ function normalizeState(incoming) {
     rows,
     catalog: normalizeCatalog(incoming.catalog),
     bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
-    tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths)
+    tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
+    previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight)
   };
+}
+
+function defaultPreviewPaneHeight() {
+  const viewportHeight = window.innerHeight || 900;
+  return normalizePreviewPaneHeight(Math.round(viewportHeight * 0.46));
+}
+
+function previewPaneMaxHeight() {
+  const viewportHeight = window.innerHeight || 900;
+  const topbarHeight = dom.topbar?.getBoundingClientRect().height || 96;
+  const reserved = topbarHeight + LAYOUT_SPLITTER_HEIGHT + MIN_EDITOR_PANE_HEIGHT + 18;
+  return Math.max(MIN_PREVIEW_PANE_HEIGHT, Math.floor(viewportHeight - reserved));
+}
+
+function normalizePreviewPaneHeight(height) {
+  const parsed = Number(height);
+  const fallback = Math.round((window.innerHeight || 900) * 0.46);
+  const nextHeight = Number.isFinite(parsed) ? parsed : fallback;
+  return clamp(Math.round(nextHeight), MIN_PREVIEW_PANE_HEIGHT, previewPaneMaxHeight());
 }
 
 function normalizeColumnWidths(widths) {
@@ -664,6 +691,7 @@ function activeRows() {
 
 function render() {
   dom.harnessName.value = state.harnessName;
+  applyPreviewPaneHeight();
   applyColumnWidths();
   renderSummary();
   renderPreview();
@@ -680,6 +708,92 @@ function render() {
   if (dom.bomDialog.open) {
     renderBom();
   }
+}
+
+function applyPreviewPaneHeight() {
+  if (!dom.appShell || !dom.layoutSplitter) {
+    return;
+  }
+
+  const height = normalizePreviewPaneHeight(state.previewPaneHeight);
+  state.previewPaneHeight = height;
+  dom.appShell.style.setProperty("--preview-pane-height", `${height}px`);
+  dom.layoutSplitter.setAttribute("aria-valuemin", String(MIN_PREVIEW_PANE_HEIGHT));
+  dom.layoutSplitter.setAttribute("aria-valuemax", String(previewPaneMaxHeight()));
+  dom.layoutSplitter.setAttribute("aria-valuenow", String(height));
+  dom.layoutSplitter.setAttribute("aria-valuetext", `Preview height ${height} pixels`);
+}
+
+function setupLayoutSplitter() {
+  if (!dom.layoutSplitter) {
+    return;
+  }
+
+  dom.layoutSplitter.addEventListener("pointerdown", startLayoutResize);
+  dom.layoutSplitter.addEventListener("keydown", handleLayoutSplitterKeydown);
+  window.addEventListener("resize", () => {
+    const previousHeight = state.previewPaneHeight;
+    applyPreviewPaneHeight();
+    if (state.previewPaneHeight !== previousHeight) {
+      saveState();
+      renderPreview();
+    }
+  });
+}
+
+function startLayoutResize(event) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const startY = event.clientY;
+  const startHeight = normalizePreviewPaneHeight(state.previewPaneHeight);
+  dom.layoutSplitter.setPointerCapture?.(event.pointerId);
+  document.body.classList.add("is-resizing-layout");
+  rememberUndo();
+
+  const resize = (moveEvent) => {
+    state.previewPaneHeight = normalizePreviewPaneHeight(startHeight + moveEvent.clientY - startY);
+    applyPreviewPaneHeight();
+  };
+
+  const stop = () => {
+    document.removeEventListener("pointermove", resize);
+    document.removeEventListener("pointerup", stop);
+    document.removeEventListener("pointercancel", stop);
+    document.body.classList.remove("is-resizing-layout");
+    saveState();
+    renderPreview();
+  };
+
+  document.addEventListener("pointermove", resize);
+  document.addEventListener("pointerup", stop, { once: true });
+  document.addEventListener("pointercancel", stop, { once: true });
+}
+
+function handleLayoutSplitterKeydown(event) {
+  const step = event.shiftKey ? 50 : 20;
+  let nextHeight = state.previewPaneHeight;
+  if (event.key === "ArrowUp") {
+    nextHeight -= step;
+  } else if (event.key === "ArrowDown") {
+    nextHeight += step;
+  } else if (event.key === "Home") {
+    nextHeight = MIN_PREVIEW_PANE_HEIGHT;
+  } else if (event.key === "End") {
+    nextHeight = previewPaneMaxHeight();
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  rememberUndo();
+  state.previewPaneHeight = normalizePreviewPaneHeight(nextHeight);
+  applyPreviewPaneHeight();
+  saveState();
+  renderPreview();
 }
 
 function applyColumnWidths() {
@@ -2573,11 +2687,13 @@ function resetSample() {
   const catalog = state.catalog;
   const bomAllowance = state.bomAllowance;
   const tableColumnWidths = state.tableColumnWidths;
+  const previewPaneHeight = state.previewPaneHeight;
   rememberUndo();
   state = starterState();
   state.catalog = catalog;
   state.bomAllowance = bomAllowance;
   state.tableColumnWidths = tableColumnWidths;
+  state.previewPaneHeight = previewPaneHeight;
   saveState();
   dom.searchRows.value = "";
   dom.activeOnly.checked = false;
@@ -2858,7 +2974,8 @@ function applyImportedRows() {
     rows: pendingImportRows,
     catalog: state.catalog,
     bomAllowance: state.bomAllowance,
-    tableColumnWidths: state.tableColumnWidths
+    tableColumnWidths: state.tableColumnWidths,
+    previewPaneHeight: state.previewPaneHeight
   });
   saveState();
   dom.searchRows.value = "";
@@ -3862,4 +3979,5 @@ dom.importText.addEventListener("input", () => {
 });
 
 setupColumnResizers();
+setupLayoutSplitter();
 render();
