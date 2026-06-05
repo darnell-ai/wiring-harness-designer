@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.8";
+const APP_VERSION = "1.2.9";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -538,20 +538,62 @@ function isSpliceRow(row) {
   return Boolean(normalizedSpliceId(row) && normalizedSpliceRole(row));
 }
 
-function rowUsesSide(row, side) {
-  if (side === "left" && isDnp(row.dnp)) {
+function sideHasPlacedDetails(row, side) {
+  if (side === "left") {
+    return Boolean(row.housing || row.leftHousingPart || row.leftTerminalPart);
+  }
+
+  return Boolean(row.rightHousing || row.rightHousingPart || row.rightTerminalPart);
+}
+
+function rowHasWirePayload(row) {
+  return Boolean(
+    row.name ||
+    row.housing ||
+    row.leftHousingPart ||
+    row.leftTerminalPart ||
+    row.awg ||
+    row.color ||
+    row.length ||
+    normalizedSpliceId(row) ||
+    normalizedSpliceRole(row) ||
+    row.rightHousing ||
+    row.rightHousingPart ||
+    row.rightTerminalPart ||
+    row.toolUsed ||
+    row.comments
+  );
+}
+
+function isActiveWireRow(row) {
+  if (!row) {
     return false;
   }
-  if (side === "right" && isDnp(row.rightDnp)) {
+  if (isDnp(row.dnp) && isDnp(row.rightDnp)) {
+    return false;
+  }
+
+  return rowHasWirePayload(row) || !isDnp(row.dnp) || !isDnp(row.rightDnp);
+}
+
+function rowUsesSide(row, side) {
+  if (!isActiveWireRow(row)) {
     return false;
   }
 
   const role = normalizedSpliceRole(row);
   if (role === "PARENT") {
-    return side === "left";
+    return side === "left" && (!isDnp(row.dnp) || sideHasPlacedDetails(row, side));
   }
   if (role === "BRANCH") {
-    return side === "right";
+    return side === "right" && (!isDnp(row.rightDnp) || sideHasPlacedDetails(row, side));
+  }
+
+  if (side === "left" && isDnp(row.dnp)) {
+    return sideHasPlacedDetails(row, side);
+  }
+  if (side === "right" && isDnp(row.rightDnp)) {
+    return sideHasPlacedDetails(row, side);
   }
   return true;
 }
@@ -617,7 +659,7 @@ function selectedRow() {
 }
 
 function activeRows() {
-  return state.rows.filter((row) => !isDnp(row.dnp));
+  return state.rows.filter(isActiveWireRow);
 }
 
 function render() {
@@ -737,7 +779,7 @@ function renderSummary() {
   const spliceRole = normalizedSpliceRole(row);
   const selectedPin = spliceRole === "BRANCH" ? row.rightPin : row.leftPin;
   dom.selectedTitle.textContent = `${row.name || "Wire"} / Pin ${selectedPin || "-"}`;
-  dom.summaryStatus.textContent = isDnp(row.dnp) ? "DNP" : "Active";
+  dom.summaryStatus.textContent = isActiveWireRow(row) ? "Active" : "DNP";
   dom.summaryGauge.textContent = row.awg ? `${row.awg} AWG` : "Not set";
   dom.summaryColor.textContent = color;
   dom.summaryColorSwatch.style.setProperty("--swatch", colorMap[row.color] || "#d9dfd7");
@@ -764,7 +806,7 @@ function renderPreview() {
   const active = activeRows();
   const dnp = state.rows.length - active.length;
   const total = active.reduce((sum, item) => sum + parseFloat(item.length || 0), 0);
-  const selected = row && !isDnp(row.dnp) ? row : {};
+  const selected = row && isActiveWireRow(row) ? row : {};
   const hasSelectedWire = Boolean(selected.id);
 
   dom.previewName.textContent = hasSelectedWire
@@ -1194,7 +1236,7 @@ function legKeys(rows, side, selected) {
     }
   };
 
-  rows.filter((item) => !isDnp(item.dnp)).forEach((item) => {
+  rows.filter(isActiveWireRow).forEach((item) => {
     if (!rowUsesSide(item, side)) {
       return;
     }
@@ -1226,7 +1268,7 @@ function legKey(leg) {
 function connectorPositionData(key, side, rows) {
   const positions = new Map();
   rows
-    .filter((row) => !isDnp(row.dnp))
+    .filter(isActiveWireRow)
     .filter((row) => rowUsesSide(row, side))
     .filter((row) => side === "left" ? legKey(row.leftLeg) === key : legKey(row.rightLeg) === key)
     .forEach((row) => {
@@ -1311,7 +1353,7 @@ function barrelGeometry(connector) {
 
 function renderConnector(connector, side, rows, selected) {
   const usedPins = new Set(rows
-    .filter((row) => !isDnp(row.dnp))
+    .filter(isActiveWireRow)
     .filter((row) => rowUsesSide(row, side))
     .filter((row) => side === "left" ? legKey(row.leftLeg) === connector.key : legKey(row.rightLeg) === connector.key)
     .map((row) => side === "left" ? row.leftPin : row.rightPin)
@@ -1563,7 +1605,7 @@ function housingLabelLines(housing) {
 }
 
 function connectorHousing(key, side, rows, selected) {
-  const candidates = [selected, ...rows].filter((row) => row && !isDnp(row.dnp) && rowUsesSide(row, side));
+  const candidates = [selected, ...rows].filter((row) => row && isActiveWireRow(row) && rowUsesSide(row, side));
   const match = candidates.find((row) => {
     if (side === "left") {
       return legKey(row.leftLeg) === key && row.housing;
@@ -2189,7 +2231,7 @@ function renderTable() {
   const rows = state.rows
     .map((row, index) => ({ row, index }))
     .filter(({ row }) => {
-      if (onlyActive && isDnp(row.dnp)) {
+      if (onlyActive && !isActiveWireRow(row)) {
         return false;
       }
 
@@ -2227,7 +2269,7 @@ function renderTable() {
     const hasError = rowIssues.some((issue) => issue.severity === "error");
     const classes = [
       row.id === state.selectedId ? "selected-row" : "",
-      isDnp(row.dnp) ? "dnp-row" : "",
+      !isActiveWireRow(row) ? "dnp-row" : "",
       groupStart ? "group-start" : "",
       hasError ? "issue-error" : rowIssues.length ? "issue-warning" : ""
     ].filter(Boolean).join(" ");
@@ -2517,7 +2559,7 @@ function clearRow(rowId) {
     comments: ""
   });
 
-  state.selectedId = state.rows.find((item) => !isDnp(item.dnp))?.id || row.id;
+  state.selectedId = state.rows.find(isActiveWireRow)?.id || row.id;
   saveState();
   render();
   showToast(`Cleared row ${rowNumber} and removed its wire.`);

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.9 - 2026-06-05
+
+- Made active-wire detection side-aware so left-side DNP no longer hides a row that still has wire data and a right endpoint.
+- Updated the preview, active counts, active-only filter, and selected-wire status to use the same active-wire rule.
+
 ## v1.2.8 - 2026-06-05
 
 - Added a top toolbar Undo button for reverting the last project edit.
