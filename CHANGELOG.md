@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.15 - 2026-06-05
+
+- Restored the top toolbar Print button for printing the onscreen harness drawing.
+
 ## v1.2.14 - 2026-06-05
 
 - Treat blank pin rows as automatic DNP rows so leg/pin numbers alone do not create live wires.
