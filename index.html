@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.0</title>
+    <title>Wiring Harness Designer v1.2.1</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.0</span>
+              <span class="version-badge">v1.2.1</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -164,7 +164,7 @@
           <div class="filter-tools">
             <label>
               <span>Find</span>
-              <input id="searchRows" type="search" placeholder="Name, pin, color, housing">
+              <input id="searchRows" type="search" placeholder="Name, part, pin, color, housing">
             </label>
             <label class="check-label">
               <input id="activeOnly" type="checkbox">
@@ -178,20 +178,26 @@
             <thead>
               <tr>
                 <th class="row-number" title="Click a row number to clear that row">#</th>
-                <th>Left Leg</th>
                 <th>Name</th>
-                <th>Pin #</th>
-                <th>DNP</th>
+                <th>Left Leg</th>
+                <th>Pin Pos #</th>
+                <th>Do Not Place</th>
                 <th>Housing Type</th>
-                <th>AWGauge</th>
+                <th>Housing Part #</th>
+                <th>Pin #</th>
+                <th>AWGuage</th>
                 <th>Color</th>
                 <th>Length inches</th>
-                <th>Splice ID</th>
-                <th>Role</th>
+                <th>Branch</th>
                 <th class="divider-head" aria-label="Divider"></th>
                 <th>Right Leg</th>
+                <th>Pin Pos #</th>
+                <th>Do Not Place</th>
+                <th>Housing Part #</th>
                 <th>Pin #</th>
                 <th>Housing Type</th>
+                <th>Tool used</th>
+                <th>Comments</th>
               </tr>
             </thead>
             <tbody id="wireRows"></tbody>
@@ -257,19 +263,26 @@
           <table>
             <thead>
               <tr>
-                <th>Left</th>
                 <th>Name</th>
-                <th>Pin</th>
-                <th>DNP</th>
-                <th>Housing</th>
-                <th>AWG</th>
+                <th>Left Leg</th>
+                <th>Pin Pos #</th>
+                <th>Do Not Place</th>
+                <th>Housing Type</th>
+                <th>Housing Part #</th>
+                <th>Pin #</th>
+                <th>AWGuage</th>
                 <th>Color</th>
-                <th>Length</th>
-                <th>Splice ID</th>
-                <th>Role</th>
-                <th>Right</th>
-                <th>Pin</th>
-                <th>Housing</th>
+                <th>Length inches</th>
+                <th>Branch</th>
+                <th></th>
+                <th>Right Leg</th>
+                <th>Pin Pos #</th>
+                <th>Do Not Place</th>
+                <th>Housing Part #</th>
+                <th>Pin #</th>
+                <th>Housing Type</th>
+                <th>Tool used</th>
+                <th>Comments</th>
               </tr>
             </thead>
             <tbody id="importPreviewRows"></tbody>

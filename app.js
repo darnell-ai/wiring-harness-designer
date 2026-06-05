@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -27,6 +27,29 @@ const options = {
   spliceIds: ["", ...Array.from({ length: 12 }, (_, index) => `S${index + 1}`)],
   spliceRoles: ["", "PARENT", "BRANCH"]
 };
+
+const EXPORT_HEADERS = [
+  "Name",
+  "Left Leg",
+  "Pin Pos #",
+  "Do Not Place",
+  "Housing Type",
+  "Housing Part #",
+  "Pin #",
+  "AWGuage",
+  "Color",
+  "Length inches",
+  "Branch",
+  "",
+  "Right Leg",
+  "Pin Pos #",
+  "Do Not Place",
+  "Housing Part #",
+  "Pin #",
+  "Housing Type",
+  "Tool used",
+  "Comments"
+];
 
 const dom = {
   harnessName: document.querySelector("#harnessName"),
@@ -156,8 +179,26 @@ function defaultCatalog() {
       catalogEntry(`SUBCONN ${positions} PIN MALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Male", terminalType: "Subsea connector contact" }),
       catalogEntry(`SUBCONN ${positions} PIN FEMALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Female", terminalType: "Subsea connector contact" })
     ]),
-    ...Array.from({ length: 8 }, (_, index) => catalogEntry(`MOLEX ${index + 1} POS FRONT LOCK`, "Connector", "molex", index + 1, { manufacturer: "Molex", terminalType: "Molex crimp terminal", notes: "Front-lock housing" })),
-    ...Array.from({ length: 8 }, (_, index) => catalogEntry(`MOLEX ${index + 1} POS SIDE LOCK`, "Connector", "molex", index + 1, { manufacturer: "Molex", terminalType: "Molex crimp terminal", notes: "Side-lock housing" })),
+    ...Array.from({ length: 8 }, (_, index) => {
+      const positions = index + 1;
+      return catalogEntry(`MOLEX ${positions} POS FRONT LOCK`, "Connector", "molex", positions, {
+        manufacturer: "Molex",
+        partNumber: positions === 2 ? "428160212" : "",
+        terminalType: "Molex crimp terminal",
+        terminalPart: positions === 2 ? "428150114" : "",
+        notes: "Front-lock housing"
+      });
+    }),
+    ...Array.from({ length: 8 }, (_, index) => {
+      const positions = index + 1;
+      return catalogEntry(`MOLEX ${positions} POS SIDE LOCK`, "Connector", "molex", positions, {
+        manufacturer: "Molex",
+        partNumber: positions === 2 ? "428160212" : "",
+        terminalType: "Molex crimp terminal",
+        terminalPart: positions === 2 ? "428150114" : "",
+        notes: "Side-lock housing"
+      });
+    }),
     ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
     catalogEntry("MOLEX MINI-FIT", "Connector", "molex", 16, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal" }),
     catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
@@ -187,10 +228,40 @@ function normalizeCatalogEntry(entry) {
 
 function normalizeCatalog(catalog) {
   const source = Array.isArray(catalog) && catalog.length ? catalog : defaultCatalog();
+  const defaults = defaultCatalog().map(normalizeCatalogEntry);
+  const defaultsByName = new Map(defaults.map((entry) => [entry.name, entry]));
   const names = new Set();
-  return source
-    .map(normalizeCatalogEntry)
+  const entries = source
+    .map((item) => mergeDefaultCatalogDetails(normalizeCatalogEntry(item), defaultsByName.get(cleanCell(item?.name).toUpperCase())))
     .filter((entry) => entry.name && !names.has(entry.name) && names.add(entry.name));
+  defaults.forEach((entry) => {
+    if (!names.has(entry.name)) {
+      names.add(entry.name);
+      entries.push(entry);
+    }
+  });
+  return entries;
+}
+
+function mergeDefaultCatalogDetails(entry, defaultEntry) {
+  if (!entry.builtIn || !defaultEntry) {
+    return entry;
+  }
+
+  return {
+    ...entry,
+    category: entry.category || defaultEntry.category,
+    family: entry.family || defaultEntry.family,
+    positions: entry.positions || defaultEntry.positions,
+    manufacturer: entry.manufacturer || defaultEntry.manufacturer,
+    partNumber: entry.partNumber || defaultEntry.partNumber,
+    gender: entry.gender || defaultEntry.gender,
+    terminalType: entry.terminalType || defaultEntry.terminalType,
+    terminalPart: entry.terminalPart || defaultEntry.terminalPart,
+    sealPart: entry.sealPart || defaultEntry.sealPart,
+    imageUrl: entry.imageUrl || defaultEntry.imageUrl,
+    notes: entry.notes || defaultEntry.notes
+  };
 }
 
 function housingChoices() {
@@ -200,6 +271,26 @@ function housingChoices() {
 function catalogEntryByName(name) {
   const target = value(name).trim().toUpperCase();
   return state.catalog.find((entry) => entry.name === target) || null;
+}
+
+function catalogPartFor(housing, field) {
+  const item = catalogEntryByName(housing);
+  return item ? value(item[field]) : "";
+}
+
+function applyCatalogParts(row, side, overwrite = false) {
+  const left = side === "left";
+  const housing = left ? row.housing : row.rightHousing;
+  const housingPartField = left ? "leftHousingPart" : "rightHousingPart";
+  const terminalPartField = left ? "leftTerminalPart" : "rightTerminalPart";
+  const housingPart = catalogPartFor(housing, "partNumber");
+  const terminalPart = catalogPartFor(housing, "terminalPart");
+  if (housingPart && (overwrite || !row[housingPartField])) {
+    row[housingPartField] = housingPart;
+  }
+  if (terminalPart && (overwrite || !row[terminalPartField])) {
+    row[terminalPartField] = terminalPart;
+  }
 }
 
 function makeId() {
@@ -222,6 +313,8 @@ function createStarterRows() {
       leftPin: String(pin),
       dnp: !active,
       housing: active ? "A POWER POLE" : "",
+      leftHousingPart: "",
+      leftTerminalPart: "",
       awg: active ? "16" : "",
       color: active ? (pin === 1 ? "BLACK" : "RED") : "",
       length: active ? "8" : "",
@@ -229,7 +322,12 @@ function createStarterRows() {
       spliceRole: "",
       rightLeg: "",
       rightPin: "",
-      rightHousing: ""
+      rightDnp: !active,
+      rightHousing: "",
+      rightHousingPart: "",
+      rightTerminalPart: "",
+      toolUsed: "",
+      comments: ""
     });
   }
 
@@ -241,6 +339,8 @@ function createStarterRows() {
       leftPin: String(pin),
       dnp: true,
       housing: "",
+      leftHousingPart: "",
+      leftTerminalPart: "",
       awg: "",
       color: "",
       length: "",
@@ -248,7 +348,12 @@ function createStarterRows() {
       spliceRole: "",
       rightLeg: "",
       rightPin: "",
-      rightHousing: ""
+      rightDnp: true,
+      rightHousing: "",
+      rightHousingPart: "",
+      rightTerminalPart: "",
+      toolUsed: "",
+      comments: ""
     });
   }
 
@@ -292,6 +397,8 @@ function normalizeState(incoming) {
     leftPin: value(row.leftPin),
     dnp: isDnp(row.dnp),
     housing: value(row.housing),
+    leftHousingPart: value(row.leftHousingPart || row.housingPart),
+    leftTerminalPart: value(row.leftTerminalPart || row.pinPart || row.terminalPart),
     awg: value(row.awg),
     color: value(row.color).toUpperCase(),
     length: value(row.length),
@@ -299,7 +406,12 @@ function normalizeState(incoming) {
     spliceRole: normalizedSpliceRole(row),
     rightLeg: value(row.rightLeg),
     rightPin: value(row.rightPin),
-    rightHousing: value(row.rightHousing)
+    rightDnp: row.rightDnp === undefined ? isDnp(row.dnp) : isDnp(row.rightDnp),
+    rightHousing: value(row.rightHousing),
+    rightHousingPart: value(row.rightHousingPart),
+    rightTerminalPart: value(row.rightTerminalPart || row.rightPinPart || row.rightTerminal),
+    toolUsed: value(row.toolUsed),
+    comments: value(row.comments)
   }));
 
   const incomingAllowance = Number(incoming.bomAllowance);
@@ -325,11 +437,57 @@ function normalizedSpliceId(row) {
   return value(row?.spliceId).trim().toUpperCase();
 }
 
+function branchLabel(row) {
+  const spliceId = normalizedSpliceId(row);
+  const role = normalizedSpliceRole(row);
+  if (!spliceId && !role) {
+    return "None";
+  }
+  if (spliceId && role) {
+    return `${spliceId} ${role === "PARENT" ? "Parent" : "Branch"}`;
+  }
+  return spliceId || (role === "PARENT" ? "Parent" : "Branch");
+}
+
+function branchChoices() {
+  return [
+    "None",
+    ...options.spliceIds
+      .filter(Boolean)
+      .flatMap((spliceId) => [`${spliceId} Parent`, `${spliceId} Branch`])
+  ];
+}
+
+function applyBranchValue(row, input) {
+  const text = cleanCell(input).toUpperCase();
+  if (!text || text === "NONE" || text === "-") {
+    row.spliceId = "";
+    row.spliceRole = "";
+    return;
+  }
+
+  const role = text.includes("PARENT")
+    ? "PARENT"
+    : text.includes("BRANCH")
+      ? "BRANCH"
+      : "";
+  const idMatch = text.match(/\bS\d+\b/);
+  row.spliceRole = role;
+  row.spliceId = idMatch ? idMatch[0] : role ? normalizedSpliceId(row) || nextSpliceId() : text;
+}
+
 function isSpliceRow(row) {
   return Boolean(normalizedSpliceId(row) && normalizedSpliceRole(row));
 }
 
 function rowUsesSide(row, side) {
+  if (side === "left" && isDnp(row.dnp)) {
+    return false;
+  }
+  if (side === "right" && isDnp(row.rightDnp)) {
+    return false;
+  }
+
   const role = normalizedSpliceRole(row);
   if (role === "PARENT") {
     return side === "left";
@@ -406,7 +564,11 @@ function renderSummary() {
   dom.summaryGauge.textContent = row.awg ? `${row.awg} AWG` : "Not set";
   dom.summaryColor.textContent = color;
   dom.summaryColorSwatch.style.setProperty("--swatch", colorMap[row.color] || "#d9dfd7");
-  dom.summaryLength.textContent = row.length ? `${row.length} in` : "Not set";
+  dom.summaryLength.textContent = row.length
+    ? /\b(in|inch|inches)\b/i.test(row.length)
+      ? row.length
+      : `${row.length} in`
+    : "Not set";
   dom.summaryLeft.textContent = spliceRole === "BRANCH"
     ? `Splice ${spliceId || "-"}`
     : `Leg ${row.leftLeg || "-"} / Pin ${row.leftPin || "-"}`;
@@ -491,7 +653,11 @@ function renderPreview() {
     ? `RIGHT LEG ${escapeXml(selected.rightLeg)} / PIN ${escapeXml(selected.rightPin || "-")}`
     : "UNASSIGNED";
   const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
-  const lengthText = selected.length ? `${escapeXml(selected.length)} IN` : "LENGTH NOT SET";
+  const lengthText = selected.length
+    ? /\b(in|inch|inches)\b/i.test(selected.length)
+      ? escapeXml(selected.length).toUpperCase()
+      : `${escapeXml(selected.length)} IN`
+    : "LENGTH NOT SET";
   const gaugeText = selected.awg ? `${escapeXml(selected.awg)} AWG` : "AWG NOT SET";
   const startEndpointLabel = ["bottom", "splice"].includes(selectedStart.exit) ? "" : `
     <text x="${selectedStart.x + 18}" y="${selectedStart.y - 14}" class="wire-sub">LEFT LEG ${escapeXml(selected.leftLeg || "-")} / PIN ${escapeXml(selected.leftPin || "-")}</text>
@@ -636,7 +802,7 @@ function wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoi
   if (role === "BRANCH") {
     return {
       start: splice,
-      end: item.rightLeg && rightMap.has(legKey(item.rightLeg))
+      end: !isDnp(item.rightDnp) && item.rightLeg && rightMap.has(legKey(item.rightLeg))
         ? pinPoint(rightMap.get(legKey(item.rightLeg)), item.rightPin || "1", "right")
         : unassignedPoint(index, previewHeight)
     };
@@ -644,7 +810,7 @@ function wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoi
 
   return {
     start: pinPoint(leftMap.get(legKey(item.leftLeg)) || leftConnectors[0], item.leftPin, "left"),
-    end: item.rightLeg && rightMap.has(legKey(item.rightLeg))
+    end: !isDnp(item.rightDnp) && item.rightLeg && rightMap.has(legKey(item.rightLeg))
       ? pinPoint(rightMap.get(legKey(item.rightLeg)), item.rightPin || item.leftPin, "right")
       : unassignedPoint(index, previewHeight)
   };
@@ -1345,8 +1511,9 @@ function validateHarness() {
       validateEndpoint(row, "left", add);
     }
 
-    const hasAnyRight = Boolean(row.rightLeg || row.rightPin || row.rightHousing);
-    if (needsRight && (role === "BRANCH" || hasAnyRight)) {
+    const rightIsDnp = isDnp(row.rightDnp);
+    const hasAnyRight = Boolean(row.rightLeg || row.rightPin || row.rightHousing || row.rightHousingPart || row.rightTerminalPart || rightIsDnp);
+    if (needsRight && !rightIsDnp && (role === "BRANCH" || hasAnyRight)) {
       validateEndpoint(row, "right", add);
     } else if (!role && !hasAnyRight) {
       add(row, "warning", "missing-destination", "Active wire has no right-side destination.");
@@ -1361,7 +1528,7 @@ function validateHarness() {
     if (!row.color) {
       add(row, "warning", "missing-color", "Active wire has no color.");
     }
-    if (!(Number(row.length) > 0)) {
+    if (!(numberOrDefault(row.length, 0) > 0)) {
       add(row, "warning", "missing-length", "Active wire needs a positive cut length.");
     }
     if (role && !spliceId) {
@@ -1744,19 +1911,25 @@ function renderTable() {
       }
 
       return [
-        row.leftLeg,
         row.name,
+        row.leftLeg,
         row.leftPin,
         isDnp(row.dnp) ? "DNP" : "",
         row.housing,
+        row.leftHousingPart,
+        row.leftTerminalPart,
         row.awg,
         row.color,
         row.length,
-        row.spliceId,
-        row.spliceRole,
+        branchLabel(row),
         row.rightLeg,
         row.rightPin,
-        row.rightHousing
+        isDnp(row.rightDnp) ? "DNP" : "",
+        row.rightHousingPart,
+        row.rightTerminalPart,
+        row.rightHousing,
+        row.toolUsed,
+        row.comments
       ].join(" ").toLowerCase().includes(query);
     });
 
@@ -1780,11 +1953,13 @@ function renderTable() {
           <button class="clear-row-button" type="button" data-action="clear-row" title="Clear row ${index + 1} and remove its wire" aria-label="Clear row ${index + 1}">${index + 1}</button>
           ${issueCount}
         </td>
-        <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td class="field-name"><input data-field="name" list="nameChoices" value="${escapeHtml(row.name)}" aria-label="Name"></td>
+        <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td>${selectField(row, "leftPin", options.pins, "Left pin")}</td>
         <td>${selectField(row, "dnp", options.dnp, "Do not place", isDnp(row.dnp) ? "DNP" : "")}</td>
         <td class="field-housing">${selectField(row, "housing", housingChoices(), "Housing type")}</td>
+        <td><input data-field="leftHousingPart" value="${escapeHtml(row.leftHousingPart)}" aria-label="Left housing part number"></td>
+        <td><input data-field="leftTerminalPart" value="${escapeHtml(row.leftTerminalPart)}" aria-label="Left terminal pin part number"></td>
         <td>${selectField(row, "awg", options.gauges, "AW gauge")}</td>
         <td class="field-color">
           <div class="color-cell">
@@ -1792,13 +1967,17 @@ function renderTable() {
             ${selectField(row, "color", options.colors, "Color")}
           </div>
         </td>
-        <td><input data-field="length" type="number" min="0" step="0.25" value="${escapeHtml(row.length)}" aria-label="Length inches"></td>
-        <td class="field-splice">${selectField(row, "spliceId", options.spliceIds, "Splice ID")}</td>
-        <td class="field-splice-role">${selectField(row, "spliceRole", options.spliceRoles, "Splice role")}</td>
+        <td><input data-field="length" value="${escapeHtml(row.length)}" aria-label="Length inches"></td>
+        <td class="field-branch">${selectField(row, "branch", branchChoices(), "Branch", branchLabel(row))}</td>
         <td class="divider-cell"></td>
         <td>${selectField(row, "rightLeg", options.legs, "Right leg")}</td>
         <td>${selectField(row, "rightPin", options.pins, "Right pin")}</td>
+        <td>${selectField(row, "rightDnp", options.dnp, "Right do not place", isDnp(row.rightDnp) ? "DNP" : "")}</td>
+        <td><input data-field="rightHousingPart" value="${escapeHtml(row.rightHousingPart)}" aria-label="Right housing part number"></td>
+        <td><input data-field="rightTerminalPart" value="${escapeHtml(row.rightTerminalPart)}" aria-label="Right terminal pin part number"></td>
         <td class="field-right-housing">${selectField(row, "rightHousing", housingChoices(), "Right housing type")}</td>
+        <td><input data-field="toolUsed" value="${escapeHtml(row.toolUsed)}" aria-label="Tool used"></td>
+        <td><input data-field="comments" value="${escapeHtml(row.comments)}" aria-label="Comments"></td>
       </tr>
     `;
   }).join("");
@@ -1847,8 +2026,21 @@ function handleCellChange(target, shouldRenderTable) {
 
   if (field === "dnp") {
     row.dnp = target.value === "DNP";
+    if (row.dnp) {
+      row.rightDnp = true;
+    }
+  } else if (field === "rightDnp") {
+    row.rightDnp = target.value === "DNP";
   } else if (field === "color") {
     row[field] = target.value.toUpperCase();
+  } else if (field === "branch") {
+    applyBranchValue(row, target.value);
+  } else if (field === "housing") {
+    row.housing = target.value;
+    applyCatalogParts(row, "left");
+  } else if (field === "rightHousing") {
+    row.rightHousing = target.value;
+    applyCatalogParts(row, "right");
   } else if (field === "spliceRole") {
     row.spliceRole = target.value.toUpperCase();
     if (row.spliceRole && !normalizedSpliceId(row)) {
@@ -1889,6 +2081,8 @@ function addRow() {
     leftPin: nextPin,
     dnp: false,
     housing: current?.housing || "A POWER POLE",
+    leftHousingPart: current?.leftHousingPart || "",
+    leftTerminalPart: current?.leftTerminalPart || "",
     awg: current?.awg || "16",
     color: current?.color || "RED",
     length: current?.length || "8",
@@ -1896,7 +2090,12 @@ function addRow() {
     spliceRole: "",
     rightLeg: current?.rightLeg || "",
     rightPin: "",
-    rightHousing: current?.rightHousing || ""
+    rightDnp: false,
+    rightHousing: current?.rightHousing || "",
+    rightHousingPart: current?.rightHousingPart || "",
+    rightTerminalPart: current?.rightTerminalPart || "",
+    toolUsed: current?.toolUsed || "",
+    comments: ""
   };
 
   state.rows.splice(index, 0, row);
@@ -1923,6 +2122,8 @@ function duplicateRow() {
       leftLeg: "",
       leftPin: "",
       housing: "",
+      leftHousingPart: "",
+      leftTerminalPart: "",
       spliceRole: "BRANCH",
       rightPin: "",
       name: current.name ? `${current.name} BRANCH` : `${spliceId} BRANCH`
@@ -1970,6 +2171,8 @@ function clearRow(rowId) {
     name: "",
     dnp: true,
     housing: "",
+    leftHousingPart: "",
+    leftTerminalPart: "",
     awg: "",
     color: "",
     length: "",
@@ -1977,7 +2180,12 @@ function clearRow(rowId) {
     spliceRole: "",
     rightLeg: "",
     rightPin: "",
-    rightHousing: ""
+    rightDnp: true,
+    rightHousing: "",
+    rightHousingPart: "",
+    rightTerminalPart: "",
+    toolUsed: "",
+    comments: ""
   });
 
   state.selectedId = state.rows.find((item) => !isDnp(item.dnp))?.id || row.id;
@@ -2024,7 +2232,7 @@ function calculateBom() {
   };
 
   wires.forEach((row) => {
-    const length = Math.max(0, Number(row.length) || 0);
+    const length = Math.max(0, numberOrDefault(row.length, 0));
     const awg = row.awg || "UNSET";
     const color = row.color || "UNSET";
     const materialKey = `${awg}|${color}`;
@@ -2051,6 +2259,8 @@ function calculateBom() {
       const leg = side === "left" ? row.leftLeg : row.rightLeg;
       const pin = side === "left" ? row.leftPin : row.rightPin;
       const housing = side === "left" ? row.housing : row.rightHousing;
+      const housingPart = side === "left" ? row.leftHousingPart : row.rightHousingPart;
+      const terminalPart = side === "left" ? row.leftTerminalPart : row.rightTerminalPart;
       if (!housing || !leg || !pin) {
         return;
       }
@@ -2066,11 +2276,11 @@ function calculateBom() {
         : `${side}|${leg}|${item.name}`;
       if (!housingInstances.has(housingKey)) {
         housingInstances.add(housingKey);
-        addComponent(item.category === "Terminal" ? "Terminal" : "Housing", item.name, item.manufacturer, item.partNumber, 1);
+        addComponent(item.category === "Terminal" ? "Terminal" : "Housing", item.name, item.manufacturer, housingPart || item.partNumber, 1);
       }
 
       if (item.category !== "Terminal" && item.terminalType) {
-        addComponent("Terminal", item.terminalType, item.manufacturer, item.terminalPart, 1);
+        addComponent("Terminal", item.terminalType, item.manufacturer, terminalPart || item.terminalPart, 1);
       }
       if (item.sealPart) {
         addComponent("Seal", `${item.name} seal`, item.manufacturer, item.sealPart, 1);
@@ -2158,23 +2368,29 @@ function exportJson() {
 }
 
 function exportCsv() {
-  const headers = ["Left Leg", "Name", "Pin #", "Do Not Place", "Housing Type", "AWGauge", "Color", "Length inches", "Splice ID", "Splice Role", "Right Leg", "Pin #", "Housing Type"];
   const lines = [
-    headers,
+    EXPORT_HEADERS,
     ...state.rows.map((row) => [
-      row.leftLeg,
       row.name,
+      row.leftLeg,
       row.leftPin,
       isDnp(row.dnp) ? "DNP" : "",
       row.housing,
+      row.leftHousingPart,
+      row.leftTerminalPart,
       row.awg,
       row.color,
       row.length,
-      row.spliceId,
-      row.spliceRole,
+      branchLabel(row),
+      "",
       row.rightLeg,
       row.rightPin,
-      row.rightHousing
+      isDnp(row.rightDnp) ? "DNP" : "",
+      row.rightHousingPart,
+      row.rightTerminalPart,
+      row.rightHousing,
+      row.toolUsed,
+      row.comments
     ])
   ];
 
@@ -2280,25 +2496,32 @@ function renderImportPreview(rows) {
   pendingImportRows = rows;
   dom.importPreviewCount.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready`;
   if (!rows.length) {
-    dom.importPreviewRows.innerHTML = `<tr><td colspan="13">No rows ready.</td></tr>`;
+    dom.importPreviewRows.innerHTML = `<tr><td colspan="20">No rows ready.</td></tr>`;
     return;
   }
 
   dom.importPreviewRows.innerHTML = rows.slice(0, 80).map((row) => `
     <tr>
-      <td>${escapeHtml(row.leftLeg)}</td>
       <td>${escapeHtml(row.name)}</td>
+      <td>${escapeHtml(row.leftLeg)}</td>
       <td>${escapeHtml(row.leftPin)}</td>
       <td>${isDnp(row.dnp) ? "DNP" : ""}</td>
       <td>${escapeHtml(row.housing)}</td>
+      <td>${escapeHtml(row.leftHousingPart)}</td>
+      <td>${escapeHtml(row.leftTerminalPart)}</td>
       <td>${escapeHtml(row.awg)}</td>
       <td>${escapeHtml(row.color)}</td>
       <td>${escapeHtml(row.length)}</td>
-      <td>${escapeHtml(row.spliceId)}</td>
-      <td>${escapeHtml(row.spliceRole)}</td>
+      <td>${escapeHtml(branchLabel(row))}</td>
+      <td></td>
       <td>${escapeHtml(row.rightLeg)}</td>
       <td>${escapeHtml(row.rightPin)}</td>
+      <td>${isDnp(row.rightDnp) ? "DNP" : ""}</td>
+      <td>${escapeHtml(row.rightHousingPart)}</td>
+      <td>${escapeHtml(row.rightTerminalPart)}</td>
       <td>${escapeHtml(row.rightHousing)}</td>
+      <td>${escapeHtml(row.toolUsed)}</td>
+      <td>${escapeHtml(row.comments)}</td>
     </tr>
   `).join("");
 }
@@ -2327,9 +2550,30 @@ function rowsFromDetectedText(detections, imageWidth) {
     }
   });
 
-  const columnCenters = [0.07, 0.15, 0.215, 0.27, 0.35, 0.43, 0.51, 0.59, 0.675, 0.75, 0.835, 0.925];
+  const columnCenters = [
+    0.035,
+    0.078,
+    0.118,
+    0.162,
+    0.222,
+    0.285,
+    0.338,
+    0.386,
+    0.432,
+    0.484,
+    0.532,
+    0.56,
+    0.598,
+    0.638,
+    0.682,
+    0.742,
+    0.792,
+    0.848,
+    0.908,
+    0.965
+  ];
   const text = lines.map((line) => {
-    const cells = Array.from({ length: 12 }, () => []);
+    const cells = Array.from({ length: columnCenters.length }, () => []);
     line.items
       .sort((a, b) => a.x - b.x)
       .forEach((item) => {
@@ -2361,8 +2605,8 @@ function parseImportText(text) {
   const lines = value(text)
     .replace(/\u00a0/g, " ")
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.replace(/\s+$/g, ""))
+    .filter((line) => line.trim());
 
   lines.forEach((line) => {
     const row = parseImportLine(line);
@@ -2404,6 +2648,32 @@ function rowFromCells(cells) {
     return null;
   }
 
+  if (looksLikeShopRow(clean)) {
+    const rightOffset = clean[11] === "" ? 12 : 11;
+    const row = {
+      name: clean[0] || "",
+      leftLeg: clean[1] || "",
+      leftPin: clean[2] || "",
+      dnp: isDnp(clean[3]),
+      housing: clean[4] || "",
+      leftHousingPart: clean[5] || "",
+      leftTerminalPart: clean[6] || "",
+      awg: clean[7] || "",
+      color: clean[8] || "",
+      length: clean[9] || "",
+      rightLeg: clean[rightOffset] || "",
+      rightPin: clean[rightOffset + 1] || "",
+      rightDnp: isDnp(clean[rightOffset + 2]),
+      rightHousingPart: clean[rightOffset + 3] || "",
+      rightTerminalPart: clean[rightOffset + 4] || "",
+      rightHousing: clean[rightOffset + 5] || "",
+      toolUsed: clean[rightOffset + 6] || "",
+      comments: clean.slice(rightOffset + 7).join(" ").trim()
+    };
+    applyBranchValue(row, clean[10] || "");
+    return row;
+  }
+
   const hasSpliceColumns = clean.length >= 13;
   const hasDivider = hasSpliceColumns ? clean.length >= 14 : clean.length >= 12;
   const rightOffset = hasSpliceColumns
@@ -2431,6 +2701,22 @@ function rowFromCells(cells) {
   }
 
   return row;
+}
+
+function looksLikeShopRow(clean) {
+  if (clean.length < 15) {
+    return false;
+  }
+
+  const headerText = clean.join(" ").toLowerCase();
+  if (headerText.includes("pin pos") || headerText.includes("tool used")) {
+    return true;
+  }
+
+  const secondIsLeg = Boolean(clean[1] && /^[A-Za-z0-9#-]+$/.test(clean[1]));
+  const thirdIsPinPosition = /^\d{1,2}$/.test(clean[2] || "");
+  const hasBranchColumn = clean[10] !== undefined;
+  return secondIsLeg && thirdIsPinPosition && hasBranchColumn;
 }
 
 function rowFromLooseLine(line) {
@@ -2525,26 +2811,54 @@ function extractHousingFromEnd(tokens) {
 }
 
 function cleanImportedRow(row) {
+  const prepared = { ...row };
+  if (prepared.branch && !prepared.spliceId && !prepared.spliceRole) {
+    applyBranchValue(prepared, prepared.branch);
+  }
+
   return {
-    id: row.id || makeId(),
-    leftLeg: cleanCell(row.leftLeg),
-    name: cleanCell(row.name),
-    leftPin: cleanCell(row.leftPin),
-    dnp: isDnp(row.dnp),
-    housing: matchHousing(row.housing) || cleanCell(row.housing).toUpperCase(),
-    awg: cleanGauge(row.awg),
-    color: matchColor(row.color) || cleanCell(row.color).toUpperCase(),
-    length: cleanLength(row.length),
-    spliceId: cleanCell(row.spliceId).toUpperCase(),
-    spliceRole: normalizedSpliceRole(row),
-    rightLeg: cleanCell(row.rightLeg),
-    rightPin: cleanCell(row.rightPin),
-    rightHousing: matchHousing(row.rightHousing) || cleanCell(row.rightHousing).toUpperCase()
+    id: prepared.id || makeId(),
+    leftLeg: cleanCell(prepared.leftLeg),
+    name: cleanCell(prepared.name),
+    leftPin: cleanCell(prepared.leftPin),
+    dnp: isDnp(prepared.dnp),
+    housing: matchHousing(prepared.housing) || cleanCell(prepared.housing).toUpperCase(),
+    leftHousingPart: cleanCell(prepared.leftHousingPart || prepared.housingPart),
+    leftTerminalPart: cleanCell(prepared.leftTerminalPart || prepared.pinPart || prepared.terminalPart),
+    awg: cleanGauge(prepared.awg),
+    color: matchColor(prepared.color) || cleanCell(prepared.color).toUpperCase(),
+    length: cleanLength(prepared.length),
+    spliceId: cleanCell(prepared.spliceId).toUpperCase(),
+    spliceRole: normalizedSpliceRole(prepared),
+    rightLeg: cleanCell(prepared.rightLeg),
+    rightPin: cleanCell(prepared.rightPin),
+    rightDnp: prepared.rightDnp === undefined ? isDnp(prepared.dnp) : isDnp(prepared.rightDnp),
+    rightHousingPart: cleanCell(prepared.rightHousingPart),
+    rightTerminalPart: cleanCell(prepared.rightTerminalPart || prepared.rightPinPart || prepared.rightTerminal),
+    rightHousing: matchHousing(prepared.rightHousing) || cleanCell(prepared.rightHousing).toUpperCase(),
+    toolUsed: cleanCell(prepared.toolUsed),
+    comments: cleanCell(prepared.comments)
   };
 }
 
 function isUsefulRow(row) {
-  return Boolean(row.leftLeg || row.leftPin || row.name || row.housing || row.spliceId || row.spliceRole || row.rightLeg || row.rightPin || row.rightHousing);
+  return Boolean(
+    row.leftLeg ||
+    row.leftPin ||
+    row.name ||
+    row.housing ||
+    row.leftHousingPart ||
+    row.leftTerminalPart ||
+    row.spliceId ||
+    row.spliceRole ||
+    row.rightLeg ||
+    row.rightPin ||
+    row.rightHousing ||
+    row.rightHousingPart ||
+    row.rightTerminalPart ||
+    row.toolUsed ||
+    row.comments
+  );
 }
 
 function isHeaderLine(line) {
@@ -2570,8 +2884,13 @@ function cleanGauge(input) {
 }
 
 function cleanLength(input) {
+  const cleaned = cleanCell(input);
+  if (/\b(in|inch|inches)\b/i.test(cleaned)) {
+    return cleaned;
+  }
+
   const match = value(input).match(/\d+(?:\.\d+)?/);
-  return match ? match[0] : cleanCell(input);
+  return match ? match[0] : cleaned;
 }
 
 function cleanCell(input) {
@@ -2585,7 +2904,22 @@ function matchColor(input) {
 
 function matchHousing(input) {
   const housing = cleanCell(input).toUpperCase();
-  return housingChoices().find((choice) => choice && choice.toUpperCase() === housing) || "";
+  const choices = housingChoices();
+  const exact = choices.find((choice) => choice && choice.toUpperCase() === housing);
+  if (exact) {
+    return exact;
+  }
+
+  const loose = looseHousingKey(housing);
+  return choices.find((choice) => choice && looseHousingKey(choice) === loose) || "";
+}
+
+function looseHousingKey(input) {
+  return cleanCell(input)
+    .toUpperCase()
+    .replace(/\bLOCK\b/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
 }
 
 function parseCsvLine(line) {
@@ -2667,25 +3001,32 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Left Leg</th><th>Left Pin</th><th>Name</th><th>Housing</th><th>AWG</th><th>Color</th><th>Length</th><th>Splice ID</th><th>Role</th><th>Right Leg</th><th>Right Pin</th><th>Right Housing</th>
+        <th>#</th><th>Name</th><th>Left Leg</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Type</th><th>Housing Part #</th><th>Pin #</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Part #</th><th>Pin #</th><th>Housing Type</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
       ${rows.map((row, index) => `
         <tr>
           <td>${index + 1}</td>
+          <td>${escapeHtml(row.name)}</td>
           <td>${escapeHtml(row.leftLeg)}</td>
           <td>${escapeHtml(row.leftPin)}</td>
-          <td>${escapeHtml(row.name)}</td>
+          <td>${isDnp(row.dnp) ? "DNP" : ""}</td>
           <td>${escapeHtml(row.housing)}</td>
+          <td>${escapeHtml(row.leftHousingPart)}</td>
+          <td>${escapeHtml(row.leftTerminalPart)}</td>
           <td>${escapeHtml(row.awg)}</td>
           <td>${escapeHtml(row.color)}</td>
           <td>${escapeHtml(row.length)}</td>
-          <td>${escapeHtml(row.spliceId)}</td>
-          <td>${escapeHtml(row.spliceRole)}</td>
+          <td>${escapeHtml(branchLabel(row))}</td>
           <td>${escapeHtml(row.rightLeg)}</td>
           <td>${escapeHtml(row.rightPin)}</td>
+          <td>${isDnp(row.rightDnp) ? "DNP" : ""}</td>
+          <td>${escapeHtml(row.rightHousingPart)}</td>
+          <td>${escapeHtml(row.rightTerminalPart)}</td>
           <td>${escapeHtml(row.rightHousing)}</td>
+          <td>${escapeHtml(row.toolUsed)}</td>
+          <td>${escapeHtml(row.comments)}</td>
         </tr>
       `).join("")}
     </tbody>

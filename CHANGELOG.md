@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.1 - 2026-06-05
+
+- Updated the editable wiring table, import preview, CSV export, and printable guide to match the production spreadsheet column order.
+- Added left/right housing part numbers, terminal pin part numbers, right-side DNP, tool used, and comments fields to saved rows.
+- Replaced visible splice ID/role columns with one Branch column while preserving parent-and-branch splice behavior.
+- Added forgiving Molex housing-name matching and seeded the Molex 2-position part/contact numbers from the example sheet.
+
 ## v1.2.0 - 2026-06-04
 
 - Added a continuous electrical error checker with direct row highlighting and actionable issue navigation.
