@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.7</title>
+    <title>Wiring Harness Designer v1.2.8</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.7</span>
+              <span class="version-badge">v1.2.8</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -26,6 +26,10 @@
         </label>
 
         <div class="toolbar" aria-label="Harness actions">
+          <button id="undoButton" type="button" title="Undo last project change" disabled>
+            <span class="tool-icon">UNDO</span>
+            <span>Undo</span>
+          </button>
           <button id="addRow" type="button" title="Add a new row">
             <span class="tool-icon">+</span>
             <span>Add</span>

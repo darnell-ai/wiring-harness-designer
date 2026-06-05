@@ -1,11 +1,12 @@
 "use strict";
 
-const APP_VERSION = "1.2.7";
+const APP_VERSION = "1.2.8";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
+const UNDO_LIMIT = 50;
 const SELECTED_START_COLOR = "#d6e8fb";
 const SELECTED_END_COLOR = "#f6bd75";
 
@@ -117,6 +118,7 @@ const dom = {
   importText: document.querySelector("#importText"),
   importPreviewCount: document.querySelector("#importPreviewCount"),
   importPreviewRows: document.querySelector("#importPreviewRows"),
+  undoButton: document.querySelector("#undoButton"),
   addRow: document.querySelector("#addRow"),
   duplicateRow: document.querySelector("#duplicateRow"),
   deleteRow: document.querySelector("#deleteRow"),
@@ -172,6 +174,7 @@ Object.assign(dom, {
 });
 
 let state = loadState();
+let undoStack = [];
 let toastTimer = 0;
 let pendingImportRows = [];
 let currentImageFile = null;
@@ -561,10 +564,51 @@ function nextSpliceId() {
 function saveState() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    updateUndoButtonState();
     return true;
   } catch (error) {
     showToast("Browser storage is full. Export the project JSON, then remove large catalog images.");
     return false;
+  }
+}
+
+function stateSnapshot() {
+  return JSON.stringify(state);
+}
+
+function rememberUndo() {
+  const snapshot = stateSnapshot();
+  if (undoStack[undoStack.length - 1] === snapshot) {
+    return;
+  }
+  undoStack.push(snapshot);
+  if (undoStack.length > UNDO_LIMIT) {
+    undoStack = undoStack.slice(-UNDO_LIMIT);
+  }
+  updateUndoButtonState();
+}
+
+function undoLastChange() {
+  const snapshot = undoStack.pop();
+  if (!snapshot) {
+    updateUndoButtonState();
+    return;
+  }
+
+  try {
+    state = normalizeState(JSON.parse(snapshot));
+    saveState();
+    render();
+    showToast("Undid last change.");
+  } catch (error) {
+    updateUndoButtonState();
+    showToast("Undo history could not be restored.");
+  }
+}
+
+function updateUndoButtonState() {
+  if (dom.undoButton) {
+    dom.undoButton.disabled = undoStack.length === 0;
   }
 }
 
@@ -630,6 +674,7 @@ function setupColumnResizers() {
     handle.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      rememberUndo();
       state.tableColumnWidths[index] = DEFAULT_COLUMN_WIDTHS[index];
       applyColumnWidths();
       saveState();
@@ -651,6 +696,7 @@ function startColumnResize(event, index) {
   const handle = event.currentTarget;
   handle.setPointerCapture?.(event.pointerId);
   document.body.classList.add("is-resizing-column");
+  rememberUndo();
 
   const resize = (moveEvent) => {
     const nextWidth = clamp(Math.round(startWidth + moveEvent.clientX - startX), minColumnWidth(index), MAX_COLUMN_WIDTH);
@@ -2078,6 +2124,7 @@ function saveCatalogItem(event) {
     builtIn: existing?.builtIn || false
   });
 
+  rememberUndo();
   if (existing) {
     const oldName = existing.name;
     Object.assign(existing, entry);
@@ -2111,6 +2158,7 @@ function deleteCatalogItem() {
     showToast("This catalog item is used by the harness and cannot be deleted.");
     return;
   }
+  rememberUndo();
   state.catalog = state.catalog.filter((item) => item.id !== entry.id);
   selectedCatalogId = state.catalog[0]?.id || "";
   saveState();
@@ -2123,6 +2171,7 @@ function resetCatalogDefaults() {
   if (!window.confirm("Restore the built-in catalog and remove custom catalog items?")) {
     return;
   }
+  rememberUndo();
   state.catalog = defaultCatalog();
   selectedCatalogId = state.catalog[0]?.id || "";
   saveState();
@@ -2237,12 +2286,42 @@ function updateActionState() {
   const hasRow = Boolean(selectedRow());
   dom.duplicateRow.disabled = !hasRow;
   dom.deleteRow.disabled = !hasRow;
+  updateUndoButtonState();
 }
 
 function syncSelectedRowClass() {
   dom.wireRows.querySelectorAll("tr[data-id]").forEach((tableRow) => {
     tableRow.classList.toggle("selected-row", tableRow.dataset.id === state.selectedId);
   });
+}
+
+function comparableFieldValue(row, field) {
+  if (field === "dnp") {
+    return isDnp(row.dnp) ? "DNP" : "";
+  }
+  if (field === "rightDnp") {
+    return isDnp(row.rightDnp) ? "DNP" : "";
+  }
+  if (field === "color" || field === "spliceRole" || field === "spliceId") {
+    return value(row[field]).toUpperCase();
+  }
+  if (field === "branch") {
+    return branchLabel(row);
+  }
+  return value(row[field]);
+}
+
+function comparableInputValue(field, input) {
+  if (field === "dnp" || field === "rightDnp") {
+    return input === "DNP" ? "DNP" : "";
+  }
+  if (field === "color" || field === "spliceRole" || field === "spliceId") {
+    return value(input).toUpperCase();
+  }
+  if (field === "branch") {
+    return cleanCell(input) || "None";
+  }
+  return value(input);
 }
 
 function handleCellChange(target, shouldRenderTable) {
@@ -2262,6 +2341,14 @@ function handleCellChange(target, shouldRenderTable) {
     return;
   }
 
+  const previousValue = comparableFieldValue(row, field);
+  const nextValue = comparableInputValue(field, target.value);
+  if (previousValue === nextValue) {
+    saveState();
+    return;
+  }
+
+  rememberUndo();
   if (field === "dnp") {
     row.dnp = target.value === "DNP";
     if (row.dnp) {
@@ -2336,6 +2423,7 @@ function addRow() {
     comments: ""
   };
 
+  rememberUndo();
   state.rows.splice(index, 0, row);
   state.selectedId = row.id;
   saveState();
@@ -2377,6 +2465,7 @@ function duplicateRow() {
     copy.name = current.name ? `${current.name} COPY` : "";
   }
 
+  rememberUndo();
   state.rows.splice(index, 0, copy);
   state.selectedId = copy.id;
   saveState();
@@ -2391,6 +2480,7 @@ function deleteSelectedRow() {
   }
 
   const index = state.rows.findIndex((row) => row.id === current.id);
+  rememberUndo();
   state.rows.splice(index, 1);
   state.selectedId = state.rows[Math.min(index, state.rows.length - 1)]?.id || "";
   saveState();
@@ -2405,6 +2495,7 @@ function clearRow(rowId) {
   }
 
   const rowNumber = state.rows.findIndex((item) => item.id === rowId) + 1;
+  rememberUndo();
   Object.assign(row, {
     name: "",
     dnp: true,
@@ -2440,6 +2531,7 @@ function resetSample() {
   const catalog = state.catalog;
   const bomAllowance = state.bomAllowance;
   const tableColumnWidths = state.tableColumnWidths;
+  rememberUndo();
   state = starterState();
   state.catalog = catalog;
   state.bomAllowance = bomAllowance;
@@ -2717,6 +2809,7 @@ function applyImportedRows() {
     return;
   }
 
+  rememberUndo();
   state = normalizeState({
     harnessName: state.harnessName || "Imported Harness",
     selectedId: pendingImportRows[0].id,
@@ -3524,6 +3617,7 @@ function importJson(file) {
   reader.addEventListener("load", () => {
     try {
       const parsed = JSON.parse(reader.result);
+      rememberUndo();
       state = normalizeState(parsed);
       saveState();
       dom.searchRows.value = "";
@@ -3587,6 +3681,7 @@ function showToast(message) {
 }
 
 dom.harnessName.addEventListener("input", () => {
+  rememberUndo();
   state.harnessName = dom.harnessName.value;
   saveState();
   renderPreview();
@@ -3634,6 +3729,7 @@ dom.wireRows.addEventListener("change", (event) => {
 
 dom.searchRows.addEventListener("input", renderTable);
 dom.activeOnly.addEventListener("change", renderTable);
+dom.undoButton.addEventListener("click", undoLastChange);
 dom.addRow.addEventListener("click", addRow);
 dom.duplicateRow.addEventListener("click", duplicateRow);
 dom.deleteRow.addEventListener("click", deleteSelectedRow);
@@ -3685,6 +3781,7 @@ dom.catalogImageUpload.addEventListener("change", async () => {
 dom.bomButton.addEventListener("click", openBom);
 dom.closeBomDialog.addEventListener("click", () => dom.bomDialog.close());
 dom.bomAllowance.addEventListener("change", () => {
+  rememberUndo();
   state.bomAllowance = Math.max(0, Math.min(100, Number(dom.bomAllowance.value) || 0));
   saveState();
   renderBom();

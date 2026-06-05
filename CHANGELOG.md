@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.8 - 2026-06-05
+
+- Added a top toolbar Undo button for reverting the last project edit.
+- Captured undo history for row edits, table changes, imports, catalog updates, BOM allowance, and column resizing.
+
 ## v1.2.7 - 2026-06-05
 
 - Changed barrel connector pin 1 to terminate at the center positive contact.
