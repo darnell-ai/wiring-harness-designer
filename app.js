@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.16";
+const APP_VERSION = "1.2.17";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1444,17 +1444,25 @@ function connectorPositionIndex(connector, pin) {
 }
 
 function pcbTerminalPoint(connector, pin) {
+  return bottomEdgeTerminalPoint(connector, pin, 28, 16);
+}
+
+function dupontTerminalPoint(connector, pin) {
+  return bottomEdgeTerminalPoint(connector, pin, 26, 16);
+}
+
+function bottomEdgeTerminalPoint(connector, pin, inset, bottomOffset) {
   const pinCount = connector.pinCount || 32;
   const safePin = Math.max(1, Math.min(pinCount, numberOrDefault(pin, 1)));
   const index = connectorPositionIndex(connector, safePin);
   const positionCount = Math.max(1, connector.positionData.length || pinCount);
-  const leftPadX = connector.x + 28;
-  const rightPadX = connector.x + connector.width - 28;
+  const leftPadX = connector.x + inset;
+  const rightPadX = connector.x + connector.width - inset;
   return {
     x: positionCount === 1
       ? connector.x + connector.width / 2
       : leftPadX + index * ((rightPadX - leftPadX) / Math.max(1, positionCount - 1)),
-    y: connector.y + connector.height - 16
+    y: connector.y + connector.height - bottomOffset
   };
 }
 
@@ -1681,8 +1689,8 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const selectedColor = side === "left" ? SELECTED_START_COLOR : SELECTED_END_COLOR;
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
-  const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
-  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb";
+  const isHorizontalHousing = connector.family === "molex";
+  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont";
   const numericPin = numberOrDefault(pin, 0);
   let contact = "";
 
@@ -1807,7 +1815,11 @@ function connectorContactPoint(connector, pin, side) {
     return pcbTerminalPoint(connector, safePin);
   }
 
-  if (["molex", "dupont"].includes(connector.family)) {
+  if (connector.family === "dupont") {
+    return dupontTerminalPoint(connector, safePin);
+  }
+
+  if (connector.family === "molex") {
     if (isTwoPinFrontMolex(connector)) {
       return twoPinFrontMolexTerminalPoint(connector, safePin);
     }
@@ -1841,10 +1853,10 @@ function pinPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
   const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
   const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb") {
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont") {
     return {
       x: contact.x,
-      y: connector.family === "pcb" ? connector.y + connector.height + 6 : contact.y,
+      y: ["pcb", "dupont"].includes(connector.family) ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,
@@ -1854,7 +1866,7 @@ function pinPoint(connector, pin, side) {
   }
 
   const portCount = Math.max(1, connector.positionData.length);
-  const x = ["molex", "dupont"].includes(connector.family)
+  const x = connector.family === "molex"
     ? contact.x
     : portCount === 1
       ? connector.x + connector.width / 2

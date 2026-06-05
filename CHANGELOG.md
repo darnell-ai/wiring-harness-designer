@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.17 - 2026-06-05
+
+- Moved Dupont housing wire landing points to the bottom edge of the connector.
+- Updated Dupont pin labels and route ports to match the bottom-exit wiring style used by PCB housings.
+
 ## v1.2.16 - 2026-06-05
 
 - Changed browser printing to a one-page landscape drawing layout.
