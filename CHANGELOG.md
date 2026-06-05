@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.12 - 2026-06-05
+
+- Moved PCB housing wire landing points to the bottom edge of the board.
+- Updated the PCB board trace drawing so routed wires no longer appear to terminate from the top pin stack.
+
 ## v1.2.11 - 2026-06-05
 
 - Added a draggable horizontal splitter between the live preview and editable table.

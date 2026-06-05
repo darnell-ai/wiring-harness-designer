@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.11";
+const APP_VERSION = "1.2.12";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -1401,7 +1401,7 @@ function connectorPositionData(key, side, rows) {
 
 function powerpoleModuleRect(connector, pin) {
   const position = numberOrDefault(pin, 0);
-  const index = Math.max(0, connector.positionData.findIndex((item) => item.position === position));
+  const index = connectorPositionIndex(connector, position);
   const column = index % 4;
   const row = Math.floor(index / 4);
   const moduleWidth = 44;
@@ -1416,6 +1416,27 @@ function powerpoleModuleRect(connector, pin) {
     index,
     color: connector.positionData[index]?.color || "UNSET",
     position
+  };
+}
+
+function connectorPositionIndex(connector, pin) {
+  const position = numberOrDefault(pin, 0);
+  const index = connector.positionData.findIndex((item) => item.position === position);
+  return index >= 0 ? index : Math.max(0, position - 1);
+}
+
+function pcbTerminalPoint(connector, pin) {
+  const pinCount = connector.pinCount || 32;
+  const safePin = Math.max(1, Math.min(pinCount, numberOrDefault(pin, 1)));
+  const index = connectorPositionIndex(connector, safePin);
+  const positionCount = Math.max(1, connector.positionData.length || pinCount);
+  const leftPadX = connector.x + 28;
+  const rightPadX = connector.x + connector.width - 28;
+  return {
+    x: positionCount === 1
+      ? connector.x + connector.width / 2
+      : leftPadX + index * ((rightPadX - leftPadX) / Math.max(1, positionCount - 1)),
+    y: connector.y + connector.height - 16
   };
 }
 
@@ -1570,7 +1591,8 @@ function renderConnectorBody(connector) {
     return `
       <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="6" fill="#165f42" stroke="#6ebd91" stroke-width="3" />
       <rect x="${x + 11}" y="${y + 11}" width="${width - 22}" height="${height - 22}" rx="3" fill="#194e39" stroke="#0b3525" stroke-width="2" />
-      <path d="M ${x + 18} ${y + 27} H ${centerX} V ${y + height - 27} H ${x + width - 18}" fill="none" stroke="#d7aa42" stroke-width="3" opacity="0.75" />
+      <path d="M ${x + 24} ${y + height - 28} H ${centerX} V ${centerY} H ${x + width - 22}" fill="none" stroke="#d7aa42" stroke-width="3" opacity="0.75" />
+      <path d="M ${x + 28} ${y + height - 16} H ${x + width - 28}" fill="none" stroke="#d7aa42" stroke-width="2.5" opacity="0.52" />
       <circle cx="${centerX}" cy="${centerY}" r="13" fill="#143d2d" stroke="#d7aa42" stroke-width="3" />
     `;
   }
@@ -1642,7 +1664,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
-  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel";
+  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb";
   const numericPin = numberOrDefault(pin, 0);
   let contact = "";
 
@@ -1763,6 +1785,10 @@ function connectorContactPoint(connector, pin, side) {
     };
   }
 
+  if (connector.family === "pcb") {
+    return pcbTerminalPoint(connector, safePin);
+  }
+
   if (["molex", "dupont"].includes(connector.family)) {
     if (isTwoPinFrontMolex(connector)) {
       return twoPinFrontMolexTerminalPoint(connector, safePin);
@@ -1797,10 +1823,10 @@ function pinPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
   const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
   const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel") {
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb") {
     return {
       x: contact.x,
-      y: contact.y,
+      y: connector.family === "pcb" ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,
