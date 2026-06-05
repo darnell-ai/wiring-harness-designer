@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.18 - 2026-06-05
+
+- Added left and right leg-name inputs above the editable table.
+- Displayed saved leg names in the selected-wire summary and live harness connector labels.
+
 ## v1.2.17 - 2026-06-05
 
 - Moved Dupont housing wire landing points to the bottom edge of the connector.

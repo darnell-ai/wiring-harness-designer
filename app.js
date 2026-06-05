@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.17";
+const APP_VERSION = "1.2.18";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -108,6 +108,8 @@ const dom = {
   harnessTable: document.querySelector("#harnessTable"),
   tableColumnGroup: document.querySelector("#tableColumnGroup"),
   wireRows: document.querySelector("#wireRows"),
+  leftLegNames: document.querySelector("#leftLegNames"),
+  rightLegNames: document.querySelector("#rightLegNames"),
   searchRows: document.querySelector("#searchRows"),
   activeOnly: document.querySelector("#activeOnly"),
   toast: document.querySelector("#toast"),
@@ -412,7 +414,8 @@ function starterState() {
     catalog: defaultCatalog(),
     bomAllowance: 10,
     tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
-    previewPaneHeight: defaultPreviewPaneHeight()
+    previewPaneHeight: defaultPreviewPaneHeight(),
+    legNames: { left: {}, right: {} }
   };
 }
 
@@ -467,8 +470,72 @@ function normalizeState(incoming) {
     catalog: normalizeCatalog(incoming.catalog),
     bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
     tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
-    previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight)
+    previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight),
+    legNames: normalizeLegNames(incoming.legNames)
   };
+}
+
+function normalizeLegNames(input = {}) {
+  return {
+    left: normalizeLegNameMap(input.left || input.leftLegNames || {}),
+    right: normalizeLegNameMap(input.right || input.rightLegNames || {})
+  };
+}
+
+function normalizeLegNameMap(input) {
+  if (typeof input === "string") {
+    return parseLegNameInput(input);
+  }
+
+  return Object.entries(input || {}).reduce((names, [key, name]) => {
+    const cleanKey = legKey(key);
+    const cleanName = cleanLegName(name);
+    if (cleanKey && cleanName) {
+      names[cleanKey] = cleanName;
+    }
+    return names;
+  }, {});
+}
+
+function parseLegNameInput(input) {
+  const entries = value(input)
+    .split(/[;,\n]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  let nextLeg = 1;
+  return entries.reduce((names, entry) => {
+    const match = entry.match(/^(\d+)\s*(?:=|:|-|\s)\s*(.+)$/);
+    const key = match ? match[1] : String(nextLeg);
+    const name = cleanLegName(match ? match[2] : entry);
+    if (name) {
+      names[legKey(key)] = name;
+    }
+    nextLeg += 1;
+    return names;
+  }, {});
+}
+
+function cleanLegName(input) {
+  return cleanCell(input).slice(0, 36);
+}
+
+function legNameInputValue(side) {
+  const names = state.legNames?.[side] || {};
+  return Object.keys(names)
+    .sort((left, right) => Number(left) - Number(right) || left.localeCompare(right))
+    .map((key) => `${key}=${names[key]}`)
+    .join(", ");
+}
+
+function legNameFor(side, leg) {
+  const key = legKey(leg);
+  return state.legNames?.[side]?.[key] || "";
+}
+
+function legDisplay(side, leg) {
+  const key = legKey(leg);
+  const name = legNameFor(side, key);
+  return name ? `Leg ${key} (${name})` : `Leg ${key}`;
 }
 
 function defaultPreviewPaneHeight() {
@@ -709,6 +776,8 @@ function activeRows() {
 
 function render() {
   dom.harnessName.value = state.harnessName;
+  dom.leftLegNames.value = legNameInputValue("left");
+  dom.rightLegNames.value = legNameInputValue("right");
   applyPreviewPaneHeight();
   applyColumnWidths();
   renderSummary();
@@ -922,11 +991,11 @@ function renderSummary() {
     : "Not set";
   dom.summaryLeft.textContent = spliceRole === "BRANCH"
     ? `Splice ${spliceId || "-"}`
-    : `Leg ${row.leftLeg || "-"} / Pin ${row.leftPin || "-"}`;
+    : `${legDisplay("left", row.leftLeg || "-")} / Pin ${row.leftPin || "-"}`;
   dom.summaryRight.textContent = spliceRole === "PARENT"
     ? `Splice ${spliceId || "-"}`
     : row.rightLeg || row.rightPin || row.rightHousing
-      ? `Leg ${row.rightLeg || "-"} / Pin ${row.rightPin || "-"}`
+      ? `${legDisplay("right", row.rightLeg || "-")} / Pin ${row.rightPin || "-"}`
       : "Not assigned";
   dom.summaryHousing.textContent = spliceRole === "BRANCH"
     ? row.rightHousing || "Not set"
@@ -1054,6 +1123,7 @@ function renderPreview() {
       <style>
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .connector-label { fill: #eff8f1; font: 14px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .leg-name-label { fill: #f2c84b; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .housing-label { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -1545,14 +1615,20 @@ function renderConnector(connector, side, rows, selected) {
     `;
   }).join("");
   const labelX = connector.x + connector.width / 2;
-  const housingLabelY = connector.y - 11;
+  const legName = legNameFor(side, connector.key);
+  const connectorLabelY = connector.y - (legName ? 38 : 28);
+  const legNameLabel = legName ? `
+    <text x="${labelX}" y="${connector.y - 24}" class="leg-name-label" text-anchor="middle">${escapeXml(legName)}</text>
+  ` : "";
+  const housingLabelY = legName ? connector.y - 8 : connector.y - 11;
   const housingLines = housingLabelLines(housing);
   const housingLabel = housingLines.map((line, index) => `
     <tspan x="${labelX}" dy="${index === 0 ? 0 : 11}">${escapeXml(line)}</tspan>
   `).join("");
 
   return `
-    <text x="${labelX}" y="${connector.y - 28}" class="connector-label" text-anchor="middle">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
+    <text x="${labelX}" y="${connectorLabelY}" class="connector-label" text-anchor="middle">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
+    ${legNameLabel}
     ${renderConnectorBody(connector)}
     ${pins}
     <text x="${labelX}" y="${housingLabelY}" class="housing-label" text-anchor="middle">${housingLabel}</text>
@@ -2607,6 +2683,24 @@ function handleCellChange(target, shouldRenderTable) {
   }
 }
 
+function updateLegNames(side, inputValue) {
+  const nextNames = parseLegNameInput(inputValue);
+  const currentNames = state.legNames?.[side] || {};
+  if (JSON.stringify(nextNames) === JSON.stringify(currentNames)) {
+    return;
+  }
+
+  rememberUndo();
+  state.legNames = {
+    left: { ...(state.legNames?.left || {}) },
+    right: { ...(state.legNames?.right || {}) },
+    [side]: nextNames
+  };
+  saveState();
+  renderSummary();
+  renderPreview();
+}
+
 function addRow() {
   const current = selectedRow();
   const index = current ? state.rows.findIndex((row) => row.id === current.id) + 1 : state.rows.length;
@@ -2744,12 +2838,14 @@ function resetSample() {
   const bomAllowance = state.bomAllowance;
   const tableColumnWidths = state.tableColumnWidths;
   const previewPaneHeight = state.previewPaneHeight;
+  const legNames = state.legNames;
   rememberUndo();
   state = starterState();
   state.catalog = catalog;
   state.bomAllowance = bomAllowance;
   state.tableColumnWidths = tableColumnWidths;
   state.previewPaneHeight = previewPaneHeight;
+  state.legNames = legNames;
   saveState();
   dom.searchRows.value = "";
   dom.activeOnly.checked = false;
@@ -3031,7 +3127,8 @@ function applyImportedRows() {
     catalog: state.catalog,
     bomAllowance: state.bomAllowance,
     tableColumnWidths: state.tableColumnWidths,
-    previewPaneHeight: state.previewPaneHeight
+    previewPaneHeight: state.previewPaneHeight,
+    legNames: state.legNames
   });
   saveState();
   dom.searchRows.value = "";
@@ -3944,6 +4041,8 @@ dom.wireRows.addEventListener("change", (event) => {
 
 dom.searchRows.addEventListener("input", renderTable);
 dom.activeOnly.addEventListener("change", renderTable);
+dom.leftLegNames.addEventListener("change", () => updateLegNames("left", dom.leftLegNames.value));
+dom.rightLegNames.addEventListener("change", () => updateLegNames("right", dom.rightLegNames.value));
 dom.undoButton.addEventListener("click", undoLastChange);
 dom.addRow.addEventListener("click", addRow);
 dom.duplicateRow.addEventListener("click", duplicateRow);

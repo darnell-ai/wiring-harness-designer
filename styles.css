@@ -491,6 +491,25 @@ body.is-resizing-layout * {
   min-width: 360px;
 }
 
+.leg-name-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 360px;
+}
+
+.leg-name-tools label {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 300px);
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
 .filter-tools label {
   display: grid;
   grid-template-columns: auto minmax(160px, 300px);
@@ -503,6 +522,14 @@ body.is-resizing-layout * {
 }
 
 .filter-tools input {
+  border-color: var(--line-strong);
+  background: var(--field);
+  color: var(--ink);
+  text-transform: none;
+}
+
+.leg-name-tools input {
+  min-width: 0;
   border-color: var(--line-strong);
   background: var(--field);
   color: var(--ink);
@@ -1429,6 +1456,15 @@ body.is-resizing-column {
   .filter-tools {
     min-width: 0;
     flex-wrap: wrap;
+  }
+
+  .leg-name-tools {
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+
+  .leg-name-tools label {
+    grid-template-columns: minmax(110px, auto) minmax(170px, 1fr);
   }
 
   .catalog-workspace,
