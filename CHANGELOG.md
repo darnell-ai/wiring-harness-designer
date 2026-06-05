@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.5 - 2026-06-05
+
+- Added `BARREL CONNECTION` to the built-in housing catalog.
+- Added a barrel plug/jack style preview drawing for barrel connection housings.
+
 ## v1.2.4 - 2026-06-05
 
 - Changed selected wire start markers to the left-side table blue.

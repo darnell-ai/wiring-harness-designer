@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.4";
+const APP_VERSION = "1.2.5";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -231,6 +231,7 @@ function defaultCatalog() {
     }),
     ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
     catalogEntry("MOLEX MINI-FIT", "Connector", "molex", 16, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal" }),
+    catalogEntry("BARREL CONNECTION", "Connector", "barrel", 1, { terminalType: "Barrel connector lead", notes: "DC barrel plug or jack pigtail connection" }),
     catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
     catalogEntry("SPLICE", "Splice", "splice", 1, { terminalType: "Window splice" })
   ];
@@ -1039,6 +1040,9 @@ function housingFamily(housing) {
   if (text === "RING TERMINAL") {
     return "ring";
   }
+  if (text.includes("BARREL")) {
+    return "barrel";
+  }
   if (text === "SPLICE") {
     return "splice";
   }
@@ -1075,6 +1079,9 @@ function connectorDimensions(family, pinCount, positionCount) {
   }
   if (family === "ring") {
     return { width: 132, height: 104 };
+  }
+  if (family === "barrel") {
+    return { width: 156, height: 86 };
   }
   if (family === "splice") {
     return { width: 164, height: 88 };
@@ -1323,6 +1330,22 @@ function renderConnectorBody(connector) {
       <path d="M ${x + 9} ${centerY - 15} H ${centerX - 22} A 37 37 0 1 1 ${centerX - 22} ${centerY + 15} H ${x + 9} Z" fill="#aeb6b1" stroke="#e5ebe6" stroke-width="3" />
       <circle cx="${centerX + 14}" cy="${centerY}" r="21" fill="#15201b" stroke="#68766e" stroke-width="4" />
       <line x1="${x + 12}" y1="${centerY}" x2="${centerX - 20}" y2="${centerY}" stroke="#737f78" stroke-width="5" />
+    `;
+  }
+
+  if (family === "barrel") {
+    const tipX = side === "left" ? x + width - 12 : x + 12;
+    const tailX = side === "left" ? x + 18 : x + width - 18;
+    const strainX = side === "left" ? x + 48 : x + width - 66;
+    const shellX = side === "left" ? x + 78 : x + 28;
+    const tipStart = side === "left" ? tipX - 28 : tipX;
+    return `
+      <path d="M ${tailX} ${centerY} C ${side === "left" ? tailX + 18 : tailX - 18} ${centerY - 17}, ${side === "left" ? tailX + 42 : tailX - 42} ${centerY + 17}, ${strainX} ${centerY}" fill="none" stroke="#101613" stroke-width="9" stroke-linecap="round" />
+      <rect x="${Math.min(strainX, shellX) - 2}" y="${centerY - 17}" width="${Math.abs(shellX - strainX) + 20}" height="34" rx="11" fill="#151d19" stroke="#495851" stroke-width="3" />
+      <rect x="${shellX}" y="${centerY - 20}" width="50" height="40" rx="13" fill="#1e2823" stroke="#68766e" stroke-width="3" />
+      <rect x="${tipStart}" y="${centerY - 8}" width="32" height="16" rx="5" fill="#cfd4cf" stroke="#f4f6f1" stroke-width="2" />
+      <rect x="${tipStart + 3}" y="${centerY - 5}" width="23" height="10" rx="3" fill="#8b948e" />
+      <circle cx="${tipX}" cy="${centerY}" r="4" fill="#202823" stroke="#f3f6f1" stroke-width="1.5" />
     `;
   }
 
