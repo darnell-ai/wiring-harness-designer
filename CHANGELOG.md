@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.4 - 2026-06-05
+
+- Changed selected wire start markers to the left-side table blue.
+- Changed selected wire destination markers to the right-side table orange.
+- Applied the same start/end colors to selected connector pins and cable exit leads.
+
 ## v1.2.3 - 2026-06-05
 
 - Made Excel/picture import read the production sheet column names before translating rows.

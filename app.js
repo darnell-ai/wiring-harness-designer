@@ -1,11 +1,13 @@
 "use strict";
 
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
+const SELECTED_START_COLOR = "#d6e8fb";
+const SELECTED_END_COLOR = "#f6bd75";
 
 const colorMap = {
   BLACK: "#050505",
@@ -796,8 +798,8 @@ function renderPreview() {
     <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
-    ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="#f2c84b" stroke-width="3" />`}
-    ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="#15201b" stroke="#41b883" stroke-width="3" />`}
+    ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
+    ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="#15201b" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
 
     <rect x="${labelX}" y="${labelY}" width="236" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
     <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
@@ -1254,7 +1256,7 @@ function renderConnectorLead(connector, contact, port, isSelected, isUsed, side)
     return "";
   }
 
-  const selectedColor = side === "left" ? "#f2c84b" : "#41b883";
+  const selectedColor = side === "left" ? SELECTED_START_COLOR : SELECTED_END_COLOR;
   const bendY = connector.y + connector.height - 12;
   const stroke = isSelected ? selectedColor : "#87958c";
   return `
@@ -1362,7 +1364,7 @@ function renderPowerpoleModule(connector, item) {
 }
 
 function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
-  const selectedColor = side === "left" ? "#f2c84b" : "#41b883";
+  const selectedColor = side === "left" ? SELECTED_START_COLOR : SELECTED_END_COLOR;
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
