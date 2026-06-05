@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.6";
+const APP_VERSION = "1.2.7";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -801,7 +801,7 @@ function renderPreview() {
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
-    ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="#15201b" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
+    ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
 
     <rect x="${labelX}" y="${labelY}" width="236" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
     <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
@@ -1235,17 +1235,31 @@ function twoPinFrontMolexTerminalPoint(connector, pin) {
 
 function barrelTerminalPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
-  const leadY = connector.y + connector.height - 20;
-  if (side === "left") {
-    return {
-      x: safePin === 1 ? connector.x + connector.width - 38 : connector.x + 54,
-      y: safePin === 1 ? leadY : leadY + 4
-    };
-  }
+  const barrel = barrelGeometry(connector);
+  return safePin === 1 ? barrel.positive : barrel.negative;
+}
 
+function barrelGeometry(connector) {
+  const { x, y, width, height, side } = connector;
+  const centerY = y + height / 2;
+  const tipX = side === "left" ? x + width - 12 : x + 12;
+  const tailX = side === "left" ? x + 18 : x + width - 18;
+  const strainX = side === "left" ? x + 48 : x + width - 66;
+  const shellX = side === "left" ? x + 78 : x + 28;
+  const tipStart = side === "left" ? tipX - 28 : tipX;
   return {
-    x: safePin === 1 ? connector.x + 38 : connector.x + connector.width - 54,
-    y: safePin === 1 ? leadY : leadY + 4
+    centerY,
+    tipX,
+    tailX,
+    strainX,
+    shellX,
+    tipStart,
+    positive: { x: tipX, y: centerY, polarity: "positive" },
+    negative: {
+      x: side === "left" ? tipStart + 10 : tipStart + 22,
+      y: centerY + 12,
+      polarity: "negative"
+    }
   };
 }
 
@@ -1372,18 +1386,15 @@ function renderConnectorBody(connector) {
   }
 
   if (family === "barrel") {
-    const tipX = side === "left" ? x + width - 12 : x + 12;
-    const tailX = side === "left" ? x + 18 : x + width - 18;
-    const strainX = side === "left" ? x + 48 : x + width - 66;
-    const shellX = side === "left" ? x + 78 : x + 28;
-    const tipStart = side === "left" ? tipX - 28 : tipX;
+    const barrel = barrelGeometry(connector);
     return `
-      <path d="M ${tailX} ${centerY} C ${side === "left" ? tailX + 18 : tailX - 18} ${centerY - 17}, ${side === "left" ? tailX + 42 : tailX - 42} ${centerY + 17}, ${strainX} ${centerY}" fill="none" stroke="#101613" stroke-width="9" stroke-linecap="round" />
-      <rect x="${Math.min(strainX, shellX) - 2}" y="${centerY - 17}" width="${Math.abs(shellX - strainX) + 20}" height="34" rx="11" fill="#151d19" stroke="#495851" stroke-width="3" />
-      <rect x="${shellX}" y="${centerY - 20}" width="50" height="40" rx="13" fill="#1e2823" stroke="#68766e" stroke-width="3" />
-      <rect x="${tipStart}" y="${centerY - 8}" width="32" height="16" rx="5" fill="#cfd4cf" stroke="#f4f6f1" stroke-width="2" />
-      <rect x="${tipStart + 3}" y="${centerY - 5}" width="23" height="10" rx="3" fill="#8b948e" />
-      <circle cx="${tipX}" cy="${centerY}" r="4" fill="#202823" stroke="#f3f6f1" stroke-width="1.5" />
+      <path d="M ${barrel.tailX} ${barrel.centerY} C ${side === "left" ? barrel.tailX + 18 : barrel.tailX - 18} ${barrel.centerY - 17}, ${side === "left" ? barrel.tailX + 42 : barrel.tailX - 42} ${barrel.centerY + 17}, ${barrel.strainX} ${barrel.centerY}" fill="none" stroke="#101613" stroke-width="9" stroke-linecap="round" />
+      <rect x="${Math.min(barrel.strainX, barrel.shellX) - 2}" y="${barrel.centerY - 17}" width="${Math.abs(barrel.shellX - barrel.strainX) + 20}" height="34" rx="11" fill="#151d19" stroke="#495851" stroke-width="3" />
+      <rect x="${barrel.shellX}" y="${barrel.centerY - 20}" width="50" height="40" rx="13" fill="#1e2823" stroke="#68766e" stroke-width="3" />
+      <rect x="${barrel.tipStart}" y="${barrel.centerY - 8}" width="32" height="16" rx="5" fill="#cfd4cf" stroke="#f4f6f1" stroke-width="2" />
+      <rect x="${barrel.tipStart + 3}" y="${barrel.centerY - 5}" width="23" height="10" rx="3" fill="#8b948e" />
+      <path d="M ${barrel.negative.x - 8} ${barrel.negative.y} H ${barrel.negative.x + 8}" stroke="#202823" stroke-width="4" stroke-linecap="round" opacity="0.85" />
+      <circle cx="${barrel.positive.x}" cy="${barrel.positive.y}" r="4" fill="#202823" stroke="#f3f6f1" stroke-width="1.5" />
     `;
   }
 
@@ -1430,6 +1441,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
   const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel";
+  const numericPin = numberOrDefault(pin, 0);
   let contact = "";
 
   if (connector.family === "powerpole") {
@@ -1453,6 +1465,13 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     contact = `<rect x="${point.x - 6}" y="${point.y - 6}" width="12" height="12" rx="2" fill="${isSelected ? selectedColor : isUsed ? "#d8efe2" : "#171d19"}" stroke="${isSelected ? selectedColor : isUsed ? "#41b883" : "#77847c"}" stroke-width="2" />`;
   } else if (connector.family === "molex") {
     contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isSelected ? selectedColor : isUsed ? "#e5f0e9" : "#6f756e"}" stroke="${isSelected ? selectedColor : "#f5f4eb"}" stroke-width="2" />`;
+  } else if (connector.family === "barrel") {
+    const isPositive = numericPin === 1;
+    contact = isPositive
+      ? `${isSelected ? `<circle cx="${point.x}" cy="${point.y}" r="8.5" fill="none" stroke="${selectedColor}" stroke-width="2.5" />` : ""}
+        <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#f6fbf4" stroke="#d93a36" stroke-width="2.5" />`
+      : `${isSelected ? `<circle cx="${point.x}" cy="${point.y}" r="8.5" fill="none" stroke="${selectedColor}" stroke-width="2.5" />` : ""}
+        <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#101613" stroke="#f6fbf4" stroke-width="2.5" />`;
   } else {
     const fill = isSelected ? selectedColor : isUsed ? "#d8efe2" : "#f6fbf4";
     const stroke = isSelected ? fill : isUsed ? "#41b883" : "#9fac9f";
@@ -1460,15 +1479,21 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   }
 
   const radialSide = point.x >= centerX;
-  const textX = isBottomTerminalHousing
+  const textX = connector.family === "barrel" && numericPin === 2
+    ? point.x + (side === "left" ? -13 : 13)
+    : isBottomTerminalHousing
     ? point.x
     : isHorizontalHousing
     ? point.x
     : isSubconn
     ? point.x + (radialSide ? 12 : -12)
     : side === "left" ? point.x - 31 : point.x + 18;
-  const textY = isBottomTerminalHousing ? point.y - 14 : isHorizontalHousing ? point.y + 24 : point.y + 4;
-  const anchor = isBottomTerminalHousing || isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
+  const textY = connector.family === "barrel"
+    ? point.y + (numericPin === 1 ? 22 : -8)
+    : isBottomTerminalHousing ? point.y - 14 : isHorizontalHousing ? point.y + 24 : point.y + 4;
+  const anchor = connector.family === "barrel" && numericPin === 2
+    ? side === "left" ? "end" : "start"
+    : isBottomTerminalHousing || isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
 
   return `
     ${contact}
@@ -1577,7 +1602,8 @@ function pinPoint(connector, pin, side) {
       exit: "bottom",
       lane,
       side,
-      edgeX: side === "left" ? connector.x + connector.width + 26 : connector.x - 26
+      edgeX: side === "left" ? connector.x + connector.width + 26 : connector.x - 26,
+      polarity: contact.polarity || ""
     };
   }
 

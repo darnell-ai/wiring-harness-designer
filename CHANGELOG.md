@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.7 - 2026-06-05
+
+- Changed barrel connector pin 1 to terminate at the center positive contact.
+- Changed barrel connector pin 2 to terminate on the outside sleeve/negative contact.
+- Added distinct barrel contact markers so positive and negative are easier to tell apart.
+
 ## v1.2.6 - 2026-06-05
 
 - Moved 2-pin front Molex wire endpoints onto the two lower terminal locations.
