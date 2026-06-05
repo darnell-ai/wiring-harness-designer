@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.2 - 2026-06-05
+
+- Added draggable spreadsheet-style resize handles to the wiring table headers.
+- Saved custom column widths with the browser project state and project JSON.
+- Added double-click reset on each column resize handle.
+
 ## v1.2.1 - 2026-06-05
 
 - Updated the editable wiring table, import preview, CSV export, and printable guide to match the production spreadsheet column order.

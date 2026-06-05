@@ -1,9 +1,11 @@
 "use strict";
 
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.2.2";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
+const MIN_COLUMN_WIDTH = 42;
+const MAX_COLUMN_WIDTH = 620;
 
 const colorMap = {
   BLACK: "#050505",
@@ -51,6 +53,30 @@ const EXPORT_HEADERS = [
   "Comments"
 ];
 
+const DEFAULT_COLUMN_WIDTHS = [
+  46,
+  190,
+  115,
+  100,
+  130,
+  260,
+  170,
+  155,
+  115,
+  150,
+  170,
+  160,
+  34,
+  115,
+  100,
+  130,
+  170,
+  155,
+  260,
+  180,
+  280
+];
+
 const dom = {
   harnessName: document.querySelector("#harnessName"),
   selectedTitle: document.querySelector("#selectedTitle"),
@@ -68,6 +94,8 @@ const dom = {
   totalLength: document.querySelector("#totalLength"),
   colorLegend: document.querySelector("#colorLegend"),
   wirePreview: document.querySelector("#wirePreview"),
+  harnessTable: document.querySelector("#harnessTable"),
+  tableColumnGroup: document.querySelector("#tableColumnGroup"),
   wireRows: document.querySelector("#wireRows"),
   searchRows: document.querySelector("#searchRows"),
   activeOnly: document.querySelector("#activeOnly"),
@@ -367,7 +395,8 @@ function starterState() {
     selectedId: rows[0]?.id || "",
     rows,
     catalog: defaultCatalog(),
-    bomAllowance: 10
+    bomAllowance: 10,
+    tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS]
   };
 }
 
@@ -420,8 +449,30 @@ function normalizeState(incoming) {
     selectedId: rows.some((row) => row.id === incoming.selectedId) ? incoming.selectedId : rows[0]?.id || "",
     rows,
     catalog: normalizeCatalog(incoming.catalog),
-    bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10
+    bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
+    tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths)
   };
+}
+
+function normalizeColumnWidths(widths) {
+  const incoming = Array.isArray(widths) ? widths : [];
+  return DEFAULT_COLUMN_WIDTHS.map((defaultWidth, index) => {
+    const parsed = Number(incoming[index]);
+    if (!Number.isFinite(parsed)) {
+      return defaultWidth;
+    }
+    return clamp(Math.round(parsed), minColumnWidth(index), MAX_COLUMN_WIDTH);
+  });
+}
+
+function minColumnWidth(index) {
+  if (index === 0) {
+    return 42;
+  }
+  if (index === 12) {
+    return 24;
+  }
+  return MIN_COLUMN_WIDTH;
 }
 
 function value(input) {
@@ -523,6 +574,7 @@ function activeRows() {
 
 function render() {
   dom.harnessName.value = state.harnessName;
+  applyColumnWidths();
   renderSummary();
   renderPreview();
   renderLegend();
@@ -538,6 +590,81 @@ function render() {
   if (dom.bomDialog.open) {
     renderBom();
   }
+}
+
+function applyColumnWidths() {
+  if (!dom.harnessTable || !dom.tableColumnGroup) {
+    return;
+  }
+
+  const widths = normalizeColumnWidths(state.tableColumnWidths);
+  state.tableColumnWidths = widths;
+  dom.tableColumnGroup.innerHTML = widths
+    .map((width, index) => `<col data-column-index="${index}" style="width:${width}px; min-width:${width}px;">`)
+    .join("");
+
+  const tableWidth = widths.reduce((sum, width) => sum + width, 0);
+  dom.harnessTable.style.width = `${tableWidth}px`;
+  dom.harnessTable.style.minWidth = `${tableWidth}px`;
+  dom.harnessTable.style.setProperty("--table-total-width", `${tableWidth}px`);
+}
+
+function setupColumnResizers() {
+  const headers = dom.harnessTable?.querySelectorAll("thead th") || [];
+  headers.forEach((header, index) => {
+    if (header.querySelector(".column-resizer")) {
+      return;
+    }
+
+    header.dataset.columnIndex = String(index);
+    const handle = document.createElement("span");
+    handle.className = "column-resizer";
+    handle.setAttribute("role", "separator");
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.title = "Drag to resize this column. Double-click to reset.";
+    handle.addEventListener("pointerdown", (event) => startColumnResize(event, index));
+    handle.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      state.tableColumnWidths[index] = DEFAULT_COLUMN_WIDTHS[index];
+      applyColumnWidths();
+      saveState();
+      showToast("Column width reset.");
+    });
+    header.appendChild(handle);
+  });
+}
+
+function startColumnResize(event, index) {
+  if (event.button !== 0) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  const startX = event.clientX;
+  const startWidth = state.tableColumnWidths[index] || DEFAULT_COLUMN_WIDTHS[index] || 100;
+  const handle = event.currentTarget;
+  handle.setPointerCapture?.(event.pointerId);
+  document.body.classList.add("is-resizing-column");
+
+  const resize = (moveEvent) => {
+    const nextWidth = clamp(Math.round(startWidth + moveEvent.clientX - startX), minColumnWidth(index), MAX_COLUMN_WIDTH);
+    state.tableColumnWidths[index] = nextWidth;
+    applyColumnWidths();
+  };
+
+  const stop = () => {
+    document.removeEventListener("pointermove", resize);
+    document.removeEventListener("pointerup", stop);
+    document.removeEventListener("pointercancel", stop);
+    document.body.classList.remove("is-resizing-column");
+    saveState();
+  };
+
+  document.addEventListener("pointermove", resize);
+  document.addEventListener("pointerup", stop, { once: true });
+  document.addEventListener("pointercancel", stop, { once: true });
 }
 
 function renderSummary() {
@@ -2201,9 +2328,11 @@ function resetSample() {
 
   const catalog = state.catalog;
   const bomAllowance = state.bomAllowance;
+  const tableColumnWidths = state.tableColumnWidths;
   state = starterState();
   state.catalog = catalog;
   state.bomAllowance = bomAllowance;
+  state.tableColumnWidths = tableColumnWidths;
   saveState();
   dom.searchRows.value = "";
   dom.activeOnly.checked = false;
@@ -2482,7 +2611,8 @@ function applyImportedRows() {
     selectedId: pendingImportRows[0].id,
     rows: pendingImportRows,
     catalog: state.catalog,
-    bomAllowance: state.bomAllowance
+    bomAllowance: state.bomAllowance,
+    tableColumnWidths: state.tableColumnWidths
   });
   saveState();
   dom.searchRows.value = "";
@@ -3261,4 +3391,5 @@ dom.importText.addEventListener("input", () => {
   }
 });
 
+setupColumnResizers();
 render();
