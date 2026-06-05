@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.16 - 2026-06-05
+
+- Changed browser printing to a one-page landscape drawing layout.
+- Hid the editable table during print so the Print button focuses on the onscreen harness preview.
+
 ## v1.2.15 - 2026-06-05
 
 - Restored the top toolbar Print button for printing the onscreen harness drawing.
