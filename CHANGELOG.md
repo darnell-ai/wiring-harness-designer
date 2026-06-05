@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.10 - 2026-06-05
+
+- Reduced top toolbar clutter by hiding Add, Copy, Delete, BOM, CSV, Drawing, Guide, Print, and Import buttons.
+- Kept Undo, Reset, Checks, Catalog, Picture, and Save visible for the main workflow.
+
 ## v1.2.9 - 2026-06-05
 
 - Made active-wire detection side-aware so left-side DNP no longer hides a row that still has wire data and a right endpoint.

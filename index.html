@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.9</title>
+    <title>Wiring Harness Designer v1.2.10</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.9</span>
+              <span class="version-badge">v1.2.10</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -30,15 +30,15 @@
             <span class="tool-icon">UNDO</span>
             <span>Undo</span>
           </button>
-          <button id="addRow" type="button" title="Add a new row">
+          <button id="addRow" type="button" title="Add a new row" hidden>
             <span class="tool-icon">+</span>
             <span>Add</span>
           </button>
-          <button id="duplicateRow" type="button" title="Duplicate selected row">
+          <button id="duplicateRow" type="button" title="Duplicate selected row" hidden>
             <span class="tool-icon">[]</span>
             <span>Copy</span>
           </button>
-          <button id="deleteRow" type="button" title="Delete selected row">
+          <button id="deleteRow" type="button" title="Delete selected row" hidden>
             <span class="tool-icon">x</span>
             <span>Delete</span>
           </button>
@@ -55,7 +55,7 @@
             <span class="tool-icon">CAT</span>
             <span>Catalog</span>
           </button>
-          <button id="bomButton" type="button" title="Open bill of materials and wire cut list">
+          <button id="bomButton" type="button" title="Open bill of materials and wire cut list" hidden>
             <span class="tool-icon">BOM</span>
             <span>BOM</span>
           </button>
@@ -67,23 +67,23 @@
             <span class="tool-icon">SAVE</span>
             <span>Save</span>
           </button>
-          <button id="exportCsv" type="button" title="Export table CSV">
+          <button id="exportCsv" type="button" title="Export table CSV" hidden>
             <span class="tool-icon">CSV</span>
             <span>CSV</span>
           </button>
-          <button id="exportDrawing" type="button" title="Download the current drawing as SVG">
+          <button id="exportDrawing" type="button" title="Download the current drawing as SVG" hidden>
             <span class="tool-icon">SVG</span>
             <span>Drawing</span>
           </button>
-          <button id="exportInstructions" type="button" title="Download printable drawing and instructions">
+          <button id="exportInstructions" type="button" title="Download printable drawing and instructions" hidden>
             <span class="tool-icon">DOC</span>
             <span>Guide</span>
           </button>
-          <button id="printButton" type="button" title="Print the current harness">
+          <button id="printButton" type="button" title="Print the current harness" hidden>
             <span class="tool-icon">PRN</span>
             <span>Print</span>
           </button>
-          <button id="importJsonButton" type="button" title="Import project JSON">
+          <button id="importJsonButton" type="button" title="Import project JSON" hidden>
             <span class="tool-icon">IN</span>
             <span>Import</span>
           </button>

@@ -46,6 +46,10 @@ select {
   font: inherit;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 button {
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: var(--radius);
