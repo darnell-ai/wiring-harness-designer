@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.2";
+const APP_VERSION = "1.2.3";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -2737,9 +2737,16 @@ function parseImportText(text) {
     .split(/\r?\n/)
     .map((line) => line.replace(/\s+$/g, ""))
     .filter((line) => line.trim());
+  let columnMap = null;
 
   lines.forEach((line) => {
-    const row = parseImportLine(line);
+    const cells = cellsFromImportLine(line);
+    if (cells && looksLikeHeaderCells(cells)) {
+      columnMap = importColumnMap(cells);
+      return;
+    }
+
+    const row = parseImportLine(line, columnMap, cells);
     if (row && isUsefulRow(row)) {
       rows.push(cleanImportedRow(row));
     }
@@ -2748,34 +2755,43 @@ function parseImportText(text) {
   return rows;
 }
 
-function parseImportLine(line) {
+function parseImportLine(line, columnMap = null, knownCells = null) {
   if (isHeaderLine(line)) {
     return null;
   }
 
-  if (line.includes("\t")) {
-    return rowFromCells(line.split("\t"));
-  }
-
-  if (line.includes(",")) {
-    const cells = parseCsvLine(line);
-    if (cells.length > 5) {
-      return rowFromCells(cells);
-    }
-  }
-
-  const cells = line.split(/\s{2,}/);
-  if (cells.length > 5) {
-    return rowFromCells(cells);
+  const cells = knownCells || cellsFromImportLine(line);
+  if (cells && cells.length > 5) {
+    return rowFromCells(cells, columnMap);
   }
 
   return rowFromLooseLine(line);
 }
 
-function rowFromCells(cells) {
+function cellsFromImportLine(line) {
+  if (line.includes("\t")) {
+    return line.split("\t");
+  }
+
+  if (line.includes(",")) {
+    const cells = parseCsvLine(line);
+    if (cells.length > 5) {
+      return cells;
+    }
+  }
+
+  const cells = line.split(/\s{2,}/);
+  return cells.length > 5 ? cells : null;
+}
+
+function rowFromCells(cells, columnMap = null) {
   const clean = cells.map((cell) => value(cell).trim());
-  if (isHeaderLine(clean.join(" "))) {
+  if (looksLikeHeaderCells(clean)) {
     return null;
+  }
+
+  if (columnMap) {
+    return rowFromMappedCells(clean, columnMap);
   }
 
   if (looksLikeShopRow(clean)) {
@@ -2831,6 +2847,143 @@ function rowFromCells(cells) {
   }
 
   return row;
+}
+
+function rowFromMappedCells(cells, map) {
+  const row = {
+    name: mappedCell(cells, map, "name"),
+    leftLeg: mappedCell(cells, map, "leftLeg"),
+    leftPin: mappedCell(cells, map, "leftPin"),
+    dnp: isDnp(mappedCell(cells, map, "dnp")),
+    housing: mappedCell(cells, map, "housing"),
+    leftHousingPart: mappedCell(cells, map, "leftHousingPart"),
+    leftTerminalPart: mappedCell(cells, map, "leftTerminalPart"),
+    awg: mappedCell(cells, map, "awg"),
+    color: mappedCell(cells, map, "color"),
+    length: mappedCell(cells, map, "length"),
+    rightLeg: mappedCell(cells, map, "rightLeg"),
+    rightPin: mappedCell(cells, map, "rightPin"),
+    rightDnp: isDnp(mappedCell(cells, map, "rightDnp")),
+    rightHousingPart: mappedCell(cells, map, "rightHousingPart"),
+    rightTerminalPart: mappedCell(cells, map, "rightTerminalPart"),
+    rightHousing: mappedCell(cells, map, "rightHousing"),
+    toolUsed: mappedCell(cells, map, "toolUsed"),
+    comments: mappedCell(cells, map, "comments")
+  };
+  applyBranchValue(row, mappedCell(cells, map, "branch") || "");
+  return row;
+}
+
+function mappedCell(cells, map, key) {
+  const index = map[key];
+  return Number.isInteger(index) ? cells[index] || "" : "";
+}
+
+function looksLikeHeaderCells(cells) {
+  const mapped = importColumnMap(cells);
+  return ["name", "leftLeg", "leftPin", "housing", "leftHousingPart", "rightLeg", "rightHousing"].filter((key) => Number.isInteger(mapped[key])).length >= 5;
+}
+
+function importColumnMap(cells) {
+  const map = {};
+  let side = "left";
+  cells.forEach((cell, index) => {
+    const key = headerKey(cell);
+    if (!key) {
+      return;
+    }
+
+    if (key === "rightLeg") {
+      map.rightLeg = index;
+      side = "right";
+      return;
+    }
+
+    if (key === "name" || key === "branch" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
+      map[key] = index;
+      return;
+    }
+
+    if (side === "right") {
+      if (key === "pinPos") {
+        map.rightPin = index;
+      } else if (key === "dnp") {
+        map.rightDnp = index;
+      } else if (key === "housingPart") {
+        map.rightHousingPart = index;
+      } else if (key === "terminalPart") {
+        map.rightTerminalPart = index;
+      } else if (key === "housing") {
+        map.rightHousing = index;
+      }
+      return;
+    }
+
+    if (key === "leftLeg") {
+      map.leftLeg = index;
+    } else if (key === "pinPos") {
+      map.leftPin = index;
+    } else if (key === "dnp") {
+      map.dnp = index;
+    } else if (key === "housing") {
+      map.housing = index;
+    } else if (key === "housingPart") {
+      map.leftHousingPart = index;
+    } else if (key === "terminalPart") {
+      map.leftTerminalPart = index;
+    }
+  });
+  return map;
+}
+
+function headerKey(input) {
+  const text = cleanCell(input).toLowerCase().replace(/[#]/g, "number").replace(/[^a-z0-9]+/g, " ").trim();
+  if (!text) {
+    return "";
+  }
+  if (text === "name" || text === "wire name") {
+    return "name";
+  }
+  if (text === "left leg" || text === "left") {
+    return "leftLeg";
+  }
+  if (text === "right leg" || text === "right") {
+    return "rightLeg";
+  }
+  if (text.includes("pin pos")) {
+    return "pinPos";
+  }
+  if (text.includes("do not place") || text === "dnp") {
+    return "dnp";
+  }
+  if (text.includes("housing part")) {
+    return "housingPart";
+  }
+  if (text === "pin number" || text === "pin no" || text === "pin") {
+    return "terminalPart";
+  }
+  if (text.includes("housing type") || text === "housing") {
+    return "housing";
+  }
+  if (text.includes("awg")) {
+    return "awg";
+  }
+  if (text === "color" || text === "colour") {
+    return "color";
+  }
+  if (text.includes("length")) {
+    return "length";
+  }
+  if (text === "branch" || text.includes("splice")) {
+    return "branch";
+  }
+  if (text.includes("tool used") || text === "tool") {
+    return "toolUsed";
+  }
+  if (text.includes("comment")) {
+    return "comments";
+  }
+  return "";
 }
 
 function looksLikeShopRow(clean) {
@@ -2945,6 +3098,10 @@ function cleanImportedRow(row) {
   if (prepared.branch && !prepared.spliceId && !prepared.spliceRole) {
     applyBranchValue(prepared, prepared.branch);
   }
+  repairImportedPartFields(prepared);
+
+  const cleanHousing = matchHousing(prepared.housing) || cleanCell(prepared.housing).toUpperCase();
+  const cleanRightHousing = matchHousing(prepared.rightHousing) || cleanCell(prepared.rightHousing).toUpperCase();
 
   return {
     id: prepared.id || makeId(),
@@ -2952,7 +3109,7 @@ function cleanImportedRow(row) {
     name: cleanCell(prepared.name),
     leftPin: cleanCell(prepared.leftPin),
     dnp: isDnp(prepared.dnp),
-    housing: matchHousing(prepared.housing) || cleanCell(prepared.housing).toUpperCase(),
+    housing: cleanHousing,
     leftHousingPart: cleanCell(prepared.leftHousingPart || prepared.housingPart),
     leftTerminalPart: cleanCell(prepared.leftTerminalPart || prepared.pinPart || prepared.terminalPart),
     awg: cleanGauge(prepared.awg),
@@ -2965,10 +3122,62 @@ function cleanImportedRow(row) {
     rightDnp: prepared.rightDnp === undefined ? isDnp(prepared.dnp) : isDnp(prepared.rightDnp),
     rightHousingPart: cleanCell(prepared.rightHousingPart),
     rightTerminalPart: cleanCell(prepared.rightTerminalPart || prepared.rightPinPart || prepared.rightTerminal),
-    rightHousing: matchHousing(prepared.rightHousing) || cleanCell(prepared.rightHousing).toUpperCase(),
+    rightHousing: cleanRightHousing,
     toolUsed: cleanCell(prepared.toolUsed),
     comments: cleanCell(prepared.comments)
   };
+}
+
+function repairImportedPartFields(row) {
+  repairImportedSideParts(row, "housing", "leftHousingPart", "leftTerminalPart");
+  repairImportedSideParts(row, "rightHousing", "rightHousingPart", "rightTerminalPart");
+  splitMergedPartCell(row, "leftHousingPart", "leftTerminalPart");
+  splitMergedPartCell(row, "rightHousingPart", "rightTerminalPart");
+}
+
+function repairImportedSideParts(row, housingField, housingPartField, terminalPartField) {
+  const split = splitTrailingPartNumbers(row[housingField]);
+  if (!split.parts.length) {
+    return;
+  }
+
+  row[housingField] = split.text;
+  if (!cleanCell(row[housingPartField]) && split.parts[0]) {
+    row[housingPartField] = split.parts[0];
+  }
+  if (!cleanCell(row[terminalPartField]) && split.parts[1]) {
+    row[terminalPartField] = split.parts[1];
+  }
+}
+
+function splitMergedPartCell(row, housingPartField, terminalPartField) {
+  const tokens = cleanCell(row[housingPartField]).split(/\s+/).filter(Boolean);
+  const partTokens = tokens.filter(isPartNumberToken);
+  if (partTokens.length < 2) {
+    return;
+  }
+
+  row[housingPartField] = partTokens[0];
+  if (!cleanCell(row[terminalPartField])) {
+    row[terminalPartField] = partTokens[1];
+  }
+}
+
+function splitTrailingPartNumbers(input) {
+  const tokens = cleanCell(input).split(/\s+/).filter(Boolean);
+  const parts = [];
+  while (tokens.length && isPartNumberToken(tokens[tokens.length - 1])) {
+    parts.unshift(tokens.pop());
+  }
+  return {
+    text: tokens.join(" "),
+    parts
+  };
+}
+
+function isPartNumberToken(input) {
+  const token = cleanCell(input).replace(/[,:;]+$/g, "").toUpperCase();
+  return /^(?=.*\d)[A-Z0-9-]{6,}$/.test(token);
 }
 
 function isUsefulRow(row) {
@@ -3041,7 +3250,18 @@ function matchHousing(input) {
   }
 
   const loose = looseHousingKey(housing);
-  return choices.find((choice) => choice && looseHousingKey(choice) === loose) || "";
+  const looseExact = choices.find((choice) => choice && looseHousingKey(choice) === loose);
+  if (looseExact) {
+    return looseExact;
+  }
+
+  return choices.find((choice) => {
+    if (!choice || loose.length < 8) {
+      return false;
+    }
+    const candidate = looseHousingKey(choice);
+    return candidate.startsWith(loose) || loose.startsWith(candidate);
+  }) || "";
 }
 
 function looseHousingKey(input) {

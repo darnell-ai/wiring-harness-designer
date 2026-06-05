@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.3 - 2026-06-05
+
+- Made Excel/picture import read the production sheet column names before translating rows.
+- Fixed OCR cases where housing part numbers were merged into the Housing Type cell.
+- Preserved separate left/right Housing Type, Housing Part #, and Pin # fields during import.
+
 ## v1.2.2 - 2026-06-05
 
 - Added draggable spreadsheet-style resize handles to the wiring table headers.
