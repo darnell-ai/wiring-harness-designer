@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.6 - 2026-06-05
+
+- Moved 2-pin front Molex wire endpoints onto the two lower terminal locations.
+- Changed barrel connections to two-conductor housings with separate lower lead termination points.
+- Made imported Molex names such as `2 PIN MOLEX FRONT` use the Molex drawing/routing family.
+
 ## v1.2.5 - 2026-06-05
 
 - Added `BARREL CONNECTION` to the built-in housing catalog.

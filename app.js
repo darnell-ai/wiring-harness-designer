@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.5";
+const APP_VERSION = "1.2.6";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 20;
@@ -231,7 +231,7 @@ function defaultCatalog() {
     }),
     ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
     catalogEntry("MOLEX MINI-FIT", "Connector", "molex", 16, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal" }),
-    catalogEntry("BARREL CONNECTION", "Connector", "barrel", 1, { terminalType: "Barrel connector lead", notes: "DC barrel plug or jack pigtail connection" }),
+    catalogEntry("BARREL CONNECTION", "Connector", "barrel", 2, { terminalType: "Barrel connector lead", notes: "DC barrel plug or jack pigtail connection" }),
     catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
     catalogEntry("SPLICE", "Splice", "splice", 1, { terminalType: "Window splice" })
   ];
@@ -279,11 +279,12 @@ function mergeDefaultCatalogDetails(entry, defaultEntry) {
     return entry;
   }
 
+  const defaultPositionUpdate = entry.name === "BARREL CONNECTION" && defaultEntry.positions === 2;
   return {
     ...entry,
     category: entry.category || defaultEntry.category,
     family: entry.family || defaultEntry.family,
-    positions: entry.positions || defaultEntry.positions,
+    positions: defaultPositionUpdate ? defaultEntry.positions : entry.positions || defaultEntry.positions,
     manufacturer: entry.manufacturer || defaultEntry.manufacturer,
     partNumber: entry.partNumber || defaultEntry.partNumber,
     gender: entry.gender || defaultEntry.gender,
@@ -999,17 +1000,22 @@ function buildConnectors(keys, side, rows, selected) {
 }
 
 function housingPositionCount(housing) {
+  const housingText = value(housing).toUpperCase();
+  if (housingText.includes("BARREL")) {
+    return 2;
+  }
+
   const catalogItem = catalogEntryByName(housing);
   if (catalogItem) {
     return catalogItem.positions;
   }
 
-  const match = value(housing).toUpperCase().match(/\b(\d{1,2})\s+(?:POS|PIN)\b/);
+  const match = housingText.match(/\b(\d{1,2})\s+(?:POS|PIN)\b/);
   if (match) {
     return Math.max(1, Math.min(32, Number(match[1])));
   }
 
-  if (value(housing).toUpperCase() === "RING TERMINAL") {
+  if (housingText === "RING TERMINAL") {
     return 1;
   }
 
@@ -1025,7 +1031,7 @@ function housingFamily(housing) {
   if (text.startsWith("SUBCONN ")) {
     return "subconn";
   }
-  if (text.startsWith("MOLEX ")) {
+  if (text.includes("MOLEX")) {
     return "molex";
   }
   if (text.startsWith("DUPONT ")) {
@@ -1211,6 +1217,38 @@ function powerpoleModuleRect(connector, pin) {
   };
 }
 
+function isTwoPinFrontMolex(connector) {
+  const text = value(connector?.housing).toUpperCase();
+  return connector?.family === "molex"
+    && connector.pinCount === 2
+    && text.includes("FRONT")
+    && !text.includes("SIDE");
+}
+
+function twoPinFrontMolexTerminalPoint(connector, pin) {
+  const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
+  return {
+    x: connector.x + (safePin === 1 ? connector.width * 0.31 : connector.width * 0.69),
+    y: connector.y + connector.height * 0.6
+  };
+}
+
+function barrelTerminalPoint(connector, pin, side) {
+  const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
+  const leadY = connector.y + connector.height - 20;
+  if (side === "left") {
+    return {
+      x: safePin === 1 ? connector.x + connector.width - 38 : connector.x + 54,
+      y: safePin === 1 ? leadY : leadY + 4
+    };
+  }
+
+  return {
+    x: safePin === 1 ? connector.x + 38 : connector.x + connector.width - 54,
+    y: safePin === 1 ? leadY : leadY + 4
+  };
+}
+
 function renderConnector(connector, side, rows, selected) {
   const usedPins = new Set(rows
     .filter((row) => !isDnp(row.dnp))
@@ -1259,7 +1297,7 @@ function renderConnector(connector, side, rows, selected) {
 }
 
 function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {
-  if (connector.family === "powerpole" || (!isUsed && !isSelected)) {
+  if (connector.family === "powerpole" || connector.family === "barrel" || isTwoPinFrontMolex(connector) || (!isUsed && !isSelected)) {
     return "";
   }
 
@@ -1391,6 +1429,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = ["molex", "dupont"].includes(connector.family);
+  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel";
   let contact = "";
 
   if (connector.family === "powerpole") {
@@ -1421,13 +1460,15 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   }
 
   const radialSide = point.x >= centerX;
-  const textX = isHorizontalHousing
+  const textX = isBottomTerminalHousing
+    ? point.x
+    : isHorizontalHousing
     ? point.x
     : isSubconn
     ? point.x + (radialSide ? 12 : -12)
     : side === "left" ? point.x - 31 : point.x + 18;
-  const textY = isHorizontalHousing ? point.y + 24 : point.y + 4;
-  const anchor = isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
+  const textY = isBottomTerminalHousing ? point.y - 14 : isHorizontalHousing ? point.y + 24 : point.y + 4;
+  const anchor = isBottomTerminalHousing || isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
 
   return `
     ${contact}
@@ -1496,6 +1537,10 @@ function connectorContactPoint(connector, pin, side) {
   }
 
   if (["molex", "dupont"].includes(connector.family)) {
+    if (isTwoPinFrontMolex(connector)) {
+      return twoPinFrontMolexTerminalPoint(connector, safePin);
+    }
+
     const x = pinCount === 1
       ? connector.x + connector.width / 2
       : connector.x + 32 + (safePin - 1) * ((connector.width - 64) / (pinCount - 1));
@@ -1503,6 +1548,10 @@ function connectorContactPoint(connector, pin, side) {
       x,
       y: connector.y + connector.height / 2
     };
+  }
+
+  if (connector.family === "barrel") {
+    return barrelTerminalPoint(connector, safePin, side);
   }
 
   const y = pinCount === 1
@@ -1521,6 +1570,17 @@ function pinPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
   const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
   const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel") {
+    return {
+      x: contact.x,
+      y: contact.y,
+      exit: "bottom",
+      lane,
+      side,
+      edgeX: side === "left" ? connector.x + connector.width + 26 : connector.x - 26
+    };
+  }
+
   const portCount = Math.max(1, connector.positionData.length);
   const x = ["molex", "dupont"].includes(connector.family)
     ? contact.x
