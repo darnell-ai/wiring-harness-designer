@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.13 - 2026-06-05
+
+- Increased wire lane spacing so paths stay visually separated in the live harness preview.
+- Spread connector fan-out bends farther apart and slimmed the selected wire highlight so nearby wires remain visible.
+
 ## v1.2.12 - 2026-06-05
 
 - Moved PCB housing wire landing points to the bottom edge of the board.

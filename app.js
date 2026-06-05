@@ -1,9 +1,11 @@
 "use strict";
 
-const APP_VERSION = "1.2.12";
+const APP_VERSION = "1.2.13";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
-const WIRE_LANE_GAP = 20;
+const WIRE_LANE_GAP = 32;
+const WIRE_EXIT_GAP = 14;
+const WIRE_BUS_GAP = 18;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
@@ -972,7 +974,7 @@ function renderPreview() {
       const path = wirePath(start, end, index, routeBaseY);
       const outline = item.color === "BLACK" ? "#edf4ef" : "#07100b";
       return `
-        <path d="${path}" fill="none" stroke="${outline}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="0.78" />
+        <path d="${path}" fill="none" stroke="${outline}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
         <path d="${path}" fill="none" stroke="${color}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
       `;
     })
@@ -999,8 +1001,8 @@ function renderPreview() {
     <text x="${Math.min(selectedEnd.x + 16, 820)}" y="${selectedEnd.y - 18}" class="wire-sub">${endpointLabel}</text>
   `;
   const selectedWireMarkup = hasSelectedWire ? `
-    <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="14" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
-    <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
+    <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
+    <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
@@ -1894,12 +1896,12 @@ function wirePath(start, end, index, routeBaseY) {
 }
 
 function bottomDropY(point, index) {
-  const localLane = Number.isFinite(point.lane) ? point.lane : Math.max(0, index);
-  return point.y + 20 + (localLane % 5) * 6;
+  const routeIndex = Math.max(0, index);
+  return point.y + 26 + routeIndex * WIRE_EXIT_GAP;
 }
 
 function bottomBusX(point, index) {
-  const nudge = (Math.max(0, index) % 6) * 4;
+  const nudge = Math.max(0, index) * WIRE_BUS_GAP;
   if (point.side === "left") {
     return point.edgeX + nudge;
   }
