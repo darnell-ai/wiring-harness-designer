@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.14 - 2026-06-05
+
+- Treat blank pin rows as automatic DNP rows so leg/pin numbers alone do not create live wires.
+- Show inferred DNP status in the table, search, CSV export, import preview, and generated instructions.
+
 ## v1.2.13 - 2026-06-05
 
 - Increased wire lane spacing so paths stay visually separated in the live harness preview.

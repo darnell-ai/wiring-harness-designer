@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.13";
+const APP_VERSION = "1.2.14";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -594,15 +594,31 @@ function rowHasWirePayload(row) {
   );
 }
 
+function isImplicitDnp(row) {
+  return !rowHasWirePayload(row);
+}
+
+function isEffectiveDnp(row, side = "left") {
+  const explicitDnp = side === "right" ? isDnp(row?.rightDnp) : isDnp(row?.dnp);
+  return explicitDnp || isImplicitDnp(row);
+}
+
+function dnpLabel(row, side = "left") {
+  return isEffectiveDnp(row, side) ? "DNP" : "";
+}
+
 function isActiveWireRow(row) {
   if (!row) {
+    return false;
+  }
+  if (!rowHasWirePayload(row)) {
     return false;
   }
   if (isDnp(row.dnp) && isDnp(row.rightDnp)) {
     return false;
   }
 
-  return rowHasWirePayload(row) || !isDnp(row.dnp) || !isDnp(row.rightDnp);
+  return true;
 }
 
 function rowUsesSide(row, side) {
@@ -2385,7 +2401,7 @@ function renderTable() {
         row.name,
         row.leftLeg,
         row.leftPin,
-        isDnp(row.dnp) ? "DNP" : "",
+        dnpLabel(row, "left"),
         row.housing,
         row.leftHousingPart,
         row.leftTerminalPart,
@@ -2395,7 +2411,7 @@ function renderTable() {
         branchLabel(row),
         row.rightLeg,
         row.rightPin,
-        isDnp(row.rightDnp) ? "DNP" : "",
+        dnpLabel(row, "right"),
         row.rightHousingPart,
         row.rightTerminalPart,
         row.rightHousing,
@@ -2427,7 +2443,7 @@ function renderTable() {
         <td class="field-name"><input data-field="name" list="nameChoices" value="${escapeHtml(row.name)}" aria-label="Name"></td>
         <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td>${selectField(row, "leftPin", options.pins, "Left pin")}</td>
-        <td>${selectField(row, "dnp", options.dnp, "Do not place", isDnp(row.dnp) ? "DNP" : "")}</td>
+        <td>${selectField(row, "dnp", options.dnp, "Do not place", dnpLabel(row, "left"))}</td>
         <td class="field-housing">${selectField(row, "housing", housingChoices(), "Housing type")}</td>
         <td><input data-field="leftHousingPart" value="${escapeHtml(row.leftHousingPart)}" aria-label="Left housing part number"></td>
         <td><input data-field="leftTerminalPart" value="${escapeHtml(row.leftTerminalPart)}" aria-label="Left terminal pin part number"></td>
@@ -2443,7 +2459,7 @@ function renderTable() {
         <td class="divider-cell"></td>
         <td>${selectField(row, "rightLeg", options.legs, "Right leg")}</td>
         <td>${selectField(row, "rightPin", options.pins, "Right pin")}</td>
-        <td>${selectField(row, "rightDnp", options.dnp, "Right do not place", isDnp(row.rightDnp) ? "DNP" : "")}</td>
+        <td>${selectField(row, "rightDnp", options.dnp, "Right do not place", dnpLabel(row, "right"))}</td>
         <td><input data-field="rightHousingPart" value="${escapeHtml(row.rightHousingPart)}" aria-label="Right housing part number"></td>
         <td><input data-field="rightTerminalPart" value="${escapeHtml(row.rightTerminalPart)}" aria-label="Right terminal pin part number"></td>
         <td class="field-right-housing">${selectField(row, "rightHousing", housingChoices(), "Right housing type")}</td>
@@ -2481,10 +2497,10 @@ function syncSelectedRowClass() {
 
 function comparableFieldValue(row, field) {
   if (field === "dnp") {
-    return isDnp(row.dnp) ? "DNP" : "";
+    return dnpLabel(row, "left");
   }
   if (field === "rightDnp") {
-    return isDnp(row.rightDnp) ? "DNP" : "";
+    return dnpLabel(row, "right");
   }
   if (field === "color" || field === "spliceRole" || field === "spliceId") {
     return value(row[field]).toUpperCase();
@@ -2892,7 +2908,7 @@ function exportCsv() {
       row.name,
       row.leftLeg,
       row.leftPin,
-      isDnp(row.dnp) ? "DNP" : "",
+      dnpLabel(row, "left"),
       row.housing,
       row.leftHousingPart,
       row.leftTerminalPart,
@@ -2903,7 +2919,7 @@ function exportCsv() {
       "",
       row.rightLeg,
       row.rightPin,
-      isDnp(row.rightDnp) ? "DNP" : "",
+      dnpLabel(row, "right"),
       row.rightHousingPart,
       row.rightTerminalPart,
       row.rightHousing,
@@ -3026,7 +3042,7 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.name)}</td>
       <td>${escapeHtml(row.leftLeg)}</td>
       <td>${escapeHtml(row.leftPin)}</td>
-      <td>${isDnp(row.dnp) ? "DNP" : ""}</td>
+      <td>${dnpLabel(row, "left")}</td>
       <td>${escapeHtml(row.housing)}</td>
       <td>${escapeHtml(row.leftHousingPart)}</td>
       <td>${escapeHtml(row.leftTerminalPart)}</td>
@@ -3037,7 +3053,7 @@ function renderImportPreview(rows) {
       <td></td>
       <td>${escapeHtml(row.rightLeg)}</td>
       <td>${escapeHtml(row.rightPin)}</td>
-      <td>${isDnp(row.rightDnp) ? "DNP" : ""}</td>
+      <td>${dnpLabel(row, "right")}</td>
       <td>${escapeHtml(row.rightHousingPart)}</td>
       <td>${escapeHtml(row.rightTerminalPart)}</td>
       <td>${escapeHtml(row.rightHousing)}</td>
@@ -3752,7 +3768,7 @@ function exportInstructions() {
           <td>${escapeHtml(row.name)}</td>
           <td>${escapeHtml(row.leftLeg)}</td>
           <td>${escapeHtml(row.leftPin)}</td>
-          <td>${isDnp(row.dnp) ? "DNP" : ""}</td>
+          <td>${dnpLabel(row, "left")}</td>
           <td>${escapeHtml(row.housing)}</td>
           <td>${escapeHtml(row.leftHousingPart)}</td>
           <td>${escapeHtml(row.leftTerminalPart)}</td>
@@ -3762,7 +3778,7 @@ function exportInstructions() {
           <td>${escapeHtml(branchLabel(row))}</td>
           <td>${escapeHtml(row.rightLeg)}</td>
           <td>${escapeHtml(row.rightPin)}</td>
-          <td>${isDnp(row.rightDnp) ? "DNP" : ""}</td>
+          <td>${dnpLabel(row, "right")}</td>
           <td>${escapeHtml(row.rightHousingPart)}</td>
           <td>${escapeHtml(row.rightTerminalPart)}</td>
           <td>${escapeHtml(row.rightHousing)}</td>
