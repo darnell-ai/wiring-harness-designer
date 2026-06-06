@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.20 - 2026-06-06
+
+- Accepted the new production sheet import format with Cable Name, Wire Name, and labeled left/right leg cells.
+
 ## v1.2.19 - 2026-06-06
 
 - Rendered plain Dupont headers with bottom horizontal pin positions instead of the generic vertical connector layout.

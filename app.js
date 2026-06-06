@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.19";
+const APP_VERSION = "1.2.20";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -187,6 +187,7 @@ let state = loadState();
 let undoStack = [];
 let toastTimer = 0;
 let pendingImportRows = [];
+let pendingImportContext = { harnessName: "", legNames: { left: {}, right: {} } };
 let currentImageFile = null;
 let selectedCatalogId = "";
 
@@ -3122,6 +3123,7 @@ function translateImageText() {
 }
 
 function setPendingImportRows(rows) {
+  pendingImportContext = importContextFromRows(rows);
   pendingImportRows = rows.map((row) => cleanImportedRow(row)).filter(isUsefulRow);
   renderImportPreview(pendingImportRows);
 }
@@ -3138,15 +3140,20 @@ function applyImportedRows() {
   }
 
   rememberUndo();
+  const importLegNames = pendingImportContext.legNames || { left: {}, right: {} };
+  const hasImportLegNames = Boolean(
+    Object.keys(importLegNames.left || {}).length
+    || Object.keys(importLegNames.right || {}).length
+  );
   state = normalizeState({
-    harnessName: state.harnessName || "Imported Harness",
+    harnessName: pendingImportContext.harnessName || state.harnessName || "Imported Harness",
     selectedId: pendingImportRows[0].id,
     rows: pendingImportRows,
     catalog: state.catalog,
     bomAllowance: state.bomAllowance,
     tableColumnWidths: state.tableColumnWidths,
     previewPaneHeight: state.previewPaneHeight,
-    legNames: state.legNames
+    legNames: hasImportLegNames ? importLegNames : state.legNames
   });
   saveState();
   dom.searchRows.value = "";
@@ -3282,7 +3289,7 @@ function parseImportText(text) {
 
     const row = parseImportLine(line, columnMap, cells);
     if (row && isUsefulRow(row)) {
-      rows.push(cleanImportedRow(row));
+      rows.push(row);
     }
   });
 
@@ -3385,6 +3392,7 @@ function rowFromCells(cells, columnMap = null) {
 
 function rowFromMappedCells(cells, map) {
   const row = {
+    cableName: mappedCell(cells, map, "cableName"),
     name: mappedCell(cells, map, "name"),
     leftLeg: mappedCell(cells, map, "leftLeg"),
     leftPin: mappedCell(cells, map, "leftPin"),
@@ -3433,7 +3441,7 @@ function importColumnMap(cells) {
       return;
     }
 
-    if (key === "name" || key === "branch" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
+    if (key === "cableName" || key === "name" || key === "branch" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
       map[key] = index;
       return;
     }
@@ -3474,6 +3482,9 @@ function headerKey(input) {
   const text = cleanCell(input).toLowerCase().replace(/[#]/g, "number").replace(/[^a-z0-9]+/g, " ").trim();
   if (!text) {
     return "";
+  }
+  if (text === "cable name" || text === "cabel name" || text === "harness name") {
+    return "cableName";
   }
   if (text === "name" || text === "wire name") {
     return "name";
@@ -3627,6 +3638,60 @@ function extractHousingFromEnd(tokens) {
   return { housing: "", remaining: [...tokens] };
 }
 
+function importContextFromRows(rows) {
+  return rows.reduce((context, row) => {
+    const cableName = cleanCell(row?.cableName || row?.harnessName);
+    if (!context.harnessName && cableName) {
+      context.harnessName = cableName;
+    }
+
+    addImportedLegName(context.legNames.left, row?.leftLeg);
+    addImportedLegName(context.legNames.right, row?.rightLeg);
+    return context;
+  }, { harnessName: "", legNames: { left: {}, right: {} } });
+}
+
+function addImportedLegName(names, input) {
+  const leg = splitLabeledLeg(input);
+  if (leg.key && leg.name && !names[leg.key]) {
+    names[leg.key] = leg.name;
+  }
+}
+
+function splitLabeledLeg(input) {
+  const text = cleanCell(input);
+  if (!text) {
+    return { key: "", name: "" };
+  }
+
+  const match = text.match(/^([A-Za-z0-9#-]+)\s+(.+)$/);
+  if (!match) {
+    return { key: text, name: "" };
+  }
+
+  const key = legKey(match[1]);
+  if (!isLabelableLegKey(key)) {
+    return { key: text, name: "" };
+  }
+
+  return {
+    key,
+    name: cleanLegName(match[2])
+  };
+}
+
+function isLabelableLegKey(key) {
+  const text = value(key).toUpperCase();
+  return Boolean(
+    text
+    && (
+      /^\d+$/.test(text)
+      || /^[A-Z]*\d+[A-Z#-]*$/.test(text)
+      || options.legs.some((leg) => leg && leg.toUpperCase() === text)
+    )
+  );
+}
+
 function cleanImportedRow(row) {
   const prepared = { ...row };
   if (prepared.branch && !prepared.spliceId && !prepared.spliceRole) {
@@ -3636,10 +3701,12 @@ function cleanImportedRow(row) {
 
   const cleanHousing = matchHousing(prepared.housing) || cleanCell(prepared.housing).toUpperCase();
   const cleanRightHousing = matchHousing(prepared.rightHousing) || cleanCell(prepared.rightHousing).toUpperCase();
+  const leftLeg = splitLabeledLeg(prepared.leftLeg);
+  const rightLeg = splitLabeledLeg(prepared.rightLeg);
 
   return {
     id: prepared.id || makeId(),
-    leftLeg: cleanCell(prepared.leftLeg),
+    leftLeg: leftLeg.key,
     name: cleanCell(prepared.name),
     leftPin: cleanCell(prepared.leftPin),
     dnp: isDnp(prepared.dnp),
@@ -3651,7 +3718,7 @@ function cleanImportedRow(row) {
     length: cleanLength(prepared.length),
     spliceId: cleanCell(prepared.spliceId).toUpperCase(),
     spliceRole: normalizedSpliceRole(prepared),
-    rightLeg: cleanCell(prepared.rightLeg),
+    rightLeg: rightLeg.key,
     rightPin: cleanCell(prepared.rightPin),
     rightDnp: prepared.rightDnp === undefined ? isDnp(prepared.dnp) : isDnp(prepared.rightDnp),
     rightHousingPart: cleanCell(prepared.rightHousingPart),
