@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.24 - 2026-06-06
+
+- Bound preview callout labels to their physical connector side so left information stays with the left housing and right information stays with the right housing.
+
 ## v1.2.23 - 2026-06-06
 
 - Kept preview connector label callouts on the same side as their housings while leaving clear space from the housing drawings.

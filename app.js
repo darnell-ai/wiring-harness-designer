@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.23";
+const APP_VERSION = "1.2.24";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1634,7 +1634,7 @@ function renderConnector(connector, side, rows, selected) {
     `;
   }).join("");
   const legName = legNameFor(side, connector.key);
-  const labelBlock = connectorSideLabelBlock(connector, side, legName);
+  const labelBlock = connectorSideLabelBlock(connector, legName);
   const labelX = labelBlock.x;
   const anchor = labelBlock.anchor;
   const legNameLabel = legName ? `
@@ -1654,10 +1654,11 @@ function renderConnector(connector, side, rows, selected) {
   `;
 }
 
-function connectorSideLabelBlock(connector, side, legName) {
-  const towardCenter = side === "left" ? 1 : -1;
-  const labelGap = 96;
-  const x = side === "left"
+function connectorSideLabelBlock(connector, legName) {
+  const physicalSide = connector.x < 500 ? "left" : "right";
+  const towardCenter = physicalSide === "left" ? 1 : -1;
+  const labelGap = 88;
+  const x = physicalSide === "left"
     ? connector.x + connector.width + labelGap
     : connector.x - labelGap;
   const lineGap = 18;
