@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.22 - 2026-06-06
+
+- Moved preview connector label blocks farther into the open canvas so they do not sit on top of the housing drawings.
+
 ## v1.2.21 - 2026-06-06
 
 - Moved connector, leg, and housing labels beside preview housings and enlarged the label text for readability.
