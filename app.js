@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.18";
+const APP_VERSION = "1.2.19";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1269,7 +1269,15 @@ function buildConnectors(keys, side, rows, selected) {
     const pinCount = housingPositionCount(housing);
     const family = housingFamily(housing);
     const positionData = connectorPositionData(key, side, rows);
-    const dimensions = connectorDimensions(family, pinCount, positionData.length);
+    const hasExplicitCount = housingHasExplicitPositionCount(housing);
+    const maxUsedPosition = positionData.reduce((max, item) => Math.max(max, item.position), 0);
+    const connectorPinCount = family === "dupont" && !hasExplicitCount
+      ? Math.max(pinCount, maxUsedPosition)
+      : pinCount;
+    const dimensionPinCount = family === "dupont" && !hasExplicitCount
+      ? Math.max(1, positionData.length || connectorPinCount)
+      : connectorPinCount;
+    const dimensions = connectorDimensions(family, dimensionPinCount, positionData.length);
     const x = side === "left" ? 38 : 1000 - 38 - dimensions.width;
     const connector = {
       key,
@@ -1279,7 +1287,7 @@ function buildConnectors(keys, side, rows, selected) {
       width: dimensions.width,
       height: dimensions.height,
       housing,
-      pinCount,
+      pinCount: connectorPinCount,
       positionData,
       family,
       gender: housingGender(housing)
@@ -1300,7 +1308,7 @@ function housingPositionCount(housing) {
     return catalogItem.positions;
   }
 
-  const match = housingText.match(/\b(\d{1,2})\s+(?:POS|PIN)\b/);
+  const match = housingText.match(/\b(\d{1,2})\s+(?:POS|POSITION|PIN)\b/);
   if (match) {
     return Math.max(1, Math.min(32, Number(match[1])));
   }
@@ -1310,6 +1318,16 @@ function housingPositionCount(housing) {
   }
 
   return 16;
+}
+
+function housingHasExplicitPositionCount(housing) {
+  const housingText = value(housing).toUpperCase();
+  return Boolean(
+    catalogEntryByName(housing)
+    || housingText.includes("BARREL")
+    || housingText === "RING TERMINAL"
+    || /\b\d{1,2}\s+(?:POS|POSITION|PIN)\b/.test(housingText)
+  );
 }
 
 function housingFamily(housing) {
@@ -1324,7 +1342,7 @@ function housingFamily(housing) {
   if (text.includes("MOLEX")) {
     return "molex";
   }
-  if (text.startsWith("DUPONT ")) {
+  if (text.includes("DUPONT")) {
     return "dupont";
   }
   if (text.includes("POWER POLE")) {

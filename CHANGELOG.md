@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.19 - 2026-06-06
+
+- Rendered plain Dupont headers with bottom horizontal pin positions instead of the generic vertical connector layout.
+
 ## v1.2.18 - 2026-06-05
 
 - Added left and right leg-name inputs above the editable table.
