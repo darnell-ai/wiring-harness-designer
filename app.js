@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.24";
+const APP_VERSION = "1.2.25";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -99,6 +99,7 @@ const dom = {
   summaryLeft: document.querySelector("#summaryLeft"),
   summaryRight: document.querySelector("#summaryRight"),
   summaryHousing: document.querySelector("#summaryHousing"),
+  printHarnessTitle: document.querySelector("#printHarnessTitle"),
   previewName: document.querySelector("#previewName"),
   activeCount: document.querySelector("#activeCount"),
   dnpCount: document.querySelector("#dnpCount"),
@@ -1014,6 +1015,7 @@ function renderPreview() {
   dom.previewName.textContent = hasSelectedWire
     ? selected.name || state.harnessName || "Harness preview"
     : active.length ? "Harness preview" : "No active wires";
+  dom.printHarnessTitle.textContent = state.harnessName || "Untitled Harness";
   dom.activeCount.textContent = String(active.length);
   dom.dnpCount.textContent = String(dnp);
   dom.totalLength.textContent = Number.isInteger(total) ? String(total) : total.toFixed(1);

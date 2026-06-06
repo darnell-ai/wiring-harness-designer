@@ -395,6 +395,10 @@ body.is-resizing-layout * {
   color: #9eb0a4;
 }
 
+.print-harness-title {
+  display: none;
+}
+
 .metric-row {
   display: flex;
   align-items: center;
@@ -1367,7 +1371,8 @@ body.is-resizing-column {
   }
 
   .diagram-panel {
-    display: block;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     width: 100%;
     height: calc(100vh - 0.08in);
     margin: 0;
@@ -1385,6 +1390,9 @@ body.is-resizing-column {
   .diagram-topline {
     min-height: 0;
     padding: 0.08in 0.12in;
+    border-bottom: 1px solid #d7dfd9;
+    background: #ffffff;
+    color: #101814;
   }
 
   .diagram-topline .stats {
@@ -1397,7 +1405,8 @@ body.is-resizing-column {
 
   .svg-wrap {
     overflow: hidden;
-    height: calc(100% - 0.52in);
+    min-height: 0;
+    height: auto;
   }
 
   #wirePreview {
@@ -1413,8 +1422,18 @@ body.is-resizing-column {
     font-size: 8px;
   }
 
+  .diagram-topline .print-harness-title {
+    display: block;
+    margin: 1px 0 2px;
+    color: #101814;
+    font-size: 22px;
+    line-height: 1.05;
+  }
+
   #previewName {
-    font-size: 14px;
+    display: block;
+    color: #64716a;
+    font-size: 11px;
   }
 
   .table-wrap {

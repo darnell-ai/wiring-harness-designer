@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.25 - 2026-06-06
+
+- Added the harness title to the browser print/PDF drawing header.
+
 ## v1.2.24 - 2026-06-06
 
 - Bound preview callout labels to their physical connector side so left information stays with the left housing and right information stays with the right housing.
