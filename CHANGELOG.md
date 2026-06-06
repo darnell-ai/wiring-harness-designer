@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.23 - 2026-06-06
+
+- Kept preview connector label callouts on the same side as their housings while leaving clear space from the housing drawings.
+
 ## v1.2.22 - 2026-06-06
 
 - Moved preview connector label blocks farther into the open canvas so they do not sit on top of the housing drawings.
