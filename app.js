@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.20";
+const APP_VERSION = "1.2.21";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1123,10 +1123,10 @@ function renderPreview() {
       </linearGradient>
       <style>
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .connector-label { fill: #eff8f1; font: 14px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .leg-name-label { fill: #f2c84b; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .connector-label { fill: #eff8f1; font: 16px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
+        .leg-name-label { fill: #f2c84b; font: 14px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .housing-label { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .housing-label { fill: #d6ded8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
         .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .wire-sub { fill: #eff8f1; font: 12px Segoe UI, Arial, sans-serif; font-weight: 750; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -1633,25 +1633,40 @@ function renderConnector(connector, side, rows, selected) {
       ${renderConnectorPin(connector, point, pin, isSelected, isUsed, side)}
     `;
   }).join("");
-  const labelX = connector.x + connector.width / 2;
   const legName = legNameFor(side, connector.key);
-  const connectorLabelY = connector.y - (legName ? 38 : 28);
+  const labelBlock = connectorSideLabelBlock(connector, side, legName);
+  const labelX = labelBlock.x;
+  const anchor = labelBlock.anchor;
   const legNameLabel = legName ? `
-    <text x="${labelX}" y="${connector.y - 24}" class="leg-name-label" text-anchor="middle">${escapeXml(legName)}</text>
+    <text x="${labelX}" y="${labelBlock.legNameY}" class="leg-name-label" text-anchor="${anchor}">${escapeXml(legName)}</text>
   ` : "";
-  const housingLabelY = legName ? connector.y - 8 : connector.y - 11;
   const housingLines = housingLabelLines(housing);
   const housingLabel = housingLines.map((line, index) => `
-    <tspan x="${labelX}" dy="${index === 0 ? 0 : 11}">${escapeXml(line)}</tspan>
+    <tspan x="${labelX}" dy="${index === 0 ? 0 : 14}">${escapeXml(line)}</tspan>
   `).join("");
 
   return `
-    <text x="${labelX}" y="${connectorLabelY}" class="connector-label" text-anchor="middle">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
+    <text x="${labelX}" y="${labelBlock.connectorY}" class="connector-label" text-anchor="${anchor}">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
     ${legNameLabel}
     ${renderConnectorBody(connector)}
     ${pins}
-    <text x="${labelX}" y="${housingLabelY}" class="housing-label" text-anchor="middle">${housingLabel}</text>
+    <text x="${labelX}" y="${labelBlock.housingY}" class="housing-label" text-anchor="${anchor}">${housingLabel}</text>
   `;
+}
+
+function connectorSideLabelBlock(connector, side, legName) {
+  const towardCenter = side === "left" ? 1 : -1;
+  const x = side === "left"
+    ? connector.x + connector.width + 22
+    : connector.x - 22;
+  const lineGap = 18;
+  return {
+    x: clamp(x, 24, 976),
+    anchor: towardCenter > 0 ? "start" : "end",
+    connectorY: connector.y + 18,
+    legNameY: connector.y + 18 + lineGap,
+    housingY: connector.y + 18 + (legName ? lineGap * 2 : lineGap)
+  };
 }
 
 function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {

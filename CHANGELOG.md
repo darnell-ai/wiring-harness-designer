@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.21 - 2026-06-06
+
+- Moved connector, leg, and housing labels beside preview housings and enlarged the label text for readability.
+
 ## v1.2.20 - 2026-06-06
 
 - Accepted the new production sheet import format with Cable Name, Wire Name, and labeled left/right leg cells.
