@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.30</title>
+    <title>Wiring Harness Designer v1.2.31</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.30</span>
+              <span class="version-badge">v1.2.31</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -54,9 +54,9 @@
             <span class="tool-icon">BOM</span>
             <span>BOM</span>
           </button>
-          <button id="imageImportButton" type="button" title="Import from an Excel screenshot or image">
-            <span class="tool-icon">IMG</span>
-            <span>Picture</span>
+          <button id="imageImportButton" type="button" title="Paste copied Excel rows for import">
+            <span class="tool-icon">UP</span>
+            <span>Upload</span>
           </button>
           <button id="exportJson" type="button" title="Save project JSON">
             <span class="tool-icon">SAVE</span>
@@ -83,7 +83,6 @@
             <span>Import</span>
           </button>
           <input id="importJson" class="sr-only" type="file" accept="application/json">
-          <input id="imageUpload" class="sr-only" type="file" accept="image/*">
         </div>
       </header>
 
@@ -189,29 +188,22 @@
     <dialog id="imageDialog" class="import-dialog">
       <div class="dialog-head">
         <div>
-          <span class="section-label">Picture import</span>
-          <strong>Translate screenshot to rows</strong>
+          <span class="section-label">Upload rows</span>
+          <strong>Paste spreadsheet data</strong>
         </div>
-        <button id="closeImageDialog" type="button" title="Close picture import">
+        <button id="closeImageDialog" type="button" title="Close upload">
           <span class="tool-icon">x</span>
           <span>Close</span>
         </button>
       </div>
 
       <div class="import-grid">
-        <div class="image-card">
-          <div class="image-preview-box">
-            <img id="importImagePreview" alt="Uploaded wiring table preview">
-          </div>
+        <div class="paste-card">
+          <label class="paste-input">
+            <span class="section-label">Copied rows</span>
+            <textarea id="importText" spellcheck="false" placeholder="Paste copied Excel rows, CSV, or TSV here"></textarea>
+          </label>
           <div class="import-actions">
-            <button id="chooseImageButton" type="button">
-              <span class="tool-icon">IMG</span>
-              <span>Upload</span>
-            </button>
-            <button id="readImageButton" type="button">
-              <span class="tool-icon">OCR</span>
-              <span>Read</span>
-            </button>
             <button id="translateImageText" type="button">
               <span class="tool-icon">ROW</span>
               <span>Translate</span>
@@ -221,13 +213,8 @@
               <span>Apply</span>
             </button>
           </div>
-          <p id="imageStatus" class="import-status">Upload a screenshot or paste copied Excel rows.</p>
+          <p id="imageStatus" class="import-status">Paste copied spreadsheet rows, then press Translate.</p>
         </div>
-
-        <label class="ocr-card">
-          <span class="section-label">Read text</span>
-          <textarea id="importText" spellcheck="false" placeholder="Paste OCR text, CSV, or copied Excel rows here"></textarea>
-        </label>
       </div>
 
       <div class="import-preview">

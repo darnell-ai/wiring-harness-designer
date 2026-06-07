@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.31 - 2026-06-07
+
+- Renamed the Picture toolbar action to Upload.
+- Removed screenshot upload and browser OCR controls from row import.
+- Kept pasted spreadsheet row translation as the import workflow.
+
 ## v1.2.30 - 2026-06-07
 
 - Removed the selected-wire summary panel from the preview area.

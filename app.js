@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.30";
+const APP_VERSION = "1.2.31";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -118,14 +118,10 @@ const dom = {
   importJson: document.querySelector("#importJson"),
   importJsonButton: document.querySelector("#importJsonButton"),
   imageImportButton: document.querySelector("#imageImportButton"),
-  imageUpload: document.querySelector("#imageUpload"),
   imageDialog: document.querySelector("#imageDialog"),
   closeImageDialog: document.querySelector("#closeImageDialog"),
-  chooseImageButton: document.querySelector("#chooseImageButton"),
-  readImageButton: document.querySelector("#readImageButton"),
   translateImageText: document.querySelector("#translateImageText"),
   applyImageRows: document.querySelector("#applyImageRows"),
-  importImagePreview: document.querySelector("#importImagePreview"),
   imageStatus: document.querySelector("#imageStatus"),
   importText: document.querySelector("#importText"),
   importPreviewCount: document.querySelector("#importPreviewCount"),
@@ -190,7 +186,6 @@ let undoStack = [];
 let toastTimer = 0;
 let pendingImportRows = [];
 let pendingImportContext = { harnessName: "", legNames: { left: {}, right: {} } };
-let currentImageFile = null;
 let selectedCatalogId = "";
 
 function catalogIdFor(name) {
@@ -3112,6 +3107,7 @@ function exportCsv() {
 
 function openImageImport() {
   renderImportPreview([]);
+  dom.imageStatus.textContent = "Paste copied spreadsheet rows, then press Translate.";
   if (typeof dom.imageDialog.showModal === "function") {
     dom.imageDialog.showModal();
   } else {
@@ -3121,47 +3117,6 @@ function openImageImport() {
 
 function closeImageImport() {
   dom.imageDialog.close();
-}
-
-function chooseImage() {
-  dom.imageUpload.click();
-}
-
-function loadImageFile(file) {
-  currentImageFile = file;
-  const reader = new FileReader();
-  reader.addEventListener("load", () => {
-    dom.importImagePreview.src = reader.result;
-    dom.imageStatus.textContent = `${file.name} loaded.`;
-    openImageImport();
-  });
-  reader.readAsDataURL(file);
-}
-
-async function readImageText() {
-  if (!currentImageFile) {
-    dom.imageStatus.textContent = "Upload a picture first.";
-    return;
-  }
-
-  if (!("TextDetector" in window)) {
-    dom.imageStatus.textContent = "Automatic picture reading is not available in this browser. Paste OCR text or copied Excel rows, then press Translate.";
-    return;
-  }
-
-  try {
-    dom.imageStatus.textContent = "Reading picture...";
-    const bitmap = await createImageBitmap(currentImageFile);
-    const detector = new TextDetector();
-    const detections = await detector.detect(bitmap);
-    const detectedText = detections.map((item) => item.rawValue).filter(Boolean).join("\n");
-    dom.importText.value = detectedText;
-    const rows = rowsFromDetectedText(detections, bitmap.width);
-    setPendingImportRows(rows.length ? rows : parseImportText(detectedText));
-    dom.imageStatus.textContent = `${pendingImportRows.length} row(s) translated from the picture.`;
-  } catch (error) {
-    dom.imageStatus.textContent = "The picture could not be read automatically. Paste OCR text or copied Excel rows, then press Translate.";
-  }
 }
 
 function translateImageText() {
@@ -3180,7 +3135,7 @@ function setPendingImportRows(rows) {
 
 function applyImportedRows() {
   if (!pendingImportRows.length) {
-    dom.imageStatus.textContent = "Translate rows before applying.";
+    dom.imageStatus.textContent = "Translate pasted rows before applying.";
     return;
   }
 
@@ -3250,81 +3205,6 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.comments)}</td>
     </tr>
   `).join("");
-}
-
-function rowsFromDetectedText(detections, imageWidth) {
-  const items = detections
-    .map((item) => ({
-      text: value(item.rawValue).trim(),
-      x: item.boundingBox?.x || 0,
-      width: item.boundingBox?.width || 0,
-      y: item.boundingBox?.y || 0,
-      height: item.boundingBox?.height || 16
-    }))
-    .filter((item) => item.text);
-
-  items.sort((a, b) => a.y - b.y || a.x - b.x);
-  const lines = [];
-  items.forEach((item) => {
-    const lastLine = lines[lines.length - 1];
-    const threshold = Math.max(10, item.height * 0.9);
-    if (lastLine && Math.abs(lastLine.y - item.y) <= threshold) {
-      lastLine.items.push(item);
-      lastLine.y = (lastLine.y + item.y) / 2;
-    } else {
-      lines.push({ y: item.y, items: [item] });
-    }
-  });
-
-  const columnCenters = [
-    0.028,
-    0.086,
-    0.146,
-    0.197,
-    0.239,
-    0.284,
-    0.343,
-    0.394,
-    0.44,
-    0.481,
-    0.528,
-    0.567,
-    0.595,
-    0.624,
-    0.667,
-    0.716,
-    0.769,
-    0.822,
-    0.884,
-    0.952,
-    0.987
-  ];
-  const text = lines.map((line) => {
-    const cells = Array.from({ length: columnCenters.length }, () => []);
-    line.items
-      .sort((a, b) => a.x - b.x)
-      .forEach((item) => {
-        const center = (item.x + item.width / 2) / Math.max(1, imageWidth || 1);
-        const column = nearestColumn(center, columnCenters);
-        cells[column].push(item.text);
-      });
-    return cells.map((cell) => cell.join(" ").trim()).join("\t");
-  }).join("\n");
-
-  return parseImportText(text);
-}
-
-function nearestColumn(center, columns) {
-  let bestIndex = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  columns.forEach((columnCenter, index) => {
-    const distance = Math.abs(center - columnCenter);
-    if (distance < bestDistance) {
-      bestIndex = index;
-      bestDistance = distance;
-    }
-  });
-  return bestIndex;
 }
 
 function parseImportText(text) {
@@ -4345,8 +4225,6 @@ dom.bomAllowance.addEventListener("change", () => {
 dom.exportBom.addEventListener("click", exportBomCsv);
 dom.imageImportButton.addEventListener("click", openImageImport);
 dom.closeImageDialog.addEventListener("click", closeImageImport);
-dom.chooseImageButton.addEventListener("click", chooseImage);
-dom.readImageButton.addEventListener("click", readImageText);
 dom.translateImageText.addEventListener("click", translateImageText);
 dom.applyImageRows.addEventListener("click", applyImportedRows);
 dom.exportJson.addEventListener("click", exportJson);
@@ -4361,13 +4239,6 @@ dom.importJson.addEventListener("change", () => {
     importJson(file);
   }
   dom.importJson.value = "";
-});
-dom.imageUpload.addEventListener("change", () => {
-  const [file] = dom.imageUpload.files;
-  if (file) {
-    loadImageFile(file);
-  }
-  dom.imageUpload.value = "";
 });
 dom.importText.addEventListener("input", () => {
   if (dom.importText.value.trim()) {

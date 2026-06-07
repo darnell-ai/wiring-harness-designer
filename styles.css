@@ -1084,46 +1084,23 @@ body.is-resizing-column {
 
 .import-grid {
   display: grid;
-  grid-template-columns: minmax(340px, 0.9fr) minmax(420px, 1.1fr);
+  grid-template-columns: 1fr;
   gap: 14px;
   padding: 14px 16px;
 }
 
-.image-card,
-.ocr-card,
+.paste-card,
 .import-preview {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #ffffff;
 }
 
-.image-card {
+.paste-card {
   display: grid;
-  grid-template-rows: minmax(220px, 1fr) auto auto;
+  grid-template-rows: minmax(260px, 1fr) auto auto;
   min-height: 390px;
   overflow: hidden;
-}
-
-.image-preview-box {
-  display: grid;
-  place-items: center;
-  min-height: 260px;
-  background:
-    linear-gradient(rgba(24, 33, 29, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(24, 33, 29, 0.06) 1px, transparent 1px),
-    #eef3eb;
-  background-size: 20px 20px;
-}
-
-.image-preview-box img {
-  display: block;
-  max-width: 100%;
-  max-height: 330px;
-  object-fit: contain;
-}
-
-.image-preview-box img:not([src]) {
-  display: none;
 }
 
 .import-actions {
@@ -1145,14 +1122,13 @@ body.is-resizing-column {
   padding: 11px 12px;
 }
 
-.ocr-card {
+.paste-input {
   display: grid;
   grid-template-rows: auto 1fr;
-  min-height: 390px;
   padding: 12px;
 }
 
-.ocr-card textarea {
+.paste-input textarea {
   width: 100%;
   min-height: 320px;
   resize: vertical;
@@ -1167,7 +1143,7 @@ body.is-resizing-column {
   line-height: 1.45;
 }
 
-.ocr-card textarea:focus {
+.paste-input textarea:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 3px rgba(65, 184, 131, 0.2);
 }
