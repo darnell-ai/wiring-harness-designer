@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.47 - 2026-06-07
+
+- Added a dedicated Mini-Fit Jr family renderer that scales by circuit count and follows Molex's row numbering layout.
+- Added a Mini-Fit Jr pinout reference image to the built-in catalog entry.
+
 ## v1.2.46 - 2026-06-07
 
 - Added built-in TE CPC 16-position male and female housings with a round-face pinout preview.

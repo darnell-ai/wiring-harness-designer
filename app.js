@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.46";
+const APP_VERSION = "1.2.47";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -107,6 +107,67 @@ function buildRJ45PinoutImage(title, scheme) {
 
 const RJ45_PLUG_IMAGE = buildRJ45PinoutImage("RJ45 PLUG", "T568B");
 const RJ45_JACK_IMAGE = buildRJ45PinoutImage("RJ45 JACK", "T568B");
+
+function buildMiniFitPinoutImage(title, circuitCount, rowMode = "dual") {
+  const pinCount = Math.max(1, Math.min(24, numberOrDefault(circuitCount, 1)));
+  const dualRow = rowMode !== "single" && pinCount > 1;
+  const bottomCount = dualRow ? Math.ceil(pinCount / 2) : pinCount;
+  const topCount = dualRow ? pinCount - bottomCount : 0;
+  const columns = dualRow ? Math.max(bottomCount, topCount || 1) : pinCount;
+  const slotW = 34;
+  const slotH = 28;
+  const gapX = 8;
+  const bodyWidth = columns * slotW + Math.max(0, columns - 1) * gapX + 44;
+  const bodyHeight = dualRow ? 132 : 102;
+  const bodyX = Math.round((900 - bodyWidth) / 2);
+  const bodyY = 118;
+  const topY = bodyY + 28;
+  const bottomY = dualRow ? bodyY + 68 : bodyY + 40;
+  const pinRows = dualRow
+    ? [
+        Array.from({ length: topCount }, (_, index) => pinCount - index),
+        Array.from({ length: bottomCount }, (_, index) => bottomCount - index)
+      ]
+    : [Array.from({ length: pinCount }, (_, index) => pinCount - index)];
+  const rowYs = dualRow ? [topY, bottomY] : [bottomY];
+
+  const slots = pinRows.map((pins, rowIndex) => pins.map((pin, colIndex) => {
+    const x = bodyX + 22 + colIndex * (slotW + gapX);
+    const y = rowYs[rowIndex];
+    return `
+      <path d="M ${x} ${y}
+        H ${x + slotW}
+        V ${y + slotH - 4}
+        L ${x + slotW / 2} ${y + slotH}
+        L ${x} ${y + slotH - 4}
+        Z" fill="#f8faf5" stroke="#8f9891" stroke-width="1.7" />
+      <text x="${x + slotW / 2}" y="${y + 19}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="900" fill="#1f2722">${pin}</text>
+    `;
+  }).join("")).join("");
+
+  const note = dualRow
+    ? "Pin 1 is bottom-right; numbering proceeds right-to-left on each row."
+    : "Pin 1 is rightmost; numbering proceeds right-to-left.";
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-label="${title} ${pinCount} circuit pinout">
+      <rect width="900" height="420" rx="28" fill="#eef4ef" />
+      <text x="54" y="56" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="900" fill="#1f2722">${title}</text>
+      <text x="54" y="86" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="#5d6a64">${dualRow ? "DUAL ROW" : "SINGLE ROW"} / ${pinCount} CIRCUITS / 4.20 MM PITCH</text>
+      <g>
+        <path d="M ${bodyX + 10} ${bodyY + 6} H ${bodyX + bodyWidth - 10} L ${bodyX + bodyWidth} ${bodyY + 18} V ${bodyY + bodyHeight - 12} L ${bodyX + bodyWidth - 10} ${bodyY + bodyHeight} H ${bodyX + 10} L ${bodyX} ${bodyY + bodyHeight - 12} V ${bodyY + 18} Z" fill="#d8d7cb" stroke="#7f857c" stroke-width="3" />
+        <rect x="${bodyX + 12}" y="${bodyY + 18}" width="${bodyWidth - 24}" height="${bodyHeight - 28}" rx="6" fill="#b9bbb0" stroke="#f2f4ee" stroke-width="2" />
+        <path d="M ${bodyX + bodyWidth / 2 - 24} ${bodyY + 4} L ${bodyX + bodyWidth / 2 - 14} ${bodyY - 10} H ${bodyX + bodyWidth / 2 + 14} L ${bodyX + bodyWidth / 2 + 24} ${bodyY + 4}" fill="#e5e4dc" stroke="#8d9590" stroke-width="2" />
+        ${slots}
+      </g>
+      <text x="450" y="388" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="750" fill="#4d5a54">${note}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+const MINI_FIT_PINOUT_IMAGE = buildMiniFitPinoutImage("MINI-FIT JR", 20, "dual");
 
 const CPC_CONTACT_LAYOUT = [
   { pin: 2, dx: -16, dy: -38 },
@@ -430,7 +491,7 @@ function defaultCatalog() {
       });
     }),
     ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
-    catalogEntry("MOLEX MINI-FIT", "Connector", "molex", 16, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal" }),
+    catalogEntry("MOLEX MINI-FIT", "Connector", "minifit", 20, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal", notes: "Mini-Fit Jr dual-row family; the preview scales with circuit count.", imageUrl: MINI_FIT_PINOUT_IMAGE }),
     catalogEntry("BARREL CONNECTION", "Connector", "barrel", 2, { terminalType: "Barrel connector lead", notes: "DC barrel plug or jack pigtail connection" }),
     catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
     catalogEntry("SPLICE", "Splice", "splice", 1, { terminalType: "Window splice" })
@@ -480,19 +541,20 @@ function mergeDefaultCatalogDetails(entry, defaultEntry) {
   }
 
   const defaultPositionUpdate = entry.name === "BARREL CONNECTION" && defaultEntry.positions === 2;
+  const miniFitUpdate = entry.name === "MOLEX MINI-FIT";
   return {
     ...entry,
     category: entry.category || defaultEntry.category,
-    family: entry.family || defaultEntry.family,
-    positions: defaultPositionUpdate ? defaultEntry.positions : entry.positions || defaultEntry.positions,
+    family: miniFitUpdate ? defaultEntry.family : entry.family || defaultEntry.family,
+    positions: defaultPositionUpdate || miniFitUpdate ? defaultEntry.positions : entry.positions || defaultEntry.positions,
     manufacturer: entry.manufacturer || defaultEntry.manufacturer,
     partNumber: entry.partNumber || defaultEntry.partNumber,
     gender: entry.gender || defaultEntry.gender,
     terminalType: entry.terminalType || defaultEntry.terminalType,
     terminalPart: entry.terminalPart || defaultEntry.terminalPart,
     sealPart: entry.sealPart || defaultEntry.sealPart,
-    imageUrl: entry.imageUrl || defaultEntry.imageUrl,
-    notes: entry.notes || defaultEntry.notes
+    imageUrl: miniFitUpdate ? defaultEntry.imageUrl : entry.imageUrl || defaultEntry.imageUrl,
+    notes: miniFitUpdate ? defaultEntry.notes : entry.notes || defaultEntry.notes
   };
 }
 
@@ -1508,7 +1570,8 @@ function buildConnectors(keys, side, rows, selected) {
     const dimensionPinCount = family === "dupont" && !hasExplicitCount
       ? Math.max(1, positionData.length || connectorPinCount)
       : connectorPinCount;
-    const dimensions = connectorDimensions(family, dimensionPinCount, positionData.length);
+    const rowMode = family === "minifit" ? minifitRowMode(housing, connectorPinCount) : "";
+    const dimensions = connectorDimensions(family, dimensionPinCount, positionData.length, rowMode);
     const x = side === "left" ? 38 : 1000 - 38 - dimensions.width;
     const connector = {
       key,
@@ -1521,6 +1584,7 @@ function buildConnectors(keys, side, rows, selected) {
       pinCount: connectorPinCount,
       positionData,
       family,
+      rowMode,
       gender: housingGender(housing)
     };
     y += dimensions.height + gap;
@@ -1582,6 +1646,9 @@ function housingFamily(housing) {
   if (text.includes("CPC")) {
     return "cpc";
   }
+  if (text.includes("MINI-FIT")) {
+    return "minifit";
+  }
   if (text.includes("MOLEX")) {
     return "molex";
   }
@@ -1624,12 +1691,32 @@ function housingGender(housing) {
   return "";
 }
 
-function connectorDimensions(family, pinCount, positionCount) {
+function minifitRowMode(housing, pinCount) {
+  const text = value(housing).trim().toUpperCase();
+  if (text.includes("SINGLE ROW")) {
+    return "single";
+  }
+  if (text.includes("DUAL ROW")) {
+    return "dual";
+  }
+  return pinCount === 1 ? "single" : "dual";
+}
+
+function connectorDimensions(family, pinCount, positionCount, rowMode = "") {
   if (family === "subconn") {
     return { width: 176, height: 176 };
   }
   if (family === "cpc") {
     return { width: 176, height: 176 };
+  }
+  if (family === "minifit") {
+    const count = Math.max(1, pinCount || 1);
+    const dualRow = rowMode !== "single" && count > 1;
+    const columns = dualRow ? Math.max(1, Math.ceil(count / 2)) : count;
+    return {
+      width: clamp(76 + Math.max(0, columns - 1) * 30, 120, 368),
+      height: dualRow ? 128 : 94
+    };
   }
   if (family === "powerpole") {
     const count = Math.max(1, positionCount || 1);
@@ -1960,6 +2047,40 @@ function renderConnectorBody(connector) {
     `;
   }
 
+  if (family === "minifit") {
+    const metrics = minifitContactMetrics(connector);
+    const outerFill = "#d9d8cb";
+    const outerStroke = "#7f857c";
+    const innerFill = "#b8b9ad";
+    const innerStroke = "#f2f4ee";
+    const latchFill = "#e5e5dc";
+    const latchStroke = "#89908a";
+    const slotFill = "#f6f7f1";
+    const slotStroke = "#8c948e";
+    const slots = Array.from({ length: metrics.pinCount }, (_, index) => {
+      const pin = index + 1;
+      const point = minifitContactPoint(connector, pin);
+      const slotX = point.x - metrics.slotWidth / 2;
+      const slotY = point.y - metrics.slotHeight / 2;
+      return `
+        <path d="M ${slotX} ${slotY}
+          H ${slotX + metrics.slotWidth}
+          V ${slotY + metrics.slotHeight - 4}
+          L ${point.x} ${slotY + metrics.slotHeight}
+          L ${slotX} ${slotY + metrics.slotHeight - 4}
+          Z" fill="${slotFill}" stroke="${slotStroke}" stroke-width="1.6" />
+        <text x="${point.x}" y="${point.y + 5}" class="pin-number" text-anchor="middle">${pin}</text>
+      `;
+    }).join("");
+    return `
+      <path d="M ${x + 10} ${y + 6} H ${x + width - 10} L ${x + width} ${y + 18} V ${y + height - 10} L ${x + width - 10} ${y + height} H ${x + 10} L ${x} ${y + height - 10} V ${y + 18} Z" fill="${outerFill}" stroke="${outerStroke}" stroke-width="3" />
+      <rect x="${x + 13}" y="${y + 18}" width="${width - 26}" height="${height - 28}" rx="4" fill="${innerFill}" stroke="${innerStroke}" stroke-width="2" />
+      <path d="M ${centerX - 26} ${y + 3} L ${centerX - 16} ${y - 11} H ${centerX + 16} L ${centerX + 26} ${y + 3}" fill="${latchFill}" stroke="${latchStroke}" stroke-width="2" />
+      <path d="M ${x + 16} ${y + height - 18} H ${x + width - 16}" stroke="#737b74" stroke-width="3" opacity="0.75" />
+      ${slots}
+    `;
+  }
+
   if (family === "molex") {
     const lock = value(connector.housing).toUpperCase().includes("SIDE LOCK");
     const lockX = side === "left" ? x + width - 7 : x - 9;
@@ -2097,6 +2218,11 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     `;
   } else if (connector.family === "dupont") {
     contact = `<rect x="${point.x - 6}" y="${point.y - 6}" width="12" height="12" rx="2" fill="${isUsed ? "#d8efe2" : "#171d19"}" stroke="${isUsed ? "#41b883" : "#77847c"}" stroke-width="2" />`;
+  } else if (connector.family === "minifit") {
+    const metrics = minifitContactMetrics(connector);
+    const markerX = point.x - metrics.slotWidth / 2 + 5;
+    const markerY = point.y - metrics.slotHeight / 2 + 5;
+    contact = `<rect x="${markerX}" y="${markerY}" width="8" height="8" rx="2" fill="${isUsed ? "#2f8e6e" : "#202823"}" stroke="${isUsed ? "#cdeedf" : "#8a938d"}" stroke-width="1.4" opacity="${isUsed ? "0.95" : "0.75"}" />`;
   } else if (connector.family === "rj45") {
     contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${isUsed ? "#e1bb68" : "#151d18"}" stroke="${isUsed ? "#f7e0a2" : "#6d776f"}" stroke-width="1.8" />`;
   } else if (connector.family === "molex") {
@@ -2115,6 +2241,10 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     const fill = isUsed ? "#d8efe2" : "#f6fbf4";
     const stroke = isUsed ? "#41b883" : "#9fac9f";
     contact = `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="${fill}" stroke="${stroke}" stroke-width="2" />`;
+  }
+
+  if (connector.family === "minifit") {
+    return contact;
   }
 
   const radialSide = point.x >= centerX;
@@ -2177,6 +2307,60 @@ function connectorHousing(key, side, rows, selected) {
     : match?.rightHousing || "Right housing not set";
 }
 
+function minifitContactMetrics(connector) {
+  const pinCount = Math.max(1, connector?.pinCount || 1);
+  const rowMode = connector?.rowMode || minifitRowMode(connector?.housing, pinCount);
+  const dualRow = rowMode !== "single" && pinCount > 1;
+  const bottomCount = dualRow ? Math.ceil(pinCount / 2) : pinCount;
+  const topCount = dualRow ? pinCount - bottomCount : 0;
+  const columns = dualRow ? Math.max(bottomCount, topCount || 1) : pinCount;
+  const padX = columns === 1 ? 22 : 18;
+  const pitch = columns > 1 ? (connector.width - padX * 2) / (columns - 1) : 0;
+  const topY = dualRow ? connector.y + 46 : connector.y + connector.height / 2;
+  const bottomY = dualRow ? connector.y + 76 : topY;
+  const slotWidth = columns > 1 ? Math.max(18, Math.min(26, pitch * 0.7)) : 22;
+  const slotHeight = dualRow ? 28 : 30;
+
+  return {
+    pinCount,
+    rowMode,
+    dualRow,
+    bottomCount,
+    topCount,
+    columns,
+    padX,
+    pitch,
+    topY,
+    bottomY,
+    slotWidth,
+    slotHeight
+  };
+}
+
+function minifitContactPoint(connector, pin) {
+  const metrics = minifitContactMetrics(connector);
+  const safePin = Math.max(1, Math.min(metrics.pinCount, numberOrDefault(pin, 1)));
+  let rowIndex = 0;
+  let colIndex = 0;
+
+  if (!metrics.dualRow) {
+    colIndex = metrics.pinCount - safePin;
+  } else if (safePin <= metrics.bottomCount) {
+    rowIndex = 1;
+    colIndex = metrics.bottomCount - safePin;
+  } else {
+    rowIndex = 0;
+    colIndex = metrics.pinCount - safePin;
+  }
+
+  return {
+    x: connector.x + metrics.padX + (metrics.columns > 1 ? colIndex * metrics.pitch : 0),
+    y: rowIndex === 0 ? metrics.topY : metrics.bottomY,
+    rowIndex,
+    colIndex
+  };
+}
+
 function connectorContactPoint(connector, pin, side) {
   if (!connector) {
     return { x: side === "left" ? 150 : 850, y: 180 };
@@ -2209,6 +2393,10 @@ function connectorContactPoint(connector, pin, side) {
 
   if (connector.family === "cpc") {
     return cpcContactPoint(connector, safePin);
+  }
+
+  if (connector.family === "minifit") {
+    return minifitContactPoint(connector, safePin);
   }
 
   if (connector.family === "pcb") {
@@ -2268,10 +2456,10 @@ function pinPoint(connector, pin, side) {
   const lane = connector.family === "cpc"
     ? safePin - 1
     : usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc") {
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit") {
     return {
       x: contact.x,
-      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" ? connector.y + connector.height + 6 : contact.y,
+      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit" ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,
