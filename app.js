@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.37";
+const APP_VERSION = "1.2.38";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1102,13 +1102,6 @@ function renderPreview() {
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
-  const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
-  const lengthText = selected.length
-    ? /\b(in|inch|inches)\b/i.test(selected.length)
-      ? escapeXml(selected.length).toUpperCase()
-      : `${escapeXml(selected.length)} IN`
-    : "LENGTH NOT SET";
-  const gaugeText = selected.awg ? `${escapeXml(selected.awg)} AWG` : "AWG NOT SET";
   const heatshrinkLabels = [
     renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight),
     renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight)
@@ -1142,19 +1135,18 @@ function renderPreview() {
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
   `;
 
-  const infoBoxWidth = state.harnessName ? 356 : 236;
+  const cableNameText = shortLabel(state.harnessName || "", 14);
+  const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
+  const infoBoxWidth = state.harnessName ? cableNameWidth + 40 : 236;
   const cableNameMarkup = state.harnessName ? `
     <g class="cable-name-tag" aria-label="Cable name ${escapeXml(state.harnessName)}">
-      <rect x="${labelX + infoBoxWidth - 112}" y="${labelY + 15}" width="94" height="46" rx="4" />
-      <text x="${labelX + infoBoxWidth - 65}" y="${labelY + 44}" text-anchor="middle">${escapeXml(shortLabel(state.harnessName, 14))}</text>
+      <rect x="${labelX + infoBoxWidth - cableNameWidth - 12}" y="${labelY + 15}" width="${cableNameWidth}" height="46" rx="4" />
+      <text x="${labelX + infoBoxWidth - (cableNameWidth / 2) - 12}" y="${labelY + 44}" text-anchor="middle">${escapeXml(cableNameText)}</text>
     </g>
   ` : "";
 
-  const selectedInfoBoxMarkup = hasSelectedWire ? `
+  const selectedInfoBoxMarkup = hasSelectedWire && state.harnessName ? `
     <rect x="${labelX}" y="${labelY}" width="${infoBoxWidth}" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
-    <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
-    <text x="${labelX + 20}" y="${labelY + 49}" class="wire-label">${gaugeText} / ${lengthText}</text>
-    <text x="${labelX + 20}" y="${labelY + 69}" class="wire-label">${escapeXml(selected.color || "COLOR NOT SET")}</text>
     ${cableNameMarkup}
   ` : "";
 
@@ -1177,7 +1169,6 @@ function renderPreview() {
       <style>
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-name-tag.selected text { font-weight: 950; }
         .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.97; }

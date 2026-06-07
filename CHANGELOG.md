@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.38 - 2026-06-07
+
+- Removed the selected wire detail text from the white preview box and kept only the wire name badge.
+
 ## v1.2.37 - 2026-06-07
 
 - Moved the purple cable-name label into the white wire detail box above the preview.
