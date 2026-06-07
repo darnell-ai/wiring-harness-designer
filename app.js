@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.38";
+const APP_VERSION = "1.2.39";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1171,7 +1171,7 @@ function renderPreview() {
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-name-tag.selected text { font-weight: 950; }
-        .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.97; }
+        .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.25; }
         .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-housing { fill: #c9d3cb; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
