@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.27 - 2026-06-07
+
+- Renamed both terminal part-number table headers from Pin # to Pin P#.
+
 ## v1.2.26 - 2026-06-07
 
 - Added separate Left Leg Name and Right Leg Name columns while keeping left/right leg values as numbers.

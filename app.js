@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.26";
+const APP_VERSION = "1.2.27";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -47,7 +47,7 @@ const EXPORT_HEADERS = [
   "Do Not Place",
   "Housing Type",
   "Housing Part #",
-  "Pin #",
+  "Pin P#",
   "AWGuage",
   "Color",
   "Length inches",
@@ -58,7 +58,7 @@ const EXPORT_HEADERS = [
   "Pin Pos #",
   "Do Not Place",
   "Housing Part #",
-  "Pin #",
+  "Pin P#",
   "Housing Type",
   "Tool used",
   "Comments"
@@ -3627,7 +3627,7 @@ function headerKey(input) {
   if (text.includes("housing part")) {
     return "housingPart";
   }
-  if (text === "pin number" || text === "pin no" || text === "pin") {
+  if (text === "pin number" || text === "pin no" || text === "pin pnumber" || text === "pin p number" || text === "pin p" || text === "pin") {
     return "terminalPart";
   }
   if (text.includes("housing type") || text === "housing") {
@@ -4111,7 +4111,7 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Wire Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Type</th><th>Housing Part #</th><th>Pin #</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Part #</th><th>Pin #</th><th>Housing Type</th><th>Tool used</th><th>Comments</th>
+        <th>#</th><th>Wire Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Part #</th><th>Pin P#</th><th>Housing Type</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
