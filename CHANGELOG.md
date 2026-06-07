@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.50 - 2026-06-07
+
+- Reworked wire routing so left-side wires drop beside the source connector and right-side wires rise beside their destinations before meeting through the middle lane.
+- Lowered the left connector column when the right side has a tall connector stack so the bundle meets closer to the center of the drawing.
+- Removed the tall center drop created by the previous route pass.
+
 ## v1.2.49 - 2026-06-07
 
 - Changed wire routing to leave the left connector horizontally first, then drop into the shared lane and finish with a shorter connector run.

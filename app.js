@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.49";
+const APP_VERSION = "1.2.50";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1639,9 +1639,10 @@ function renderPreview() {
   const previewRows = active;
   const leftConnectors = buildConnectors(legKeys(previewRows, "left", selected), "left", previewRows, selected);
   const rightConnectors = buildConnectors(legKeys(previewRows, "right", selected), "right", previewRows, selected);
+  balanceConnectorColumns(leftConnectors, rightConnectors);
   const leftMap = new Map(leftConnectors.map((connector) => [connector.key, connector]));
   const rightMap = new Map(rightConnectors.map((connector) => [connector.key, connector]));
-  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors);
+  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors, active.length);
   const previewHeight = previewCanvasHeight(leftConnectors, rightConnectors, active.length);
   const selectedWireIndex = Math.max(0, previewRows.findIndex((item) => item.id === selected.id));
   const splicePoints = buildSplicePoints(previewRows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight);
@@ -1923,6 +1924,28 @@ function buildConnectors(keys, side, rows, selected) {
   });
 }
 
+function balanceConnectorColumns(leftConnectors, rightConnectors) {
+  if (!leftConnectors.length || !rightConnectors.length) {
+    return;
+  }
+
+  const leftTop = connectorTop(leftConnectors, []);
+  const leftBottom = connectorBottom(leftConnectors, []);
+  const rightTop = connectorTop([], rightConnectors);
+  const rightBottom = connectorBottom([], rightConnectors);
+  const rightHeight = rightBottom - rightTop;
+  const leftHeight = leftBottom - leftTop;
+  if (rightHeight <= leftHeight + 160) {
+    return;
+  }
+
+  const targetTop = Math.round(rightTop + Math.min(160, rightHeight * 0.14));
+  const shift = Math.max(0, targetTop - leftTop);
+  leftConnectors.forEach((connector) => {
+    connector.y += shift;
+  });
+}
+
 function housingPositionCount(housing) {
   const housingText = value(housing).toUpperCase();
   if (housingText.includes("BARREL")) {
@@ -2105,14 +2128,32 @@ function connectorBottom(leftConnectors, rightConnectors) {
   return Math.ceil(Math.max(...allConnectors.map((connector) => connector.y + connector.height)));
 }
 
-function wireRouteBase(leftConnectors, rightConnectors) {
-  return Math.max(220, connectorBottom(leftConnectors, rightConnectors) - 180);
+function connectorTop(leftConnectors, rightConnectors) {
+  const allConnectors = [...leftConnectors, ...rightConnectors];
+  if (!allConnectors.length) {
+    return 54;
+  }
+
+  return Math.floor(Math.min(...allConnectors.map((connector) => connector.y)));
+}
+
+function wireRouteBase(leftConnectors, rightConnectors, wireCount = 0) {
+  const top = connectorTop(leftConnectors, rightConnectors);
+  const bottom = connectorBottom(leftConnectors, rightConnectors);
+  const leftBottom = leftConnectors.length ? connectorBottom(leftConnectors, []) : bottom;
+  const routeSpan = Math.max(0, Math.max(1, wireCount) - 1) * WIRE_LANE_GAP;
+  const centeredBase = (top + bottom) / 2 - routeSpan / 2;
+  const sourceDropBase = leftBottom + 70;
+  const lowerBound = Math.max(220, sourceDropBase);
+  const upperBound = Math.max(lowerBound, bottom - routeSpan - 120);
+  return Math.round(clamp(Math.max(centeredBase, sourceDropBase), lowerBound, upperBound));
 }
 
 function previewCanvasHeight(leftConnectors, rightConnectors, wireCount = 0) {
-  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors);
+  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors, wireCount);
   return Math.max(
     360,
+    connectorBottom(leftConnectors, rightConnectors) + 74,
     routeBaseY + Math.max(1, wireCount) * WIRE_LANE_GAP + 54
   );
 }
@@ -2831,10 +2872,16 @@ function clamp(input, min, max) {
 function wirePath(start, end, index, routeBaseY) {
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
-    const splitX = wireSplitX(start, end);
+    const startDropY = bottomDropY(start, index, laneY);
+    const endDropY = bottomDropY(end, index, laneY);
+    const startBusX = bottomBusX(start, index);
+    const endBusX = bottomBusX(end, index);
     return `M ${start.x} ${start.y}
-      H ${splitX}
+      V ${startDropY}
+      H ${startBusX}
       V ${laneY}
+      H ${endBusX}
+      V ${endDropY}
       H ${end.x}
       V ${end.y}`;
   }
@@ -2851,9 +2898,14 @@ function wirePath(start, end, index, routeBaseY) {
   return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
 }
 
-function bottomDropY(point, index) {
+function bottomDropY(point, index, laneY = point.y) {
   const routeIndex = Math.max(0, index);
-  return point.y + 26 + routeIndex * WIRE_EXIT_GAP;
+  const offset = 26 + routeIndex * WIRE_EXIT_GAP;
+  if (point.y > laneY) {
+    return Math.max(laneY, point.y - offset);
+  }
+
+  return Math.min(laneY, point.y + offset);
 }
 
 function bottomBusX(point, index) {
@@ -2869,18 +2921,14 @@ function bottomBusX(point, index) {
 
 function bottomExitWirePath(bottom, other, index, routeBaseY) {
   const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
-  const splitX = wireSplitX(bottom, other);
+  const dropY = bottomDropY(bottom, index, laneY);
+  const busX = bottomBusX(bottom, index);
   return `M ${bottom.x} ${bottom.y}
-    H ${splitX}
+    V ${dropY}
+    H ${busX}
     V ${laneY}
     H ${other.x}
     V ${other.y}`;
-}
-
-function wireSplitX(start, end) {
-  const minX = Math.min(start.x, end.x) + 32;
-  const maxX = Math.max(start.x, end.x) - 32;
-  return clamp((start.x + end.x) / 2, minX, maxX);
 }
 
 function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
@@ -2889,13 +2937,17 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
 
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    return wireLaneLabelPosition(wireSplitX(start, end), laneY, previewHeight, sideMargin);
+    const startBusX = bottomBusX(start, index);
+    const endBusX = bottomBusX(end, index);
+    return wireLaneLabelPosition((startBusX + endBusX) / 2, laneY, previewHeight, sideMargin);
   }
 
   if (start.exit === "bottom" || end.exit === "bottom") {
     const bottom = start.exit === "bottom" ? start : end;
+    const other = start.exit === "bottom" ? end : start;
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    return wireLaneLabelPosition(wireSplitX(bottom, start.exit === "bottom" ? end : start), laneY, previewHeight, sideMargin);
+    const busX = bottomBusX(bottom, index);
+    return wireLaneLabelPosition((busX + other.x) / 2, laneY, previewHeight, sideMargin);
   }
 
   const x = (start.x + end.x) / 2;
@@ -2983,7 +3035,7 @@ function heatshrinkBox(point, index, routeBaseY, previewHeight) {
 
   if (point.exit === "bottom") {
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const dropY = bottomDropY(point, index);
+    const dropY = bottomDropY(point, index, laneY);
     x = bottomBusX(point, index);
     y = (dropY + laneY) / 2;
   } else {
