@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.42";
+const APP_VERSION = "1.2.43";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -3198,18 +3198,27 @@ function exportCsv() {
   showToast("CSV table exported.");
 }
 
-function openImageImport() {
-  renderImportPreview([]);
-  dom.imageStatus.textContent = "Paste copied spreadsheet rows, then press Translate.";
-  if (typeof dom.imageDialog.showModal === "function") {
-    dom.imageDialog.showModal();
-  } else {
-    dom.imageDialog.setAttribute("open", "");
+async function openImageImport() {
+  try {
+    const clipboardText = await navigator.clipboard.readText();
+    const rows = parseImportText(clipboardText);
+    if (!rows.length) {
+      showToast("No wiring rows were found on the clipboard.");
+      return;
+    }
+
+    setPendingImportRows(rows);
+    applyImportedRows({ confirmReplace: false });
+  } catch (error) {
+    showToast("Copy the spreadsheet rows first, then click Upload.");
+    return;
   }
 }
 
 function closeImageImport() {
-  dom.imageDialog.close();
+  if (dom.imageDialog && typeof dom.imageDialog.close === "function" && dom.imageDialog.open) {
+    dom.imageDialog.close();
+  }
 }
 
 function translateImageText() {
@@ -3226,15 +3235,18 @@ function setPendingImportRows(rows) {
   renderImportPreview(pendingImportRows);
 }
 
-function applyImportedRows() {
+function applyImportedRows(options = {}) {
+  const confirmReplace = options.confirmReplace !== false;
   if (!pendingImportRows.length) {
     dom.imageStatus.textContent = "Translate pasted rows before applying.";
     return;
   }
 
-  const ok = window.confirm(`Replace the current table with ${pendingImportRows.length} imported row(s)?`);
-  if (!ok) {
-    return;
+  if (confirmReplace) {
+    const ok = window.confirm(`Replace the current table with ${pendingImportRows.length} imported row(s)?`);
+    if (!ok) {
+      return;
+    }
   }
 
   rememberUndo();

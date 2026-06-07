@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.43 - 2026-06-07
+
+- Made the Upload button read clipboard text and auto-import it without opening the paste dialog.
+
 ## v1.2.42 - 2026-06-07
 
 - Removed the housing line from the heatshrink labels and kept just the leg number and leg name.
