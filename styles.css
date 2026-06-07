@@ -559,8 +559,8 @@ body.is-resizing-layout * {
 }
 
 .harness-table {
-  width: 3040px;
-  min-width: 3040px;
+  width: 3545px;
+  min-width: 3545px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -589,11 +589,11 @@ body.is-resizing-layout * {
   white-space: normal;
 }
 
-.harness-table th:nth-child(n+2):nth-child(-n+12) {
+.harness-table th:nth-child(n+2):nth-child(-n+13) {
   background: #d6e8fb;
 }
 
-.harness-table th:nth-child(n+14) {
+.harness-table th:nth-child(n+15) {
   background: #f6bd75;
 }
 

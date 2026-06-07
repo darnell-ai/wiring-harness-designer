@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.26 - 2026-06-07
+
+- Added separate Left Leg Name and Right Leg Name columns while keeping left/right leg values as numbers.
+- Updated Excel/picture import and CSV/printable exports for the new production sheet format.
+
 ## v1.2.25 - 2026-06-06
 
 - Added the harness title to the browser print/PDF drawing header.
