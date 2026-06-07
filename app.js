@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.34";
+const APP_VERSION = "1.2.35";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1103,9 +1103,6 @@ function renderPreview() {
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
   const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
-  const selectedWireNameLabel = escapeXml(shortLabel(selected.name || "Wire", 34));
-  const selectedWireTagWidth = clamp((selected.name || "Wire").length * 8.5 + 34, 92, 280);
-  const selectedWireTag = wireNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, selectedWireTagWidth);
   const harnessLabel = escapeXml(shortLabel(state.harnessName || "", 28));
   const harnessTagWidth = clamp((state.harnessName || "").length * 9 + 42, 124, 290);
   const harnessTag = cableNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, harnessTagWidth);
@@ -1125,17 +1122,28 @@ function renderPreview() {
       <text x="${harnessTag.x}" y="${harnessTag.y + 5}" text-anchor="middle">${harnessLabel}</text>
     </g>
   ` : "";
+  const wireNameTags = active
+    .map((item, index) => {
+      const endpoints = item.id === selected.id
+        ? selectedEndpoints
+        : wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight);
+      return renderWireNameTag(
+        item,
+        endpoints.start,
+        endpoints.end,
+        index,
+        routeBaseY,
+        previewHeight,
+        item.id === selected.id
+      );
+    })
+    .join("");
   const selectedWireMarkup = hasSelectedWire ? `
     <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
     ${heatshrinkLabels}
     ${harnessTagMarkup}
-
-    <g class="wire-name-tag" aria-label="Selected wire name ${selectedWireNameLabel}">
-      <rect x="${selectedWireTag.x - selectedWireTagWidth / 2}" y="${selectedWireTag.y - 22}" width="${selectedWireTagWidth}" height="28" rx="14" fill="#f8faf5" stroke="#d9dfd7" stroke-width="1.5" opacity="0.98" />
-      <text x="${selectedWireTag.x}" y="${selectedWireTag.y - 3}" text-anchor="middle">${selectedWireNameLabel}</text>
-    </g>
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
@@ -1170,6 +1178,7 @@ function renderPreview() {
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .wire-name-tag.selected text { font-weight: 950; }
         .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.97; }
         .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -1190,6 +1199,7 @@ function renderPreview() {
     ${backgroundWires}
     ${selectedWireMarkup}
     ${spliceNodes}
+    ${wireNameTags}
   `;
 }
 
@@ -2098,11 +2108,32 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
   }
 
   const x = (start.x + end.x) / 2;
-  const y = Math.min(start.y, end.y) - 18;
+  const y = (start.y + end.y) / 2;
   return {
     x: clamp(x, sideMargin, 1000 - sideMargin),
-    y: clamp(y, 34, previewHeight - 24)
+    y: clamp(y, 48, previewHeight - 24)
   };
+}
+
+function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, isSelected = false) {
+  const rawLabel = value(row?.name).trim();
+  if (!rawLabel) {
+    return "";
+  }
+
+  const label = escapeXml(shortLabel(rawLabel, 34));
+  const tagWidth = clamp(rawLabel.length * 8.5 + 34, 92, 280);
+  const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth);
+  const selectedClass = isSelected ? " selected" : "";
+  const stroke = isSelected ? "#f2c84b" : "#d9dfd7";
+  const strokeWidth = isSelected ? 2 : 1.5;
+
+  return `
+    <g class="wire-name-tag${selectedClass}" aria-label="Wire name ${label}">
+      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.98" />
+      <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
+    </g>
+  `;
 }
 
 function cableNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
@@ -2198,11 +2229,9 @@ function heatshrinkBox(point, index, routeBaseY, previewHeight) {
 }
 
 function wireLaneLabelPosition(x, laneY, previewHeight, sideMargin) {
-  const aboveY = laneY - 18;
-  const y = aboveY >= 34 ? aboveY : laneY + 34;
   return {
     x: clamp(x, sideMargin, 1000 - sideMargin),
-    y: clamp(y, 34, previewHeight - 24)
+    y: clamp(laneY, 48, previewHeight - 24)
   };
 }
 

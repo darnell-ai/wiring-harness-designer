@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.35 - 2026-06-07
+
+- Displayed every active wire name on its routed wire line, not only the selected wire.
+- Centered wire-name labels directly on the lines they identify.
+
 ## v1.2.34 - 2026-06-07
 
 - Added black heatshrink-style labels at selected wire endpoints for left/right leg details.
