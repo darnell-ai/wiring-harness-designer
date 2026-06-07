@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.28 - 2026-06-07
+
+- Matched the production table order to the latest sheet layout and hid Do Not Place columns from exported/visible tables.
+- Reordered right-side columns to Pin Pos #, Housing Type, Housing Part #, Pin P#.
+
 ## v1.2.27 - 2026-06-07
 
 - Renamed both terminal part-number table headers from Pin # to Pin P#.

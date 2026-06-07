@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.27";
+const APP_VERSION = "1.2.28";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -44,7 +44,6 @@ const EXPORT_HEADERS = [
   "Left Leg Name",
   "Wire Name",
   "Pin Pos #",
-  "Do Not Place",
   "Housing Type",
   "Housing Part #",
   "Pin P#",
@@ -56,10 +55,9 @@ const EXPORT_HEADERS = [
   "Right Leg",
   "Right Leg Name",
   "Pin Pos #",
-  "Do Not Place",
+  "Housing Type",
   "Housing Part #",
   "Pin P#",
-  "Housing Type",
   "Tool used",
   "Comments"
 ];
@@ -70,7 +68,6 @@ const DEFAULT_COLUMN_WIDTHS = [
   115,
   180,
   100,
-  130,
   260,
   170,
   155,
@@ -82,10 +79,9 @@ const DEFAULT_COLUMN_WIDTHS = [
   115,
   180,
   100,
-  130,
+  260,
   170,
   155,
-  260,
   180,
   280
 ];
@@ -585,7 +581,16 @@ function normalizePreviewPaneHeight(height) {
 
 function normalizeColumnWidths(widths) {
   let incoming = Array.isArray(widths) ? widths : [];
-  if (incoming.length === DEFAULT_COLUMN_WIDTHS.length - 2) {
+  if (incoming.length === 23) {
+    incoming = [
+      ...incoming.slice(0, 5),
+      ...incoming.slice(6, 17),
+      incoming[20],
+      incoming[18],
+      incoming[19],
+      ...incoming.slice(21)
+    ];
+  } else if (incoming.length === DEFAULT_COLUMN_WIDTHS.length - 2) {
     incoming = [
       ...incoming.slice(0, 3),
       DEFAULT_COLUMN_WIDTHS[3],
@@ -607,7 +612,7 @@ function minColumnWidth(index) {
   if (index === 0) {
     return 42;
   }
-  if (index === 13) {
+  if (index === 12) {
     return 24;
   }
   return MIN_COLUMN_WIDTH;
@@ -2605,7 +2610,6 @@ function renderTable() {
         <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td><input data-field="leftLegName" value="${escapeHtml(legNameFor("left", row.leftLeg))}" aria-label="Left leg name"></td>
         <td>${selectField(row, "leftPin", options.pins, "Left pin")}</td>
-        <td>${selectField(row, "dnp", options.dnp, "Do not place", dnpLabel(row, "left"))}</td>
         <td class="field-housing">${selectField(row, "housing", housingChoices(), "Housing type")}</td>
         <td><input data-field="leftHousingPart" value="${escapeHtml(row.leftHousingPart)}" aria-label="Left housing part number"></td>
         <td><input data-field="leftTerminalPart" value="${escapeHtml(row.leftTerminalPart)}" aria-label="Left terminal pin part number"></td>
@@ -2622,10 +2626,9 @@ function renderTable() {
         <td>${selectField(row, "rightLeg", options.legs, "Right leg")}</td>
         <td><input data-field="rightLegName" value="${escapeHtml(legNameFor("right", row.rightLeg))}" aria-label="Right leg name"></td>
         <td>${selectField(row, "rightPin", options.pins, "Right pin")}</td>
-        <td>${selectField(row, "rightDnp", options.dnp, "Right do not place", dnpLabel(row, "right"))}</td>
+        <td class="field-right-housing">${selectField(row, "rightHousing", housingChoices(), "Right housing type")}</td>
         <td><input data-field="rightHousingPart" value="${escapeHtml(row.rightHousingPart)}" aria-label="Right housing part number"></td>
         <td><input data-field="rightTerminalPart" value="${escapeHtml(row.rightTerminalPart)}" aria-label="Right terminal pin part number"></td>
-        <td class="field-right-housing">${selectField(row, "rightHousing", housingChoices(), "Right housing type")}</td>
         <td><input data-field="toolUsed" value="${escapeHtml(row.toolUsed)}" aria-label="Tool used"></td>
         <td><input data-field="comments" value="${escapeHtml(row.comments)}" aria-label="Comments"></td>
       </tr>
@@ -3107,7 +3110,6 @@ function exportCsv() {
       legNameFor("left", row.leftLeg),
       row.name,
       row.leftPin,
-      dnpLabel(row, "left"),
       row.housing,
       row.leftHousingPart,
       row.leftTerminalPart,
@@ -3119,10 +3121,9 @@ function exportCsv() {
       row.rightLeg,
       legNameFor("right", row.rightLeg),
       row.rightPin,
-      dnpLabel(row, "right"),
+      row.rightHousing,
       row.rightHousingPart,
       row.rightTerminalPart,
-      row.rightHousing,
       row.toolUsed,
       row.comments
     ])
@@ -3240,7 +3241,7 @@ function renderImportPreview(rows) {
   pendingImportRows = rows;
   dom.importPreviewCount.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready`;
   if (!rows.length) {
-    dom.importPreviewRows.innerHTML = `<tr><td colspan="23">No rows ready.</td></tr>`;
+    dom.importPreviewRows.innerHTML = `<tr><td colspan="21">No rows ready.</td></tr>`;
     return;
   }
 
@@ -3251,7 +3252,6 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.leftLegName)}</td>
       <td>${escapeHtml(row.name)}</td>
       <td>${escapeHtml(row.leftPin)}</td>
-      <td>${dnpLabel(row, "left")}</td>
       <td>${escapeHtml(row.housing)}</td>
       <td>${escapeHtml(row.leftHousingPart)}</td>
       <td>${escapeHtml(row.leftTerminalPart)}</td>
@@ -3263,10 +3263,9 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.rightLeg)}</td>
       <td>${escapeHtml(row.rightLegName)}</td>
       <td>${escapeHtml(row.rightPin)}</td>
-      <td>${dnpLabel(row, "right")}</td>
+      <td>${escapeHtml(row.rightHousing)}</td>
       <td>${escapeHtml(row.rightHousingPart)}</td>
       <td>${escapeHtml(row.rightTerminalPart)}</td>
-      <td>${escapeHtml(row.rightHousing)}</td>
       <td>${escapeHtml(row.toolUsed)}</td>
       <td>${escapeHtml(row.comments)}</td>
     </tr>
@@ -3418,6 +3417,7 @@ function rowFromCells(cells, columnMap = null) {
     const rightStart = clean[12 + leftOffset] === "" ? 13 + leftOffset : 12 + leftOffset;
     const hasRightDnp = hasLeftDnp || isDnp(clean[rightStart + 3]);
     const rightDnpOffset = hasRightDnp ? 1 : 0;
+    const rightHousingFirst = !hasRightDnp && looksLikeHousingFirstRightSide(clean, rightStart);
     const row = {
       cableName: clean[0] || "",
       leftLeg: clean[1] || "",
@@ -3435,9 +3435,9 @@ function rowFromCells(cells, columnMap = null) {
       rightLegName: clean[rightStart + 1] || "",
       rightPin: clean[rightStart + 2] || "",
       rightDnp: hasRightDnp ? isDnp(clean[rightStart + 3]) : false,
-      rightHousingPart: clean[rightStart + 3 + rightDnpOffset] || "",
-      rightTerminalPart: clean[rightStart + 4 + rightDnpOffset] || "",
-      rightHousing: clean[rightStart + 5 + rightDnpOffset] || "",
+      rightHousing: rightHousingFirst ? clean[rightStart + 3] || "" : clean[rightStart + 5 + rightDnpOffset] || "",
+      rightHousingPart: rightHousingFirst ? clean[rightStart + 4] || "" : clean[rightStart + 3 + rightDnpOffset] || "",
+      rightTerminalPart: rightHousingFirst ? clean[rightStart + 5] || "" : clean[rightStart + 4 + rightDnpOffset] || "",
       toolUsed: clean[rightStart + 6 + rightDnpOffset] || "",
       comments: clean.slice(rightStart + 7 + rightDnpOffset).join(" ").trim()
     };
@@ -3691,6 +3691,20 @@ function looksLikeNamedLegDnpLayout(clean) {
     && clean[14]
     && /^[A-Za-z0-9#-]+$/.test(clean[14])
     && /^\d{1,2}$/.test(clean[16] || "")
+  );
+}
+
+function looksLikeHousingFirstRightSide(clean, rightStart) {
+  const rightHousing = clean[rightStart + 3] || "";
+  const rightHousingPart = clean[rightStart + 4] || "";
+  const rightTerminalPart = clean[rightStart + 5] || "";
+  return Boolean(
+    rightHousing
+    && (
+      matchHousing(rightHousing)
+      || /[A-Za-z]/.test(rightHousing)
+      || (!isPartNumberToken(rightHousing) && isPartNumberToken(rightHousingPart) && isPartNumberToken(rightTerminalPart))
+    )
   );
 }
 
@@ -4111,7 +4125,7 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Wire Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Do Not Place</th><th>Housing Part #</th><th>Pin P#</th><th>Housing Type</th><th>Tool used</th><th>Comments</th>
+        <th>#</th><th>Wire Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
@@ -4122,7 +4136,6 @@ function exportInstructions() {
           <td>${escapeHtml(row.leftLeg)}</td>
           <td>${escapeHtml(legNameFor("left", row.leftLeg))}</td>
           <td>${escapeHtml(row.leftPin)}</td>
-          <td>${dnpLabel(row, "left")}</td>
           <td>${escapeHtml(row.housing)}</td>
           <td>${escapeHtml(row.leftHousingPart)}</td>
           <td>${escapeHtml(row.leftTerminalPart)}</td>
@@ -4133,10 +4146,9 @@ function exportInstructions() {
           <td>${escapeHtml(row.rightLeg)}</td>
           <td>${escapeHtml(legNameFor("right", row.rightLeg))}</td>
           <td>${escapeHtml(row.rightPin)}</td>
-          <td>${dnpLabel(row, "right")}</td>
+          <td>${escapeHtml(row.rightHousing)}</td>
           <td>${escapeHtml(row.rightHousingPart)}</td>
           <td>${escapeHtml(row.rightTerminalPart)}</td>
-          <td>${escapeHtml(row.rightHousing)}</td>
           <td>${escapeHtml(row.toolUsed)}</td>
           <td>${escapeHtml(row.comments)}</td>
         </tr>
