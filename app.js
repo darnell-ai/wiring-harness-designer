@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.35";
+const APP_VERSION = "1.2.36";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1143,7 +1143,6 @@ function renderPreview() {
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
     ${heatshrinkLabels}
-    ${harnessTagMarkup}
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
@@ -1200,6 +1199,7 @@ function renderPreview() {
     ${selectedWireMarkup}
     ${spliceNodes}
     ${wireNameTags}
+    ${harnessTagMarkup}
   `;
 }
 
@@ -2146,7 +2146,7 @@ function cableNameTagPosition(start, end, index, routeBaseY, previewHeight, tagW
     const endBusX = bottomBusX(end, index);
     return {
       x: clamp((startBusX + endBusX) / 2, sideMargin, 1000 - sideMargin),
-      y: clamp(laneY + 22, 58, previewHeight - 28)
+      y: clamp(laneY - 62, 44, previewHeight - 28)
     };
   }
 
@@ -2157,13 +2157,13 @@ function cableNameTagPosition(start, end, index, routeBaseY, previewHeight, tagW
     const busX = bottomBusX(bottom, index);
     return {
       x: clamp((busX + other.x) / 2, sideMargin, 1000 - sideMargin),
-      y: clamp(laneY + 22, 58, previewHeight - 28)
+      y: clamp(laneY - 62, 44, previewHeight - 28)
     };
   }
 
   return {
     x: clamp((start.x + end.x) / 2, sideMargin, 1000 - sideMargin),
-    y: clamp(Math.max(start.y, end.y) + 24, 58, previewHeight - 28)
+    y: clamp(Math.min(start.y, end.y) - 62, 44, previewHeight - 28)
   };
 }
 

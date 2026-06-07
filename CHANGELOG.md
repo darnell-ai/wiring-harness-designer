@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.36 - 2026-06-07
+
+- Moved the purple cable-name label above the wire bundle and kept it from getting buried.
+
 ## v1.2.35 - 2026-06-07
 
 - Displayed every active wire name on its routed wire line, not only the selected wire.
