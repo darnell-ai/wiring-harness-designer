@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.43";
+const APP_VERSION = "1.2.44";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -37,6 +37,76 @@ const options = {
   spliceIds: ["", ...Array.from({ length: 12 }, (_, index) => `S${index + 1}`)],
   spliceRoles: ["", "PARENT", "BRANCH"]
 };
+
+const RJ45_PINOUTS = {
+  T568B: [
+    { pin: 1, label: "WHT / ORG", fill: "#fff4dc", accent: "#f09a33" },
+    { pin: 2, label: "ORG", fill: "#f9b25b", accent: "#f09a33" },
+    { pin: 3, label: "WHT / GRN", fill: "#e8f5e4", accent: "#39a85f" },
+    { pin: 4, label: "BLU", fill: "#84a8e8", accent: "#4e79d4" },
+    { pin: 5, label: "WHT / BLU", fill: "#eef2ff", accent: "#4e79d4" },
+    { pin: 6, label: "GRN", fill: "#74c88a", accent: "#39a85f" },
+    { pin: 7, label: "WHT / BRN", fill: "#efe1d3", accent: "#8f6341" },
+    { pin: 8, label: "BRN", fill: "#b07a52", accent: "#8f6341" }
+  ],
+  T568A: [
+    { pin: 1, label: "WHT / GRN", fill: "#e8f5e4", accent: "#39a85f" },
+    { pin: 2, label: "GRN", fill: "#74c88a", accent: "#39a85f" },
+    { pin: 3, label: "WHT / ORG", fill: "#fff4dc", accent: "#f09a33" },
+    { pin: 4, label: "BLU", fill: "#84a8e8", accent: "#4e79d4" },
+    { pin: 5, label: "WHT / BLU", fill: "#eef2ff", accent: "#4e79d4" },
+    { pin: 6, label: "ORG", fill: "#f9b25b", accent: "#f09a33" },
+    { pin: 7, label: "WHT / BRN", fill: "#efe1d3", accent: "#8f6341" },
+    { pin: 8, label: "BRN", fill: "#b07a52", accent: "#8f6341" }
+  ]
+};
+
+function buildRJ45PinoutImage(title, scheme) {
+  const rows = RJ45_PINOUTS[scheme] || RJ45_PINOUTS.T568B;
+  const contactMarks = rows.map((item, index) => {
+    const x = 40 + index * 28;
+    return `
+      <g>
+        <text x="${x + 10}" y="114" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="800" fill="#dce4de">${item.pin}</text>
+        <rect x="${x}" y="122" width="20" height="12" rx="3" fill="${item.accent}" stroke="#f4e5b0" stroke-width="1.5" />
+      </g>
+    `;
+  }).join("");
+
+  const rowsList = rows.map((item, index) => `
+    <g transform="translate(0 ${index * 34})">
+      <rect x="0" y="0" width="360" height="28" rx="8" fill="#f8fbf7" stroke="#d8e1d6" stroke-width="1.4" />
+      <rect x="11" y="7" width="58" height="14" rx="7" fill="${item.fill}" stroke="${item.accent}" stroke-width="2" />
+      <text x="86" y="19" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="850" fill="#1f2621">Pin ${item.pin}</text>
+      <text x="155" y="19" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="700" fill="#52605a">${item.label}</text>
+    </g>
+  `).join("");
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-label="${title} ${scheme} pinout">
+      <rect width="900" height="420" rx="28" fill="#eef4ef" />
+      <text x="54" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="900" fill="#1f2722">${title}</text>
+      <text x="54" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="#5d6a64">CAT 6 / 8P8C / ${scheme}</text>
+      <g transform="translate(54 116)">
+        <rect x="0" y="0" width="286" height="186" rx="18" fill="#223129" stroke="#718078" stroke-width="4" />
+        <path d="M 116 0 H 170 L 184 22 H 102 Z" fill="#dbe0db" stroke="#8f9891" stroke-width="4" />
+        <rect x="22" y="26" width="242" height="104" rx="10" fill="#101712" stroke="#4f5d55" stroke-width="3" />
+        <rect x="40" y="48" width="206" height="36" rx="8" fill="#151e19" stroke="#060807" stroke-width="2" />
+        ${contactMarks}
+        <text x="143" y="162" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="850" fill="#dfe7e1">CONTACT FACE</text>
+      </g>
+      <g transform="translate(394 116)">
+        ${rowsList}
+      </g>
+      <text x="54" y="382" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="750" fill="#4d5a54">Use the same scheme on both ends for straight-through patch cords.</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+const RJ45_PLUG_IMAGE = buildRJ45PinoutImage("RJ45 PLUG", "T568B");
+const RJ45_JACK_IMAGE = buildRJ45PinoutImage("RJ45 JACK", "T568B");
 
 const EXPORT_HEADERS = [
   "Cable Name",
@@ -214,6 +284,20 @@ function defaultCatalog() {
     catalogEntry("A POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("B POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("PCB", "Board", "pcb", 32, { terminalType: "PCB connection" }),
+    catalogEntry("RJ45 PLUG", "Connector", "rj45", 8, {
+      manufacturer: "Generic",
+      gender: "Male",
+      terminalType: "Cat 6 RJ45 crimp contact",
+      notes: "8P8C plug. T568B pinout shown in the image; T568A swaps the green and orange pairs.",
+      imageUrl: RJ45_PLUG_IMAGE
+    }),
+    catalogEntry("RJ45 JACK", "Connector", "rj45", 8, {
+      manufacturer: "Generic",
+      gender: "Female",
+      terminalType: "Cat 6 RJ45 jack contact",
+      notes: "8P8C jack. Use the same scheme on both ends for straight-through patch cords.",
+      imageUrl: RJ45_JACK_IMAGE
+    }),
     ...subconPinCounts.flatMap((positions) => [
       catalogEntry(`SUBCONN ${positions} PIN MALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Male", terminalType: "Subsea connector contact" }),
       catalogEntry(`SUBCONN ${positions} PIN FEMALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Female", terminalType: "Subsea connector contact" })
@@ -1354,6 +1438,9 @@ function housingPositionCount(housing) {
   if (housingText.includes("BARREL")) {
     return 2;
   }
+  if (housingText.includes("RJ45") || housingText.includes("8P8C")) {
+    return 8;
+  }
 
   const catalogItem = catalogEntryByName(housing);
   if (catalogItem) {
@@ -1377,6 +1464,8 @@ function housingHasExplicitPositionCount(housing) {
   return Boolean(
     catalogEntryByName(housing)
     || housingText.includes("BARREL")
+    || housingText.includes("RJ45")
+    || housingText.includes("8P8C")
     || housingText === "RING TERMINAL"
     || /\b\d{1,2}\s+(?:POS|POSITION|PIN)\b/.test(housingText)
   );
@@ -1402,6 +1491,9 @@ function housingFamily(housing) {
   }
   if (text === "PCB") {
     return "pcb";
+  }
+  if (text.includes("RJ45") || text.includes("8P8C")) {
+    return "rj45";
   }
   if (text === "RING TERMINAL") {
     return "ring";
@@ -1445,6 +1537,9 @@ function connectorDimensions(family, pinCount, positionCount) {
   }
   if (family === "ring") {
     return { width: 132, height: 104 };
+  }
+  if (family === "rj45") {
+    return { width: 196, height: 132 };
   }
   if (family === "barrel") {
     return { width: 156, height: 86 };
@@ -1779,6 +1874,22 @@ function renderConnectorBody(connector) {
     `;
   }
 
+  if (family === "rj45") {
+    const housingText = value(connector.housing).toUpperCase();
+    const isJack = housingText.includes("JACK");
+    const bodyFill = isJack ? "#173328" : "#24312a";
+    const bodyStroke = isJack ? "#6dc39d" : "#829089";
+    const innerFill = isJack ? "#0e1713" : "#0f1512";
+    const innerStroke = isJack ? "#2f8e6e" : "#46534c";
+    return `
+      <path d="M ${x + 9} ${y + 6} H ${x + width - 9} L ${x + width - 1} ${y + 18} V ${y + height - 11} L ${x + width - 9} ${y + height} H ${x + 9} L ${x + 1} ${y + height - 11} V ${y + 18} Z" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="3" />
+      <path d="M ${centerX - 24} ${y + 1} H ${centerX - 10} L ${centerX - 2} ${y - 9} H ${centerX + 2} L ${centerX + 10} ${y + 1} H ${centerX + 24}" fill="#dfe4df" stroke="#909991" stroke-width="3" />
+      <rect x="${x + 18}" y="${y + 24}" width="${width - 36}" height="${height - 54}" rx="10" fill="${innerFill}" stroke="${innerStroke}" stroke-width="2.5" />
+      <rect x="${x + 26}" y="${y + height - 34}" width="${width - 52}" height="14" rx="4" fill="#161d19" stroke="${bodyStroke}" stroke-width="1.6" opacity="0.95" />
+      <rect x="${x + width / 2 - 12}" y="${y + 18}" width="24" height="18" rx="4" fill="#f1f4ee" stroke="#97a29c" stroke-width="1.6" />
+    `;
+  }
+
   if (family === "splice") {
     return `
       <path d="M ${x + 8} ${centerY - 22} H ${x + 33} L ${x + 47} ${centerY - 30} H ${x + width - 47} L ${x + width - 33} ${centerY - 22} H ${x + width - 8} V ${centerY + 22} H ${x + width - 33} L ${x + width - 47} ${centerY + 30} H ${x + 47} L ${x + 33} ${centerY + 22} H ${x + 8} Z" fill="#49796b" stroke="#93ad9f" stroke-width="3" />
@@ -1821,7 +1932,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = connector.family === "molex";
-  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont";
+  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45";
   const numericPin = numberOrDefault(pin, 0);
   let contact = "";
 
@@ -1844,6 +1955,10 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     `;
   } else if (connector.family === "dupont") {
     contact = `<rect x="${point.x - 6}" y="${point.y - 6}" width="12" height="12" rx="2" fill="${isSelected ? selectedColor : isUsed ? "#d8efe2" : "#171d19"}" stroke="${isSelected ? selectedColor : isUsed ? "#41b883" : "#77847c"}" stroke-width="2" />`;
+  } else if (connector.family === "rj45") {
+    const fill = isSelected ? selectedColor : isUsed ? "#e1bb68" : "#151d18";
+    const stroke = isSelected ? selectedColor : isUsed ? "#f7e0a2" : "#6d776f";
+    contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${fill}" stroke="${stroke}" stroke-width="1.8" />`;
   } else if (connector.family === "molex") {
     contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isSelected ? selectedColor : isUsed ? "#e5f0e9" : "#6f756e"}" stroke="${isSelected ? selectedColor : "#f5f4eb"}" stroke-width="2" />`;
   } else if (connector.family === "barrel") {
@@ -1950,6 +2065,19 @@ function connectorContactPoint(connector, pin, side) {
     return dupontTerminalPoint(connector, safePin);
   }
 
+  if (connector.family === "rj45") {
+    const positionCount = Math.max(1, connector.pinCount || 8);
+    const index = connectorPositionIndex(connector, safePin);
+    const leftPadX = connector.x + 18;
+    const rightPadX = connector.x + connector.width - 18;
+    return {
+      x: positionCount === 1
+        ? connector.x + connector.width / 2
+        : leftPadX + index * ((rightPadX - leftPadX) / Math.max(1, positionCount - 1)),
+      y: connector.y + connector.height - 28
+    };
+  }
+
   if (connector.family === "molex") {
     if (isTwoPinFrontMolex(connector)) {
       return twoPinFrontMolexTerminalPoint(connector, safePin);
@@ -1984,10 +2112,10 @@ function pinPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
   const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
   const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont") {
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45") {
     return {
       x: contact.x,
-      y: ["pcb", "dupont"].includes(connector.family) ? connector.y + connector.height + 6 : contact.y,
+      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,
@@ -2466,10 +2594,12 @@ function renderCatalog() {
   const rows = state.catalog.filter((entry) => [
     entry.name,
     entry.category,
+    entry.family,
     entry.manufacturer,
     entry.partNumber,
     entry.terminalType,
-    entry.terminalPart
+    entry.terminalPart,
+    entry.notes
   ].join(" ").toLowerCase().includes(query));
   dom.catalogRows.innerHTML = rows.length
     ? rows.map((entry) => `

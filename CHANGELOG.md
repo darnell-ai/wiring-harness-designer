@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.44 - 2026-06-07
+
+- Added RJ45 plug and jack catalog entries with Cat 6 pinout previews and 8-position routing support.
+- Recognized RJ45 / 8P8C housings as 8-position connectors in the preview and checks.
+
 ## v1.2.43 - 2026-06-07
 
 - Made the Upload button read clipboard text and auto-import it without opening the paste dialog.

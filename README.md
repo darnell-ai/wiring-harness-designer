@@ -4,7 +4,7 @@ An open-source, browser-based wiring harness diagram editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.2.43**
+Current release: **v1.2.44**
 
 ## Use The App
 
@@ -23,7 +23,7 @@ Data saved by the former Windows desktop version does not automatically move to 
 - Resizable wiring-table columns that stay saved in the browser.
 - Parent-and-branch window splices with shared splice IDs.
 - Vertically stacked left and right connector legs.
-- Illustrated Powerpole, SubConn, Molex, Dupont, PCB, barrel connection, ring terminal, and splice housings.
+- Illustrated Powerpole, SubConn, Molex, Dupont, RJ45/Cat6, PCB, barrel connection, ring terminal, and splice housings.
 - DNP filtering that removes unused wires, contacts, pins, and connector housings from the drawing.
 - Pasted Excel/CSV/TSV row import, including separate housing type, housing part, and terminal pin part fields.
 - CSV, SVG drawing, printable guide, and browser print exports.
