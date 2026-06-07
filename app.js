@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.40";
+const APP_VERSION = "1.2.41";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1102,9 +1102,13 @@ function renderPreview() {
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
-  const heatshrinkLabels = [
-    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight),
-    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight)
+  const heatshrinkSleeves = [
+    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight, "sleeve"),
+    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, "sleeve")
+  ].join("");
+  const heatshrinkText = [
+    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight, "text"),
+    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, "text")
   ].join("");
   const wireNameTags = active
     .map((item, index) => {
@@ -1123,10 +1127,11 @@ function renderPreview() {
     })
     .join("");
   const selectedWireMarkup = hasSelectedWire ? `
+    ${heatshrinkSleeves}
     <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
 
-    ${heatshrinkLabels}
+    ${heatshrinkText}
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
@@ -1168,7 +1173,7 @@ function renderPreview() {
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-name-tag.selected text { font-weight: 950; }
-        .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.25; }
+        .heatshrink-sleeve { fill: rgba(2, 4, 3, 0.14); stroke: rgba(29, 36, 31, 0.55); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-housing { fill: #c9d3cb; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -2126,7 +2131,7 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, is
   `;
 }
 
-function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeight) {
+function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeight, part = "full") {
   if (!row || point.exit === "splice") {
     return "";
   }
@@ -2147,13 +2152,35 @@ function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeigh
     escapeXml(shortLabel(housingText, 18))
   ];
   const box = heatshrinkBox(point, index, routeBaseY, previewHeight);
-
-  return `
-    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+  const sleeveMarkup = `
       <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
+  `;
+  const textMarkup = `
       <text x="${box.cx}" y="${box.y + 25}" class="heatshrink-title" text-anchor="middle">${lines[0]}</text>
       <text x="${box.cx}" y="${box.y + 46}" class="heatshrink-name" text-anchor="middle">${lines[1]}</text>
       <text x="${box.cx}" y="${box.y + 66}" class="heatshrink-housing" text-anchor="middle">${lines[2]}</text>
+  `;
+
+  if (part === "sleeve") {
+    return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+      ${sleeveMarkup}
+    </g>
+  `;
+  }
+
+  if (part === "text") {
+    return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+      ${textMarkup}
+    </g>
+  `;
+  }
+
+  return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+      ${sleeveMarkup}
+      ${textMarkup}
     </g>
   `;
 }

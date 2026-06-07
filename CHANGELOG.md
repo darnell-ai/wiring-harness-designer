@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.41 - 2026-06-07
+
+- Drew the wire line over the heatshrink boxes so routing stays visible.
+- Kept the heatshrink text above the wire line.
+
 ## v1.2.40 - 2026-06-07
 
 - Removed the white preview container and left the purple cable-name badge on its own.
