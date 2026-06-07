@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.44";
+const APP_VERSION = "1.2.45";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1161,8 +1161,6 @@ function renderPreview() {
   const labelY = spliceSelected
     ? clamp((selectedStart.exit === "splice" ? selectedStart.y : selectedEnd.y) - 140, 74, previewHeight - 112)
     : 54;
-  const wireColor = colorMap[selected.color] || "#aeb8b0";
-
   const connectors = [
     ...leftConnectors.map((connector) => renderConnector(connector, "left", previewRows, selected)),
     ...rightConnectors.map((connector) => renderConnector(connector, "right", previewRows, selected))
@@ -1170,7 +1168,6 @@ function renderPreview() {
 
   const backgroundWires = active
     .map((item, index) => ({ item, index }))
-    .filter(({ item }) => item.id !== selected.id)
     .map(({ item, index }) => {
       const endpoints = wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight);
       const { start, end } = endpoints;
@@ -1185,7 +1182,6 @@ function renderPreview() {
     .join("");
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
-  const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
   const heatshrinkSleeves = [
     renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight, "sleeve"),
     renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, "sleeve")
@@ -1205,20 +1201,13 @@ function renderPreview() {
         endpoints.end,
         index,
         routeBaseY,
-        previewHeight,
-        item.id === selected.id
+        previewHeight
       );
     })
     .join("");
   const selectedWireMarkup = hasSelectedWire ? `
     ${heatshrinkSleeves}
-    <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
-    <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
-
     ${heatshrinkText}
-
-    ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
-    ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
   ` : active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
@@ -1256,7 +1245,6 @@ function renderPreview() {
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .wire-name-tag.selected text { font-weight: 950; }
         .heatshrink-sleeve { fill: rgba(2, 4, 3, 0.14); stroke: rgba(29, 36, 31, 0.55); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -1786,16 +1774,14 @@ function renderConnector(connector, side, rows, selected) {
 }
 
 function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {
-  if (connector.family === "powerpole" || connector.family === "barrel" || isTwoPinFrontMolex(connector) || (!isUsed && !isSelected)) {
+  if (connector.family === "powerpole" || connector.family === "barrel" || isTwoPinFrontMolex(connector) || !isUsed) {
     return "";
   }
 
-  const selectedColor = side === "left" ? SELECTED_START_COLOR : SELECTED_END_COLOR;
   const bendY = connector.y + connector.height - 12;
-  const stroke = isSelected ? selectedColor : "#87958c";
   return `
-    <path d="M ${contact.x} ${contact.y} V ${bendY} H ${port.x} V ${port.y}" fill="none" stroke="${stroke}" stroke-width="${isSelected ? 2.5 : 1.7}" stroke-linecap="round" stroke-linejoin="round" opacity="${isSelected ? 0.95 : 0.72}" />
-    <circle cx="${port.x}" cy="${port.y}" r="${isSelected ? 5.5 : 4.5}" fill="#dce3de" stroke="${stroke}" stroke-width="2" />
+    <path d="M ${contact.x} ${contact.y} V ${bendY} H ${port.x} V ${port.y}" fill="none" stroke="#87958c" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" opacity="0.72" />
+    <circle cx="${port.x}" cy="${port.y}" r="4.5" fill="#dce3de" stroke="#87958c" stroke-width="2" />
   `;
 }
 
@@ -1928,7 +1914,6 @@ function renderPowerpoleModule(connector, item) {
 }
 
 function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
-  const selectedColor = side === "left" ? SELECTED_START_COLOR : SELECTED_END_COLOR;
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
   const isHorizontalHousing = connector.family === "molex";
@@ -1939,39 +1924,34 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   if (connector.family === "powerpole") {
     const module = powerpoleModuleRect(connector, pin);
     return `
-      ${isSelected ? `<circle cx="${point.x}" cy="${point.y}" r="12" fill="none" stroke="${selectedColor}" stroke-width="3" />` : ""}
-      <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#dce3de" stroke="${isSelected ? selectedColor : "#65736b"}" stroke-width="2" />
+      <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#dce3de" stroke="#65736b" stroke-width="2" />
       <text x="${module.x + module.width / 2}" y="${module.y + module.height - 8}" class="pin-number" text-anchor="middle">${pin}</text>
     `;
   } else if (isSubconn && connector.gender === "female") {
     contact = `
-      <circle cx="${point.x}" cy="${point.y}" r="${isSelected ? 8 : 6.5}" fill="#111512" stroke="${isSelected ? selectedColor : isUsed ? "#d0aa54" : "#8c794b"}" stroke-width="${isSelected ? 3 : 2}" />
+      <circle cx="${point.x}" cy="${point.y}" r="6.5" fill="#111512" stroke="${isUsed ? "#d0aa54" : "#8c794b"}" stroke-width="2" />
       <circle cx="${point.x}" cy="${point.y}" r="2.6" fill="#020302" />
     `;
   } else if (isSubconn) {
     contact = `
-      <circle cx="${point.x}" cy="${point.y}" r="${isSelected ? 8 : 6.5}" fill="${isSelected ? selectedColor : "#d7b25f"}" stroke="${isUsed ? "#f6d986" : "#7d6636"}" stroke-width="${isSelected ? 3 : 2}" />
+      <circle cx="${point.x}" cy="${point.y}" r="6.5" fill="#d7b25f" stroke="${isUsed ? "#f6d986" : "#7d6636"}" stroke-width="2" />
       <circle cx="${point.x - 1.5}" cy="${point.y - 1.5}" r="1.7" fill="#fff1b7" opacity="0.8" />
     `;
   } else if (connector.family === "dupont") {
-    contact = `<rect x="${point.x - 6}" y="${point.y - 6}" width="12" height="12" rx="2" fill="${isSelected ? selectedColor : isUsed ? "#d8efe2" : "#171d19"}" stroke="${isSelected ? selectedColor : isUsed ? "#41b883" : "#77847c"}" stroke-width="2" />`;
+    contact = `<rect x="${point.x - 6}" y="${point.y - 6}" width="12" height="12" rx="2" fill="${isUsed ? "#d8efe2" : "#171d19"}" stroke="${isUsed ? "#41b883" : "#77847c"}" stroke-width="2" />`;
   } else if (connector.family === "rj45") {
-    const fill = isSelected ? selectedColor : isUsed ? "#e1bb68" : "#151d18";
-    const stroke = isSelected ? selectedColor : isUsed ? "#f7e0a2" : "#6d776f";
-    contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${fill}" stroke="${stroke}" stroke-width="1.8" />`;
+    contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${isUsed ? "#e1bb68" : "#151d18"}" stroke="${isUsed ? "#f7e0a2" : "#6d776f"}" stroke-width="1.8" />`;
   } else if (connector.family === "molex") {
-    contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isSelected ? selectedColor : isUsed ? "#e5f0e9" : "#6f756e"}" stroke="${isSelected ? selectedColor : "#f5f4eb"}" stroke-width="2" />`;
+    contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isUsed ? "#e5f0e9" : "#6f756e"}" stroke="#f5f4eb" stroke-width="2" />`;
   } else if (connector.family === "barrel") {
     const isPositive = numericPin === 1;
     contact = isPositive
-      ? `${isSelected ? `<circle cx="${point.x}" cy="${point.y}" r="8.5" fill="none" stroke="${selectedColor}" stroke-width="2.5" />` : ""}
-        <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#f6fbf4" stroke="#d93a36" stroke-width="2.5" />`
-      : `${isSelected ? `<circle cx="${point.x}" cy="${point.y}" r="8.5" fill="none" stroke="${selectedColor}" stroke-width="2.5" />` : ""}
-        <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#101613" stroke="#f6fbf4" stroke-width="2.5" />`;
+      ? `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#f6fbf4" stroke="#d93a36" stroke-width="2.5" />`
+      : `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#101613" stroke="#f6fbf4" stroke-width="2.5" />`;
   } else {
-    const fill = isSelected ? selectedColor : isUsed ? "#d8efe2" : "#f6fbf4";
-    const stroke = isSelected ? fill : isUsed ? "#41b883" : "#9fac9f";
-    contact = `<circle cx="${point.x}" cy="${point.y}" r="${isSelected ? 7 : 5.5}" fill="${fill}" stroke="${stroke}" stroke-width="2" />`;
+    const fill = isUsed ? "#d8efe2" : "#f6fbf4";
+    const stroke = isUsed ? "#41b883" : "#9fac9f";
+    contact = `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="${fill}" stroke="${stroke}" stroke-width="2" />`;
   }
 
   const radialSide = point.x >= centerX;
@@ -2237,7 +2217,7 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
   };
 }
 
-function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, isSelected = false) {
+function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight) {
   const rawLabel = value(row?.name).trim();
   if (!rawLabel) {
     return "";
@@ -2246,13 +2226,10 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, is
   const label = escapeXml(shortLabel(rawLabel, 34));
   const tagWidth = clamp(rawLabel.length * 8.5 + 34, 92, 280);
   const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth);
-  const selectedClass = isSelected ? " selected" : "";
-  const stroke = isSelected ? "#f2c84b" : "#d9dfd7";
-  const strokeWidth = isSelected ? 2 : 1.5;
 
   return `
-    <g class="wire-name-tag${selectedClass}" aria-label="Wire name ${label}">
-      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" stroke="${stroke}" stroke-width="${strokeWidth}" opacity="0.98" />
+    <g class="wire-name-tag" aria-label="Wire name ${label}">
+      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" stroke="#d9dfd7" stroke-width="1.5" opacity="0.98" />
       <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
     </g>
   `;

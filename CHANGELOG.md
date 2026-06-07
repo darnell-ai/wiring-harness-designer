@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.45 - 2026-06-07
+
+- Removed the selected-wire preview highlight so clicked rows do not make one harness wire stand out from the rest.
+
 ## v1.2.44 - 2026-06-07
 
 - Added RJ45 plug and jack catalog entries with Cat 6 pinout previews and 8-position routing support.
