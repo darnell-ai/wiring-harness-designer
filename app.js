@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.39";
+const APP_VERSION = "1.2.40";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1145,10 +1145,7 @@ function renderPreview() {
     </g>
   ` : "";
 
-  const selectedInfoBoxMarkup = hasSelectedWire && state.harnessName ? `
-    <rect x="${labelX}" y="${labelY}" width="${infoBoxWidth}" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
-    ${cableNameMarkup}
-  ` : "";
+  const selectedInfoBoxMarkup = hasSelectedWire && state.harnessName ? cableNameMarkup : "";
 
   dom.wirePreview.setAttribute("viewBox", `0 0 1000 ${previewHeight}`);
   dom.wirePreview.style.height = `${previewHeight}px`;

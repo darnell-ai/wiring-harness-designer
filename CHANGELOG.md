@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.40 - 2026-06-07
+
+- Removed the white preview container and left the purple cable-name badge on its own.
+
 ## v1.2.39 - 2026-06-07
 
 - Made the heatshrink endpoint boxes translucent so the wire routing stays visible underneath.
