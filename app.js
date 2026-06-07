@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.47";
+const APP_VERSION = "1.2.48";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -535,6 +535,336 @@ function normalizeCatalog(catalog) {
   return entries;
 }
 
+function learnCatalogFromRows(rows, catalog) {
+  const learnedCatalog = Array.isArray(catalog) ? catalog.map((entry) => ({ ...entry })) : [];
+  const catalogByName = new Map();
+  const statsByName = new Map();
+  const defaultNames = new Set(defaultCatalog().map((entry) => entry.name));
+  let changed = false;
+
+  learnedCatalog.forEach((entry) => {
+    const name = value(entry?.name).trim().toUpperCase();
+    if (name) {
+      catalogByName.set(name, entry);
+    }
+  });
+
+  const recordSide = (row, side) => {
+    const housing = value(side === "left" ? row.housing : row.rightHousing).trim().toUpperCase();
+    if (!housing) {
+      return;
+    }
+
+    let stats = statsByName.get(housing);
+    if (!stats) {
+      stats = {
+        maxPin: 0,
+        housingParts: new Set(),
+        terminalParts: new Set()
+      };
+      statsByName.set(housing, stats);
+    }
+
+    const pin = numberOrDefault(side === "left" ? row.leftPin : row.rightPin, 0);
+    if (pin > stats.maxPin) {
+      stats.maxPin = pin;
+    }
+
+    const housingPart = value(side === "left" ? row.leftHousingPart : row.rightHousingPart).trim();
+    const terminalPart = value(side === "left" ? row.leftTerminalPart : row.rightTerminalPart).trim();
+    if (housingPart) {
+      stats.housingParts.add(housingPart);
+    }
+    if (terminalPart) {
+      stats.terminalParts.add(terminalPart);
+    }
+  };
+
+  rows.forEach((row) => {
+    recordSide(row, "left");
+    recordSide(row, "right");
+  });
+
+  statsByName.forEach((stats, name) => {
+    const family = inferCatalogFamily(name);
+    const gender = inferCatalogGender(name, family);
+    const category = inferCatalogCategory(family);
+    const positions = inferCatalogPositions(name, family, stats.maxPin);
+    const manufacturer = inferCatalogManufacturer(family);
+    const terminalType = inferCatalogTerminalType(name, family, gender);
+    const housingParts = [...stats.housingParts];
+    const terminalParts = [...stats.terminalParts];
+    let entry = catalogByName.get(name);
+
+    if (!entry) {
+      entry = catalogEntry(name, category, family, positions, {
+        manufacturer,
+        gender,
+        terminalType,
+        partNumber: housingParts[0] || "",
+        terminalPart: terminalParts[0] || "",
+        builtIn: defaultNames.has(name)
+      });
+      if (!defaultNames.has(name)) {
+        entry.builtIn = false;
+      }
+      if (housingParts.length > 1) {
+        housingParts.slice(1).forEach((partNumber) => {
+          entry.notes = appendCatalogNote(entry.notes, `Also seen with housing part # ${partNumber}`);
+        });
+      }
+      if (terminalParts.length > 1) {
+        terminalParts.slice(1).forEach((partNumber) => {
+          entry.notes = appendCatalogNote(entry.notes, `Also seen with terminal part # ${partNumber}`);
+        });
+      }
+      learnedCatalog.push(entry);
+      catalogByName.set(name, entry);
+      changed = true;
+      return;
+    }
+
+    let entryChanged = false;
+    if (!entry.category) {
+      entry.category = category;
+      entryChanged = true;
+    }
+    if (!entry.family) {
+      entry.family = family;
+      entryChanged = true;
+    }
+    const nextPositions = Math.max(numberOrDefault(entry.positions, 1), positions, stats.maxPin || 0);
+    if (nextPositions !== numberOrDefault(entry.positions, 1)) {
+      entry.positions = nextPositions;
+      entryChanged = true;
+    }
+    if (!entry.manufacturer) {
+      entry.manufacturer = manufacturer;
+      entryChanged = true;
+    }
+    if (!entry.gender) {
+      entry.gender = gender;
+      entryChanged = true;
+    }
+    if (!entry.terminalType) {
+      entry.terminalType = terminalType;
+      entryChanged = true;
+    }
+    if (!entry.partNumber && housingParts[0]) {
+      entry.partNumber = housingParts[0];
+      entryChanged = true;
+    }
+    if (!entry.terminalPart && terminalParts[0]) {
+      entry.terminalPart = terminalParts[0];
+      entryChanged = true;
+    }
+
+    housingParts.slice(1).forEach((partNumber) => {
+      if (partNumber && partNumber !== entry.partNumber) {
+        const nextNotes = appendCatalogNote(entry.notes, `Also seen with housing part # ${partNumber}`);
+        if (nextNotes !== entry.notes) {
+          entry.notes = nextNotes;
+          entryChanged = true;
+        }
+      }
+    });
+    terminalParts.slice(1).forEach((partNumber) => {
+      if (partNumber && partNumber !== entry.terminalPart) {
+        const nextNotes = appendCatalogNote(entry.notes, `Also seen with terminal part # ${partNumber}`);
+        if (nextNotes !== entry.notes) {
+          entry.notes = nextNotes;
+          entryChanged = true;
+        }
+      }
+    });
+
+    if (entryChanged) {
+      changed = true;
+    }
+  });
+
+  return {
+    catalog: learnedCatalog,
+    changed
+  };
+}
+
+function inferCatalogFamily(housing) {
+  const text = value(housing).trim().toUpperCase();
+  if (!text) {
+    return "generic";
+  }
+  if (text.startsWith("SUBCONN ")) {
+    return "subconn";
+  }
+  if (text.includes("CPC")) {
+    return "cpc";
+  }
+  if (text.includes("MINI-FIT")) {
+    return "minifit";
+  }
+  if (text.includes("MOLEX")) {
+    return "molex";
+  }
+  if (text.includes("DUPONT")) {
+    return "dupont";
+  }
+  if (text.includes("POWER POLE")) {
+    return "powerpole";
+  }
+  if (text === "PCB") {
+    return "pcb";
+  }
+  if (text.includes("RJ45") || text.includes("8P8C")) {
+    return "rj45";
+  }
+  if (text === "RING TERMINAL") {
+    return "ring";
+  }
+  if (text.includes("BARREL")) {
+    return "barrel";
+  }
+  if (text === "SPLICE") {
+    return "splice";
+  }
+  return "generic";
+}
+
+function inferCatalogCategory(family) {
+  if (family === "pcb") {
+    return "Board";
+  }
+  if (family === "ring") {
+    return "Terminal";
+  }
+  if (family === "splice") {
+    return "Splice";
+  }
+  return "Connector";
+}
+
+function inferCatalogManufacturer(family) {
+  if (family === "powerpole") {
+    return "Anderson Power Products";
+  }
+  if (family === "cpc") {
+    return "TE Connectivity";
+  }
+  if (family === "subconn") {
+    return "SubConn";
+  }
+  if (family === "molex" || family === "minifit") {
+    return "Molex";
+  }
+  if (family === "rj45" || family === "dupont") {
+    return "Generic";
+  }
+  return "";
+}
+
+function inferCatalogGender(housing, family) {
+  const text = value(housing).trim().toUpperCase();
+  if (text.endsWith(" FEMALE")) {
+    return "Female";
+  }
+  if (text.endsWith(" MALE")) {
+    return "Male";
+  }
+  if (family === "cpc") {
+    if (text.includes("SOCKET")) {
+      return "Female";
+    }
+    if (text.includes("PIN")) {
+      return "Male";
+    }
+  }
+  if (family === "rj45") {
+    if (text.includes("JACK")) {
+      return "Female";
+    }
+    if (text.includes("PLUG")) {
+      return "Male";
+    }
+  }
+  return "";
+}
+
+function inferCatalogPositions(housing, family, pinsFromRows = 0) {
+  const text = value(housing).trim().toUpperCase();
+  const explicitMatch = text.match(/\b(\d{1,2})\s+(?:POS|POSITION|PIN)\b/);
+  const explicit = explicitMatch ? Number(explicitMatch[1]) : 0;
+  if (family === "barrel") {
+    return 2;
+  }
+  if (family === "cpc") {
+    return 16;
+  }
+  if (family === "rj45") {
+    return 8;
+  }
+  if (family === "ring") {
+    return 1;
+  }
+  if (family === "splice") {
+    return 1;
+  }
+  if (family === "minifit") {
+    return 20;
+  }
+  return Math.max(1, explicit || pinsFromRows || 16);
+}
+
+function inferCatalogTerminalType(housing, family, gender) {
+  const text = value(housing).trim().toUpperCase();
+  if (family === "powerpole") {
+    return "Powerpole crimp contact";
+  }
+  if (family === "cpc") {
+    return gender === "Female" ? "CPC size 17-16 socket contact" : "CPC size 17-16 pin contact";
+  }
+  if (family === "subconn") {
+    return "Subsea connector contact";
+  }
+  if (family === "molex") {
+    return text.includes("MINI-FIT") ? "Mini-Fit Jr crimp terminal" : "Molex crimp terminal";
+  }
+  if (family === "dupont") {
+    return "Dupont crimp terminal";
+  }
+  if (family === "rj45") {
+    return gender === "Female" ? "Cat 6 RJ45 jack contact" : "Cat 6 RJ45 crimp contact";
+  }
+  if (family === "barrel") {
+    return "Barrel connector lead";
+  }
+  if (family === "ring") {
+    return "Ring terminal";
+  }
+  if (family === "splice") {
+    return "Window splice";
+  }
+  if (family === "pcb") {
+    return "PCB connection";
+  }
+  return "";
+}
+
+function appendCatalogNote(existingNotes, note) {
+  const current = value(existingNotes).trim();
+  const addition = value(note).trim();
+  if (!addition) {
+    return current;
+  }
+  if (!current) {
+    return addition;
+  }
+  const lines = current.split(/\n+/);
+  if (lines.includes(addition)) {
+    return current;
+  }
+  return `${current}\n${addition}`;
+}
+
 function mergeDefaultCatalogDetails(entry, defaultEntry) {
   if (!entry.builtIn || !defaultEntry) {
     return entry;
@@ -710,13 +1040,14 @@ function normalizeState(incoming) {
     toolUsed: value(row.toolUsed),
     comments: value(row.comments)
   }));
+  const learnedCatalog = learnCatalogFromRows(rows, incoming.catalog);
 
   const incomingAllowance = Number(incoming.bomAllowance);
   return {
     harnessName: value(incoming.harnessName) || "Untitled Harness",
     selectedId: rows.some((row) => row.id === incoming.selectedId) ? incoming.selectedId : rows[0]?.id || "",
     rows,
-    catalog: normalizeCatalog(incoming.catalog),
+    catalog: normalizeCatalog(learnedCatalog.catalog),
     bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
     tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
     previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight),
@@ -3296,6 +3627,9 @@ function handleCellChange(target, shouldRenderTable) {
     row[field] = target.value;
   }
 
+  if (["housing", "leftHousingPart", "leftTerminalPart", "rightHousing", "rightHousingPart", "rightTerminalPart"].includes(field)) {
+    state.catalog = normalizeCatalog(learnCatalogFromRows([row], state.catalog).catalog);
+  }
   saveState();
   if (shouldRenderTable) {
     render();
@@ -3745,7 +4079,7 @@ function applyImportedRows(options = {}) {
   }
   render();
   closeImageImport();
-  showToast("Imported rows applied.");
+  showToast("Imported rows applied and catalog updated.");
 }
 
 function renderImportPreview(rows) {

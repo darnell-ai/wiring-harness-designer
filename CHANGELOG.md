@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.48 - 2026-06-07
+
+- Let imported spreadsheet rows teach the catalog stable housing metadata and part numbers for future reuse.
+- Let edited housing and part fields update the catalog as you work.
+
 ## v1.2.47 - 2026-06-07
 
 - Added a dedicated Mini-Fit Jr family renderer that scales by circuit count and follows Molex's row numbering layout.
