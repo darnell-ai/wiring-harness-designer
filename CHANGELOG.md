@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.37 - 2026-06-07
+
+- Moved the purple cable-name label into the white wire detail box above the preview.
+
 ## v1.2.36 - 2026-06-07
 
 - Moved the purple cable-name label above the wire bundle and kept it from getting buried.

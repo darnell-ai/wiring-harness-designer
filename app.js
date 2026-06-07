@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.36";
+const APP_VERSION = "1.2.37";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1103,9 +1103,6 @@ function renderPreview() {
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
   const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
-  const harnessLabel = escapeXml(shortLabel(state.harnessName || "", 28));
-  const harnessTagWidth = clamp((state.harnessName || "").length * 9 + 42, 124, 290);
-  const harnessTag = cableNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, harnessTagWidth);
   const lengthText = selected.length
     ? /\b(in|inch|inches)\b/i.test(selected.length)
       ? escapeXml(selected.length).toUpperCase()
@@ -1116,12 +1113,6 @@ function renderPreview() {
     renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight),
     renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight)
   ].join("");
-  const harnessTagMarkup = state.harnessName ? `
-    <g class="cable-name-tag" aria-label="Cable name ${harnessLabel}">
-      <rect x="${harnessTag.x - harnessTagWidth / 2}" y="${harnessTag.y - 21}" width="${harnessTagWidth}" height="42" rx="4" />
-      <text x="${harnessTag.x}" y="${harnessTag.y + 5}" text-anchor="middle">${harnessLabel}</text>
-    </g>
-  ` : "";
   const wireNameTags = active
     .map((item, index) => {
       const endpoints = item.id === selected.id
@@ -1146,15 +1137,26 @@ function renderPreview() {
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
-
-    <rect x="${labelX}" y="${labelY}" width="236" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
-    <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
-    <text x="${labelX + 20}" y="${labelY + 49}" class="wire-label">${gaugeText} / ${lengthText}</text>
-    <text x="${labelX + 20}" y="${labelY + 69}" class="wire-label">${escapeXml(selected.color || "COLOR NOT SET")}</text>
   ` : active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
   `;
+
+  const infoBoxWidth = state.harnessName ? 356 : 236;
+  const cableNameMarkup = state.harnessName ? `
+    <g class="cable-name-tag" aria-label="Cable name ${escapeXml(state.harnessName)}">
+      <rect x="${labelX + infoBoxWidth - 112}" y="${labelY + 15}" width="94" height="46" rx="4" />
+      <text x="${labelX + infoBoxWidth - 65}" y="${labelY + 44}" text-anchor="middle">${escapeXml(shortLabel(state.harnessName, 14))}</text>
+    </g>
+  ` : "";
+
+  const selectedInfoBoxMarkup = hasSelectedWire ? `
+    <rect x="${labelX}" y="${labelY}" width="${infoBoxWidth}" height="76" rx="8" fill="#f8faf5" opacity="0.97" />
+    <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
+    <text x="${labelX + 20}" y="${labelY + 49}" class="wire-label">${gaugeText} / ${lengthText}</text>
+    <text x="${labelX + 20}" y="${labelY + 69}" class="wire-label">${escapeXml(selected.color || "COLOR NOT SET")}</text>
+    ${cableNameMarkup}
+  ` : "";
 
   dom.wirePreview.setAttribute("viewBox", `0 0 1000 ${previewHeight}`);
   dom.wirePreview.style.height = `${previewHeight}px`;
@@ -1199,7 +1201,7 @@ function renderPreview() {
     ${selectedWireMarkup}
     ${spliceNodes}
     ${wireNameTags}
-    ${harnessTagMarkup}
+    ${selectedInfoBoxMarkup}
   `;
 }
 
@@ -2134,37 +2136,6 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, is
       <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
     </g>
   `;
-}
-
-function cableNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
-  const routeIndex = Math.max(0, index);
-  const sideMargin = tagWidth / 2 + 16;
-
-  if (start.exit === "bottom" && end.exit === "bottom") {
-    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const startBusX = bottomBusX(start, index);
-    const endBusX = bottomBusX(end, index);
-    return {
-      x: clamp((startBusX + endBusX) / 2, sideMargin, 1000 - sideMargin),
-      y: clamp(laneY - 62, 44, previewHeight - 28)
-    };
-  }
-
-  if (start.exit === "bottom" || end.exit === "bottom") {
-    const bottom = start.exit === "bottom" ? start : end;
-    const other = start.exit === "bottom" ? end : start;
-    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const busX = bottomBusX(bottom, index);
-    return {
-      x: clamp((busX + other.x) / 2, sideMargin, 1000 - sideMargin),
-      y: clamp(laneY - 62, 44, previewHeight - 28)
-    };
-  }
-
-  return {
-    x: clamp((start.x + end.x) / 2, sideMargin, 1000 - sideMargin),
-    y: clamp(Math.min(start.y, end.y) - 62, 44, previewHeight - 28)
-  };
 }
 
 function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeight) {
