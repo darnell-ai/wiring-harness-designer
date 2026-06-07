@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.45";
+const APP_VERSION = "1.2.46";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -107,6 +107,97 @@ function buildRJ45PinoutImage(title, scheme) {
 
 const RJ45_PLUG_IMAGE = buildRJ45PinoutImage("RJ45 PLUG", "T568B");
 const RJ45_JACK_IMAGE = buildRJ45PinoutImage("RJ45 JACK", "T568B");
+
+const CPC_CONTACT_LAYOUT = [
+  { pin: 2, dx: -16, dy: -38 },
+  { pin: 1, dx: 16, dy: -38 },
+  { pin: 6, dx: -36, dy: -18 },
+  { pin: 5, dx: -12, dy: -18 },
+  { pin: 4, dx: 12, dy: -18 },
+  { pin: 3, dx: 36, dy: -18 },
+  { pin: 10, dx: -36, dy: 2 },
+  { pin: 9, dx: -12, dy: 2 },
+  { pin: 8, dx: 12, dy: 2 },
+  { pin: 7, dx: 36, dy: 2 },
+  { pin: 14, dx: -36, dy: 22 },
+  { pin: 13, dx: -12, dy: 22 },
+  { pin: 12, dx: 12, dy: 22 },
+  { pin: 11, dx: 36, dy: 22 },
+  { pin: 16, dx: -16, dy: 42 },
+  { pin: 15, dx: 16, dy: 42 }
+];
+
+const CPC_CONTACT_LOOKUP = new Map(CPC_CONTACT_LAYOUT.map((item) => [item.pin, item]));
+
+function buildCpcPinoutImage(title, variant) {
+  const isFemale = variant === "female";
+  const shellLabel = isFemale ? "PLUG / SOCKET" : "RECEPTACLE / PIN";
+  const faceFill = isFemale ? "#131b17" : "#171f1b";
+  const faceStroke = isFemale ? "#6ac49d" : "#7f8d85";
+  const contactFill = isFemale ? "#0b0f0d" : "#d8dfda";
+  const contactStroke = isFemale ? "#7bd0aa" : "#909c95";
+  const contactInner = isFemale ? "#2f8f6d" : "#2d3933";
+  const rowBlocks = [
+    { pins: [2, 1], y: 52 },
+    { pins: [6, 5, 4, 3], y: 72 },
+    { pins: [10, 9, 8, 7], y: 92 },
+    { pins: [14, 13, 12, 11], y: 112 },
+    { pins: [16, 15], y: 132 }
+  ];
+
+  const contacts = CPC_CONTACT_LAYOUT.map((item) => `
+    <g transform="translate(${170 + item.dx * 1.35} ${152 + item.dy * 1.15})">
+      <circle cx="0" cy="0" r="10" fill="${contactFill}" stroke="${contactStroke}" stroke-width="2.2" />
+      ${isFemale
+        ? `<circle cx="0" cy="0" r="3.8" fill="#040605" opacity="0.9" />`
+        : `<path d="M -5 0 H 5 M 0 -5 V 5" stroke="${contactInner}" stroke-width="1.9" stroke-linecap="round" />`}
+      <text x="0" y="${item.dy < 0 ? -16 : 20}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="900" fill="#dde6e0">${item.pin}</text>
+    </g>
+  `).join("");
+
+  const rowLegend = rowBlocks.map((row) => {
+    const rowLabel = row.pins.join("  ");
+    return `
+      <g transform="translate(0 ${row.y})">
+        <rect x="0" y="0" width="320" height="26" rx="8" fill="#f6faf6" stroke="#d7dfd7" stroke-width="1.4" />
+        <text x="16" y="18" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="850" fill="#1e2621">Row</text>
+        <text x="60" y="18" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="750" fill="#4f5c56">${rowLabel}</text>
+      </g>
+    `;
+  }).join("");
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-label="${title} pinout">
+      <rect width="900" height="420" rx="28" fill="#eef4ef" />
+      <text x="54" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="900" fill="#1f2722">${title}</text>
+      <text x="54" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="#5d6a64">TE CPC SERIES 1 / 17-16 / 16 POS</text>
+      <g transform="translate(54 112)">
+        <rect x="0" y="0" width="304" height="194" rx="22" fill="#202c25" stroke="#718078" stroke-width="4" />
+        <circle cx="152" cy="92" r="74" fill="${faceFill}" stroke="${faceStroke}" stroke-width="4" />
+        <circle cx="152" cy="92" r="60" fill="#24312a" stroke="#0a0f0d" stroke-width="3" />
+        <path d="M 132 12 H 172 L 182 28 H 122 Z" fill="#dbe0db" stroke="#8f9891" stroke-width="3" />
+        <rect x="26" y="32" width="252" height="126" rx="12" fill="none" stroke="#0f1714" stroke-width="2" opacity="0.65" />
+        <circle cx="46" cy="34" r="5" fill="#e8ede8" stroke="#8e9790" stroke-width="2" />
+        <circle cx="258" cy="34" r="5" fill="#e8ede8" stroke="#8e9790" stroke-width="2" />
+        <circle cx="46" cy="160" r="5" fill="#e8ede8" stroke="#8e9790" stroke-width="2" />
+        <circle cx="258" cy="160" r="5" fill="#e8ede8" stroke="#8e9790" stroke-width="2" />
+        ${contacts}
+        <text x="152" y="178" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="850" fill="#dfe7e1">${shellLabel}</text>
+      </g>
+      <g transform="translate(398 112)">
+        ${rowLegend}
+        <rect x="0" y="292" width="320" height="46" rx="10" fill="#f6faf6" stroke="#d7dfd7" stroke-width="1.4" />
+        <text x="16" y="320" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="800" fill="#4f5c56">${isFemale ? "Female / plug uses socket contacts." : "Male / receptacle uses pin contacts."}</text>
+      </g>
+      <text x="54" y="382" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="750" fill="#4d5a54">The face follows the TE 17-16 arrangement used on the 16-position CPC shell.</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+const CPC_MALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN MALE", "male");
+const CPC_FEMALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN FEMALE", "female");
 
 const EXPORT_HEADERS = [
   "Cable Name",
@@ -297,6 +388,22 @@ function defaultCatalog() {
       terminalType: "Cat 6 RJ45 jack contact",
       notes: "8P8C jack. Use the same scheme on both ends for straight-through patch cords.",
       imageUrl: RJ45_JACK_IMAGE
+    }),
+    catalogEntry("CPC 16 PIN MALE", "Connector", "cpc", 16, {
+      manufacturer: "TE Connectivity",
+      partNumber: "206036-1",
+      gender: "Male",
+      terminalType: "CPC size 17-16 pin contact",
+      notes: "TE receptacle housing, size 17 shell, 16 positions, pin contacts.",
+      imageUrl: CPC_MALE_IMAGE
+    }),
+    catalogEntry("CPC 16 SOCKET FEMALE", "Connector", "cpc", 16, {
+      manufacturer: "TE Connectivity",
+      partNumber: "206037-1",
+      gender: "Female",
+      terminalType: "CPC size 17-16 socket contact",
+      notes: "TE plug assembly, size 17 shell, 16 positions, socket contacts.",
+      imageUrl: CPC_FEMALE_IMAGE
     }),
     ...subconPinCounts.flatMap((positions) => [
       catalogEntry(`SUBCONN ${positions} PIN MALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Male", terminalType: "Subsea connector contact" }),
@@ -1426,6 +1533,9 @@ function housingPositionCount(housing) {
   if (housingText.includes("BARREL")) {
     return 2;
   }
+  if (housingText.includes("CPC")) {
+    return 16;
+  }
   if (housingText.includes("RJ45") || housingText.includes("8P8C")) {
     return 8;
   }
@@ -1452,6 +1562,7 @@ function housingHasExplicitPositionCount(housing) {
   return Boolean(
     catalogEntryByName(housing)
     || housingText.includes("BARREL")
+    || housingText.includes("CPC")
     || housingText.includes("RJ45")
     || housingText.includes("8P8C")
     || housingText === "RING TERMINAL"
@@ -1467,6 +1578,9 @@ function housingFamily(housing) {
   }
   if (text.startsWith("SUBCONN ")) {
     return "subconn";
+  }
+  if (text.includes("CPC")) {
+    return "cpc";
   }
   if (text.includes("MOLEX")) {
     return "molex";
@@ -1512,6 +1626,9 @@ function housingGender(housing) {
 
 function connectorDimensions(family, pinCount, positionCount) {
   if (family === "subconn") {
+    return { width: 176, height: 176 };
+  }
+  if (family === "cpc") {
     return { width: 176, height: 176 };
   }
   if (family === "powerpole") {
@@ -1674,6 +1791,17 @@ function dupontTerminalPoint(connector, pin) {
   return bottomEdgeTerminalPoint(connector, pin, 26, 16);
 }
 
+function cpcContactPoint(connector, pin) {
+  const safePin = Math.max(1, Math.min(16, numberOrDefault(pin, 1)));
+  const layout = CPC_CONTACT_LOOKUP.get(safePin) || CPC_CONTACT_LAYOUT[0];
+  const faceCenterX = connector.x + connector.width / 2;
+  const faceCenterY = connector.y + 80;
+  return {
+    x: faceCenterX + layout.dx,
+    y: faceCenterY + layout.dy
+  };
+}
+
 function bottomEdgeTerminalPoint(connector, pin, inset, bottomOffset) {
   const pinCount = connector.pinCount || 32;
   const safePin = Math.max(1, Math.min(pinCount, numberOrDefault(pin, 1)));
@@ -1752,6 +1880,14 @@ function renderConnector(connector, side, rows, selected) {
   const selectedPosition = numberOrDefault(selectedPin, 0);
   const housing = connector.housing || connectorHousing(connector.key, side, rows, selected);
   const visiblePositions = [...usedPins].sort((left, right) => left - right);
+  if (connector.family === "cpc") {
+    for (let position = 1; position <= 16; position += 1) {
+      if (!visiblePositions.includes(position)) {
+        visiblePositions.push(position);
+      }
+    }
+    visiblePositions.sort((left, right) => left - right);
+  }
   if (selectedPosition && !visiblePositions.includes(selectedPosition)) {
     visiblePositions.push(selectedPosition);
     visiblePositions.sort((left, right) => left - right);
@@ -1801,6 +1937,26 @@ function renderConnectorBody(connector) {
       <circle cx="${centerX}" cy="${centerY}" r="${radius - 10}" fill="#24332c" stroke="#050806" stroke-width="3" />
       <path d="M ${centerX - 13} ${y + 14} L ${centerX} ${y + 28} L ${centerX + 13} ${y + 14}" fill="#0a0e0c" stroke="#9aa69f" stroke-width="2" />
       <circle cx="${centerX}" cy="${centerY}" r="12" fill="#111815" stroke="#65736b" stroke-width="2" />
+    `;
+  }
+
+  if (family === "cpc") {
+    const isFemale = value(connector.gender).toUpperCase() === "FEMALE";
+    const bodyFill = isFemale ? "#173328" : "#101614";
+    const bodyStroke = isFemale ? "#6bc7a0" : "#808e87";
+    const faceFill = isFemale ? "#0d1713" : "#18211d";
+    const faceStroke = isFemale ? "#2f8e6e" : "#6d7a73";
+    const faceY = y + 80;
+    return `
+      <rect x="${x + 10}" y="${y + 10}" width="${width - 20}" height="${height - 12}" rx="18" fill="${bodyFill}" stroke="${bodyStroke}" stroke-width="3" />
+      <circle cx="${centerX}" cy="${faceY}" r="66" fill="${faceFill}" stroke="${faceStroke}" stroke-width="4" />
+      <circle cx="${centerX}" cy="${faceY}" r="52" fill="#24312a" stroke="#0a0f0d" stroke-width="3" />
+      <path d="M ${centerX - 20} ${y + 18} H ${centerX + 20} L ${centerX + 28} ${y + 6} H ${centerX - 28} Z" fill="#dfe5de" stroke="#8f9891" stroke-width="2" />
+      <circle cx="${x + 28}" cy="${y + 28}" r="5" fill="#eef2ec" stroke="#8d9690" stroke-width="2" />
+      <circle cx="${x + width - 28}" cy="${y + 28}" r="5" fill="#eef2ec" stroke="#8d9690" stroke-width="2" />
+      <circle cx="${x + 28}" cy="${y + height - 32}" r="5" fill="#eef2ec" stroke="#8d9690" stroke-width="2" />
+      <circle cx="${x + width - 28}" cy="${y + height - 32}" r="5" fill="#eef2ec" stroke="#8d9690" stroke-width="2" />
+      <rect x="${x + width - 18}" y="${faceY - 13}" width="10" height="26" rx="4" fill="#0f1512" stroke="${bodyStroke}" stroke-width="1.5" />
     `;
   }
 
@@ -1916,9 +2072,11 @@ function renderPowerpoleModule(connector, item) {
 function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const centerX = connector.x + connector.width / 2;
   const isSubconn = connector.family === "subconn";
+  const isCpc = connector.family === "cpc";
   const isHorizontalHousing = connector.family === "molex";
   const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45";
   const numericPin = numberOrDefault(pin, 0);
+  const cpcLayout = isCpc ? CPC_CONTACT_LOOKUP.get(numericPin) || CPC_CONTACT_LAYOUT[0] : null;
   let contact = "";
 
   if (connector.family === "powerpole") {
@@ -1943,6 +2101,11 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${isUsed ? "#e1bb68" : "#151d18"}" stroke="${isUsed ? "#f7e0a2" : "#6d776f"}" stroke-width="1.8" />`;
   } else if (connector.family === "molex") {
     contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isUsed ? "#e5f0e9" : "#6f756e"}" stroke="#f5f4eb" stroke-width="2" />`;
+  } else if (isCpc) {
+    const isFemale = value(connector.gender).toUpperCase() === "FEMALE";
+    contact = isFemale
+      ? `<circle cx="${point.x}" cy="${point.y}" r="7.2" fill="${isUsed ? "#101613" : "#151d18"}" stroke="${isUsed ? "#7bd0aa" : "#77847c"}" stroke-width="2.2" /><circle cx="${point.x}" cy="${point.y}" r="2.7" fill="${isUsed ? "#7bd0aa" : "#8b958f"}" opacity="${isUsed ? "0.8" : "0.45"}" />`
+      : `<circle cx="${point.x}" cy="${point.y}" r="6.8" fill="${isUsed ? "#ecf2ed" : "#6b756f"}" stroke="${isUsed ? "#f2c84b" : "#a0a9a3"}" stroke-width="2.2" /><path d="M ${point.x - 4} ${point.y} H ${point.x + 4} M ${point.x} ${point.y - 4} V ${point.y + 4}" stroke="${isUsed ? "#2d3933" : "#eef3ed"}" stroke-width="1.7" stroke-linecap="round" />`;
   } else if (connector.family === "barrel") {
     const isPositive = numericPin === 1;
     contact = isPositive
@@ -1955,8 +2118,11 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   }
 
   const radialSide = point.x >= centerX;
+  const cpcAnchor = cpcLayout?.dx < 0 ? "end" : "start";
   const textX = connector.family === "barrel" && numericPin === 2
     ? point.x + (side === "left" ? -13 : 13)
+    : isCpc
+    ? point.x + (cpcLayout?.dx < 0 ? -12 : 12)
     : isBottomTerminalHousing
     ? point.x
     : isHorizontalHousing
@@ -1966,9 +2132,13 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     : side === "left" ? point.x - 31 : point.x + 18;
   const textY = connector.family === "barrel"
     ? point.y + (numericPin === 1 ? 22 : -8)
+    : isCpc
+    ? point.y + (cpcLayout?.dy <= 0 ? -10 : 16)
     : isBottomTerminalHousing ? point.y - 14 : isHorizontalHousing ? point.y + 24 : point.y + 4;
   const anchor = connector.family === "barrel" && numericPin === 2
     ? side === "left" ? "end" : "start"
+    : isCpc
+    ? cpcAnchor
     : isBottomTerminalHousing || isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
 
   return `
@@ -2037,6 +2207,10 @@ function connectorContactPoint(connector, pin, side) {
     };
   }
 
+  if (connector.family === "cpc") {
+    return cpcContactPoint(connector, safePin);
+  }
+
   if (connector.family === "pcb") {
     return pcbTerminalPoint(connector, safePin);
   }
@@ -2091,11 +2265,13 @@ function pinPoint(connector, pin, side) {
 
   const safePin = Math.max(1, Math.min(connector.pinCount || 16, numberOrDefault(pin, 1)));
   const usedIndex = connector.positionData.findIndex((item) => item.position === safePin);
-  const lane = usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45") {
+  const lane = connector.family === "cpc"
+    ? safePin - 1
+    : usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
+  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc") {
     return {
       x: contact.x,
-      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" ? connector.y + connector.height + 6 : contact.y,
+      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,

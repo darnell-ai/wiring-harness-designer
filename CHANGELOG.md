@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.46 - 2026-06-07
+
+- Added built-in TE CPC 16-position male and female housings with a round-face pinout preview.
+- Recognized CPC housings as a 16-position connector family for routing and validation.
+
 ## v1.2.45 - 2026-06-07
 
 - Removed the selected-wire preview highlight so clicked rows do not make one harness wire stand out from the rest.
