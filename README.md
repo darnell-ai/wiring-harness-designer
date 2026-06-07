@@ -4,7 +4,7 @@ An open-source, browser-based wiring harness diagram editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.2.33**
+Current release: **v1.2.34**
 
 ## Use The App
 
@@ -18,6 +18,7 @@ Data saved by the former Windows desktop version does not automatically move to 
 
 - Live harness drawing driven by editable wiring rows.
 - Selected wire names displayed directly on the wire route.
+- Heatshrink-style endpoint labels for left/right leg names and connector housing details.
 - Excel-style production table with wire name, numbered left/right legs, left/right leg names, pin positions, DNP, housing type, housing part number, terminal pin part number, AWG, color, length, branch, tool, and comments.
 - Resizable wiring-table columns that stay saved in the browser.
 - Parent-and-branch window splices with shared splice IDs.

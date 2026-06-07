@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.34 - 2026-06-07
+
+- Added black heatshrink-style labels at selected wire endpoints for left/right leg details.
+- Added a purple cable-name label on the selected harness route.
+- Removed the old floating connector callouts from the preview.
+
 ## v1.2.33 - 2026-06-07
 
 - Moved the selected wire name out of the preview header and onto the wire route.

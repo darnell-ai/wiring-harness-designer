@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.33";
+const APP_VERSION = "1.2.34";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1046,7 +1046,7 @@ function renderPreview() {
   const selected = row && isActiveWireRow(row) ? row : {};
   const hasSelectedWire = Boolean(selected.id);
 
-  dom.previewName.textContent = state.harnessName || (active.length ? "Harness preview" : "No active wires");
+  dom.previewName.textContent = active.length ? "" : "No active wires";
   dom.printHarnessTitle.textContent = state.harnessName || "Untitled Harness";
   dom.activeCount.textContent = String(active.length);
   dom.dnpCount.textContent = String(dnp);
@@ -1102,30 +1102,35 @@ function renderPreview() {
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const mainPath = wirePath(selectedStart, selectedEnd, selectedWireIndex, routeBaseY);
-  const endpointLabel = selectedEnd.exit === "splice"
-    ? `${escapeXml(normalizedSpliceId(selected))} WINDOW SPLICE`
-    : selected.rightLeg
-    ? `RIGHT LEG ${escapeXml(selected.rightLeg)} / PIN ${escapeXml(selected.rightPin || "-")}`
-    : "UNASSIGNED";
   const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
   const selectedWireNameLabel = escapeXml(shortLabel(selected.name || "Wire", 34));
   const selectedWireTagWidth = clamp((selected.name || "Wire").length * 8.5 + 34, 92, 280);
   const selectedWireTag = wireNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, selectedWireTagWidth);
+  const harnessLabel = escapeXml(shortLabel(state.harnessName || "", 28));
+  const harnessTagWidth = clamp((state.harnessName || "").length * 9 + 42, 124, 290);
+  const harnessTag = cableNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, harnessTagWidth);
   const lengthText = selected.length
     ? /\b(in|inch|inches)\b/i.test(selected.length)
       ? escapeXml(selected.length).toUpperCase()
       : `${escapeXml(selected.length)} IN`
     : "LENGTH NOT SET";
   const gaugeText = selected.awg ? `${escapeXml(selected.awg)} AWG` : "AWG NOT SET";
-  const startEndpointLabel = ["bottom", "splice"].includes(selectedStart.exit) ? "" : `
-    <text x="${selectedStart.x + 18}" y="${selectedStart.y - 14}" class="wire-sub">LEFT LEG ${escapeXml(selected.leftLeg || "-")} / PIN ${escapeXml(selected.leftPin || "-")}</text>
-  `;
-  const endEndpointLabel = ["bottom", "splice"].includes(selectedEnd.exit) ? "" : `
-    <text x="${Math.min(selectedEnd.x + 16, 820)}" y="${selectedEnd.y - 18}" class="wire-sub">${endpointLabel}</text>
-  `;
+  const heatshrinkLabels = [
+    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight),
+    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight)
+  ].join("");
+  const harnessTagMarkup = state.harnessName ? `
+    <g class="cable-name-tag" aria-label="Cable name ${harnessLabel}">
+      <rect x="${harnessTag.x - harnessTagWidth / 2}" y="${harnessTag.y - 21}" width="${harnessTagWidth}" height="42" rx="4" />
+      <text x="${harnessTag.x}" y="${harnessTag.y + 5}" text-anchor="middle">${harnessLabel}</text>
+    </g>
+  ` : "";
   const selectedWireMarkup = hasSelectedWire ? `
     <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
+
+    ${heatshrinkLabels}
+    ${harnessTagMarkup}
 
     <g class="wire-name-tag" aria-label="Selected wire name ${selectedWireNameLabel}">
       <rect x="${selectedWireTag.x - selectedWireTagWidth / 2}" y="${selectedWireTag.y - 22}" width="${selectedWireTagWidth}" height="28" rx="14" fill="#f8faf5" stroke="#d9dfd7" stroke-width="1.5" opacity="0.98" />
@@ -1139,9 +1144,6 @@ function renderPreview() {
     <text x="${labelX + 20}" y="${labelY + 26}" class="wire-label">${selectedName}</text>
     <text x="${labelX + 20}" y="${labelY + 49}" class="wire-label">${gaugeText} / ${lengthText}</text>
     <text x="${labelX + 20}" y="${labelY + 69}" class="wire-label">${escapeXml(selected.color || "COLOR NOT SET")}</text>
-
-    ${startEndpointLabel}
-    ${endEndpointLabel}
   ` : active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
@@ -1165,13 +1167,15 @@ function renderPreview() {
       </linearGradient>
       <style>
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .connector-label { fill: #eff8f1; font: 16px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
-        .leg-name-label { fill: #f2c84b; font: 14px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
-        .housing-label { fill: #d6ded8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
         .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .wire-sub { fill: #eff8f1; font: 12px Segoe UI, Arial, sans-serif; font-weight: 750; }
+        .heatshrink-sleeve { fill: #020403; stroke: #1d241f; stroke-width: 2; opacity: 0.97; }
+        .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .heatshrink-housing { fill: #c9d3cb; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .cable-name-tag rect { fill: #6d128c; stroke: #a83ad1; stroke-width: 2; opacity: 0.96; }
+        .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-role { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
         .empty-preview { fill: #dbe8de; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -1676,42 +1680,10 @@ function renderConnector(connector, side, rows, selected) {
       ${renderConnectorPin(connector, point, pin, isSelected, isUsed, side)}
     `;
   }).join("");
-  const legName = legNameFor(side, connector.key);
-  const labelBlock = connectorSideLabelBlock(connector, legName);
-  const labelX = labelBlock.x;
-  const anchor = labelBlock.anchor;
-  const legNameLabel = legName ? `
-    <text x="${labelX}" y="${labelBlock.legNameY}" class="leg-name-label" text-anchor="${anchor}">${escapeXml(legName)}</text>
-  ` : "";
-  const housingLines = housingLabelLines(housing);
-  const housingLabel = housingLines.map((line, index) => `
-    <tspan x="${labelX}" dy="${index === 0 ? 0 : 14}">${escapeXml(line)}</tspan>
-  `).join("");
-
   return `
-    <text x="${labelX}" y="${labelBlock.connectorY}" class="connector-label" text-anchor="${anchor}">${side === "left" ? "LEFT" : "RIGHT"} ${escapeXml(connector.key)}</text>
-    ${legNameLabel}
     ${renderConnectorBody(connector)}
     ${pins}
-    <text x="${labelX}" y="${labelBlock.housingY}" class="housing-label" text-anchor="${anchor}">${housingLabel}</text>
   `;
-}
-
-function connectorSideLabelBlock(connector, legName) {
-  const physicalSide = connector.x < 500 ? "left" : "right";
-  const towardCenter = physicalSide === "left" ? 1 : -1;
-  const labelGap = 88;
-  const x = physicalSide === "left"
-    ? connector.x + connector.width + labelGap
-    : connector.x - labelGap;
-  const lineGap = 18;
-  return {
-    x: clamp(x, 24, 976),
-    anchor: towardCenter > 0 ? "start" : "end",
-    connectorY: connector.y + 18,
-    legNameY: connector.y + 18 + lineGap,
-    housingY: connector.y + 18 + (legName ? lineGap * 2 : lineGap)
-  };
 }
 
 function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {
@@ -2130,6 +2102,98 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
   return {
     x: clamp(x, sideMargin, 1000 - sideMargin),
     y: clamp(y, 34, previewHeight - 24)
+  };
+}
+
+function cableNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
+  const routeIndex = Math.max(0, index);
+  const sideMargin = tagWidth / 2 + 16;
+
+  if (start.exit === "bottom" && end.exit === "bottom") {
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
+    const startBusX = bottomBusX(start, index);
+    const endBusX = bottomBusX(end, index);
+    return {
+      x: clamp((startBusX + endBusX) / 2, sideMargin, 1000 - sideMargin),
+      y: clamp(laneY + 22, 58, previewHeight - 28)
+    };
+  }
+
+  if (start.exit === "bottom" || end.exit === "bottom") {
+    const bottom = start.exit === "bottom" ? start : end;
+    const other = start.exit === "bottom" ? end : start;
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
+    const busX = bottomBusX(bottom, index);
+    return {
+      x: clamp((busX + other.x) / 2, sideMargin, 1000 - sideMargin),
+      y: clamp(laneY + 22, 58, previewHeight - 28)
+    };
+  }
+
+  return {
+    x: clamp((start.x + end.x) / 2, sideMargin, 1000 - sideMargin),
+    y: clamp(Math.max(start.y, end.y) + 24, 58, previewHeight - 28)
+  };
+}
+
+function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeight) {
+  if (!row || point.exit === "splice") {
+    return "";
+  }
+
+  const left = side === "left";
+  const leg = left ? row.leftLeg : row.rightLeg;
+  if (!leg) {
+    return "";
+  }
+
+  const legName = legNameFor(side, leg);
+  const housing = left ? row.housing : row.rightHousing;
+  const label = `${left ? "LEFT" : "RIGHT"} ${leg}`;
+  const housingText = housingLabelLines(housing || "Housing not set").join(" ");
+  const lines = [
+    escapeXml(shortLabel(label, 13)),
+    escapeXml(shortLabel(legName || "Leg name", 15)),
+    escapeXml(shortLabel(housingText, 18))
+  ];
+  const box = heatshrinkBox(point, index, routeBaseY, previewHeight);
+
+  return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+      <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
+      <text x="${box.cx}" y="${box.y + 25}" class="heatshrink-title" text-anchor="middle">${lines[0]}</text>
+      <text x="${box.cx}" y="${box.y + 46}" class="heatshrink-name" text-anchor="middle">${lines[1]}</text>
+      <text x="${box.cx}" y="${box.y + 66}" class="heatshrink-housing" text-anchor="middle">${lines[2]}</text>
+    </g>
+  `;
+}
+
+function heatshrinkBox(point, index, routeBaseY, previewHeight) {
+  const width = 118;
+  const height = 84;
+  const routeIndex = Math.max(0, index);
+  let x = point.x;
+  let y = point.y;
+
+  if (point.exit === "bottom") {
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
+    const dropY = bottomDropY(point, index);
+    x = bottomBusX(point, index);
+    y = (dropY + laneY) / 2;
+  } else {
+    x = point.x + (point.side === "right" ? -74 : 74);
+    y = point.y + 28;
+  }
+
+  const left = clamp(x - width / 2, 18, 1000 - width - 18);
+  const top = clamp(y - height / 2, 44, previewHeight - height - 14);
+  return {
+    x: left,
+    y: top,
+    cx: left + width / 2,
+    cy: top + height / 2,
+    width,
+    height
   };
 }
 
