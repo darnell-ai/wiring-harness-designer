@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.29 - 2026-06-07
+
+- Moved the cable name input into the editor bar between left and right leg-name fields.
+- Sized the three editor-bar name inputs consistently.
+
 ## v1.2.28 - 2026-06-07
 
 - Matched the production table order to the latest sheet layout and hid Do Not Place columns from exported/visible tables.

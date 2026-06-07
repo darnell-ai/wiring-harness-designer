@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.28</title>
+    <title>Wiring Harness Designer v1.2.29</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,16 +14,11 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.28</span>
+              <span class="version-badge">v1.2.29</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
         </div>
-
-        <label class="harness-name">
-          <span>Harness</span>
-          <input id="harnessName" type="text" autocomplete="off">
-        </label>
 
         <div class="toolbar" aria-label="Harness actions">
           <button id="undoButton" type="button" title="Undo last project change" disabled>
@@ -183,6 +178,10 @@
             <label>
               <span>Left leg names</span>
               <input id="leftLegNames" type="text" placeholder="1=Name, 2=Name, 3=Name, 4=Name">
+            </label>
+            <label>
+              <span>Cable name</span>
+              <input id="harnessName" type="text" autocomplete="off" placeholder="W101">
             </label>
             <label>
               <span>Right leg names</span>

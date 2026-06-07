@@ -84,7 +84,7 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(240px, 420px) auto;
+  grid-template-columns: minmax(280px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 14px 18px;
@@ -144,31 +144,8 @@ button:disabled {
   font-size: 12px;
 }
 
-.harness-name {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
-  gap: 10px;
-  color: #b9c8be;
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.harness-name input,
-.filter-tools input {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: var(--radius);
-  outline: none;
-  background: rgba(255, 255, 255, 0.11);
-  color: #f8fbf7;
-  padding: 10px 12px;
-}
-
-.harness-name input:focus,
 .filter-tools input:focus,
+.leg-name-tools input:focus,
 .harness-table select:focus,
 .harness-table input:focus {
   border-color: var(--green);
@@ -485,6 +462,8 @@ body.is-resizing-layout * {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   background: #fbfcf8;
+  align-items: end;
+  flex-wrap: wrap;
 }
 
 .filter-tools {
@@ -496,18 +475,17 @@ body.is-resizing-layout * {
 }
 
 .leg-name-tools {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(145px, 1fr));
   gap: 10px;
-  flex: 1 1 auto;
-  min-width: 360px;
+  flex: 1 1 560px;
+  min-width: 520px;
 }
 
 .leg-name-tools label {
   display: grid;
-  grid-template-columns: auto minmax(220px, 300px);
-  align-items: center;
-  gap: 7px;
+  grid-template-columns: 1fr;
+  gap: 5px;
   color: var(--muted);
   font-size: 11px;
   font-weight: 850;
@@ -526,17 +504,28 @@ body.is-resizing-layout * {
 }
 
 .filter-tools input {
-  border-color: var(--line-strong);
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  outline: none;
   background: var(--field);
   color: var(--ink);
+  padding: 8px 10px;
   text-transform: none;
 }
 
 .leg-name-tools input {
+  width: 100%;
   min-width: 0;
-  border-color: var(--line-strong);
+  height: 34px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  outline: none;
   background: var(--field);
   color: var(--ink);
+  padding: 8px 10px;
   text-transform: none;
 }
 
@@ -1479,11 +1468,11 @@ body.is-resizing-column {
 
   .leg-name-tools {
     min-width: 0;
-    flex-wrap: wrap;
+    grid-template-columns: repeat(3, minmax(140px, 1fr));
   }
 
   .leg-name-tools label {
-    grid-template-columns: minmax(110px, auto) minmax(170px, 1fr);
+    grid-template-columns: 1fr;
   }
 
   .catalog-workspace,

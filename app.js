@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.28";
+const APP_VERSION = "1.2.29";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
