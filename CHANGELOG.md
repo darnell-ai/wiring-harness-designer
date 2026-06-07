@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.42 - 2026-06-07
+
+- Removed the housing line from the heatshrink labels and kept just the leg number and leg name.
+
 ## v1.2.41 - 2026-06-07
 
 - Drew the wire line over the heatshrink boxes so routing stays visible.

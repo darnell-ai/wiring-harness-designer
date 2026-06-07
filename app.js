@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.41";
+const APP_VERSION = "1.2.42";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1176,7 +1176,6 @@ function renderPreview() {
         .heatshrink-sleeve { fill: rgba(2, 4, 3, 0.14); stroke: rgba(29, 36, 31, 0.55); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .heatshrink-housing { fill: #c9d3cb; font: 10px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .cable-name-tag rect { fill: #6d128c; stroke: #a83ad1; stroke-width: 2; opacity: 0.96; }
         .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -2143,27 +2142,23 @@ function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeigh
   }
 
   const legName = legNameFor(side, leg);
-  const housing = left ? row.housing : row.rightHousing;
   const label = `${left ? "LEFT" : "RIGHT"} ${leg}`;
-  const housingText = housingLabelLines(housing || "Housing not set").join(" ");
   const lines = [
-    escapeXml(shortLabel(label, 13)),
+    escapeXml(shortLabel(String(leg), 13)),
     escapeXml(shortLabel(legName || "Leg name", 15)),
-    escapeXml(shortLabel(housingText, 18))
   ];
   const box = heatshrinkBox(point, index, routeBaseY, previewHeight);
   const sleeveMarkup = `
       <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
   `;
   const textMarkup = `
-      <text x="${box.cx}" y="${box.y + 25}" class="heatshrink-title" text-anchor="middle">${lines[0]}</text>
-      <text x="${box.cx}" y="${box.y + 46}" class="heatshrink-name" text-anchor="middle">${lines[1]}</text>
-      <text x="${box.cx}" y="${box.y + 66}" class="heatshrink-housing" text-anchor="middle">${lines[2]}</text>
+      <text x="${box.cx}" y="${box.y + 31}" class="heatshrink-title" text-anchor="middle">${lines[0]}</text>
+      <text x="${box.cx}" y="${box.y + 55}" class="heatshrink-name" text-anchor="middle">${lines[1]}</text>
   `;
 
   if (part === "sleeve") {
     return `
-    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
       ${sleeveMarkup}
     </g>
   `;
@@ -2171,14 +2166,14 @@ function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeigh
 
   if (part === "text") {
     return `
-    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
       ${textMarkup}
     </g>
   `;
   }
 
   return `
-    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName} ${housingText}`)}">
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
       ${sleeveMarkup}
       ${textMarkup}
     </g>
