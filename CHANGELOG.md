@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.49 - 2026-06-07
+
+- Changed wire routing to leave the left connector horizontally first, then drop into the shared lane and finish with a shorter connector run.
+- Raised the shared wire trunk so the preview uses the open center area instead of routing all the way down to the bottom.
+
 ## v1.2.48 - 2026-06-07
 
 - Let imported spreadsheet rows teach the catalog stable housing metadata and part numbers for future reuse.

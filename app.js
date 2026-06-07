@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.48";
+const APP_VERSION = "1.2.49";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -2106,7 +2106,7 @@ function connectorBottom(leftConnectors, rightConnectors) {
 }
 
 function wireRouteBase(leftConnectors, rightConnectors) {
-  return connectorBottom(leftConnectors, rightConnectors) + 74;
+  return Math.max(220, connectorBottom(leftConnectors, rightConnectors) - 180);
 }
 
 function previewCanvasHeight(leftConnectors, rightConnectors, wireCount = 0) {
@@ -2831,16 +2831,10 @@ function clamp(input, min, max) {
 function wirePath(start, end, index, routeBaseY) {
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
-    const startDropY = bottomDropY(start, index);
-    const endDropY = bottomDropY(end, index);
-    const startBusX = bottomBusX(start, index);
-    const endBusX = bottomBusX(end, index);
+    const splitX = wireSplitX(start, end);
     return `M ${start.x} ${start.y}
-      V ${startDropY}
-      H ${startBusX}
+      H ${splitX}
       V ${laneY}
-      H ${endBusX}
-      V ${endDropY}
       H ${end.x}
       V ${end.y}`;
   }
@@ -2875,14 +2869,18 @@ function bottomBusX(point, index) {
 
 function bottomExitWirePath(bottom, other, index, routeBaseY) {
   const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
-  const dropY = bottomDropY(bottom, index);
-  const busX = bottomBusX(bottom, index);
+  const splitX = wireSplitX(bottom, other);
   return `M ${bottom.x} ${bottom.y}
-    V ${dropY}
-    H ${busX}
+    H ${splitX}
     V ${laneY}
     H ${other.x}
     V ${other.y}`;
+}
+
+function wireSplitX(start, end) {
+  const minX = Math.min(start.x, end.x) + 32;
+  const maxX = Math.max(start.x, end.x) - 32;
+  return clamp((start.x + end.x) / 2, minX, maxX);
 }
 
 function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
@@ -2891,17 +2889,13 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
 
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const startBusX = bottomBusX(start, index);
-    const endBusX = bottomBusX(end, index);
-    return wireLaneLabelPosition((startBusX + endBusX) / 2, laneY, previewHeight, sideMargin);
+    return wireLaneLabelPosition(wireSplitX(start, end), laneY, previewHeight, sideMargin);
   }
 
   if (start.exit === "bottom" || end.exit === "bottom") {
     const bottom = start.exit === "bottom" ? start : end;
-    const other = start.exit === "bottom" ? end : start;
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const busX = bottomBusX(bottom, index);
-    return wireLaneLabelPosition((busX + other.x) / 2, laneY, previewHeight, sideMargin);
+    return wireLaneLabelPosition(wireSplitX(bottom, start.exit === "bottom" ? end : start), laneY, previewHeight, sideMargin);
   }
 
   const x = (start.x + end.x) / 2;
