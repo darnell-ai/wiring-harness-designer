@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.31";
+const APP_VERSION = "1.2.32";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -105,7 +105,6 @@ const dom = {
   activeCount: document.querySelector("#activeCount"),
   dnpCount: document.querySelector("#dnpCount"),
   totalLength: document.querySelector("#totalLength"),
-  colorLegend: document.querySelector("#colorLegend"),
   wirePreview: document.querySelector("#wirePreview"),
   harnessTable: document.querySelector("#harnessTable"),
   tableColumnGroup: document.querySelector("#tableColumnGroup"),
@@ -131,7 +130,6 @@ const dom = {
   duplicateRow: document.querySelector("#duplicateRow"),
   deleteRow: document.querySelector("#deleteRow"),
   resetSample: document.querySelector("#resetSample"),
-  exportJson: document.querySelector("#exportJson"),
   exportCsv: document.querySelector("#exportCsv"),
   exportDrawing: document.querySelector("#exportDrawing"),
   exportInstructions: document.querySelector("#exportInstructions"),
@@ -756,7 +754,7 @@ function saveState() {
     updateUndoButtonState();
     return true;
   } catch (error) {
-    showToast("Browser storage is full. Export the project JSON, then remove large catalog images.");
+    showToast("Browser storage is full. Remove large catalog images or unused rows.");
     return false;
   }
 }
@@ -817,7 +815,6 @@ function render() {
   applyColumnWidths();
   renderSummary();
   renderPreview();
-  renderLegend();
   renderQualityBadge();
   renderTable();
   updateActionState();
@@ -2113,28 +2110,6 @@ function numberOrDefault(input, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function renderLegend() {
-  const counts = activeRows().reduce((acc, row) => {
-    const color = row.color || "UNSET";
-    acc[color] = (acc[color] || 0) + 1;
-    return acc;
-  }, {});
-
-  const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
-  if (!entries.length) {
-    dom.colorLegend.innerHTML = `<div class="legend-item"><span class="swatch" style="--swatch:#d9dfd7"></span><span>No active wires</span><span class="legend-count">0</span></div>`;
-    return;
-  }
-
-  dom.colorLegend.innerHTML = entries.map(([color, count]) => `
-    <div class="legend-item">
-      <span class="swatch" style="--swatch:${colorMap[color] || "#d9dfd7"}"></span>
-      <span>${escapeHtml(color)}</span>
-      <span class="legend-count">${count}</span>
-    </div>
-  `).join("");
-}
-
 function validateHarness() {
   const issues = [];
   const active = activeRows();
@@ -2731,7 +2706,6 @@ function handleCellChange(target, shouldRenderTable) {
   } else {
     renderSummary();
     renderPreview();
-    renderLegend();
     renderQualityBadge();
     if (dom.qualityDialog.open) {
       renderQualityDialog();
@@ -3064,12 +3038,6 @@ function exportBomCsv() {
   const csv = lines.map((line) => line.map(csvCell).join(",")).join("\r\n");
   downloadText(`${fileSafeName(state.harnessName)}-bom-cut-list.csv`, csv, "text/csv");
   showToast("BOM and cut list exported.");
-}
-
-function exportJson() {
-  const fileName = `${fileSafeName(state.harnessName)}.json`;
-  downloadText(fileName, JSON.stringify({ appVersion: APP_VERSION, ...state }, null, 2), "application/json");
-  showToast("Project saved as JSON.");
 }
 
 function exportCsv() {
@@ -4227,7 +4195,6 @@ dom.imageImportButton.addEventListener("click", openImageImport);
 dom.closeImageDialog.addEventListener("click", closeImageImport);
 dom.translateImageText.addEventListener("click", translateImageText);
 dom.applyImageRows.addEventListener("click", applyImportedRows);
-dom.exportJson.addEventListener("click", exportJson);
 dom.exportCsv.addEventListener("click", exportCsv);
 dom.exportDrawing.addEventListener("click", exportDrawingSvg);
 dom.exportInstructions.addEventListener("click", exportInstructions);

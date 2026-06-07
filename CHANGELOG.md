@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.32 - 2026-06-07
+
+- Removed the JSON Save toolbar button.
+- Removed the Wire colors side panel and expanded the live preview into that space.
+
 ## v1.2.31 - 2026-06-07
 
 - Renamed the Picture toolbar action to Upload.

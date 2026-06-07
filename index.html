@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.31</title>
+    <title>Wiring Harness Designer v1.2.32</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.31</span>
+              <span class="version-badge">v1.2.32</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -57,10 +57,6 @@
           <button id="imageImportButton" type="button" title="Paste copied Excel rows for import">
             <span class="tool-icon">UP</span>
             <span>Upload</span>
-          </button>
-          <button id="exportJson" type="button" title="Save project JSON">
-            <span class="tool-icon">SAVE</span>
-            <span>Save</span>
           </button>
           <button id="exportCsv" type="button" title="Export table CSV" hidden>
             <span class="tool-icon">CSV</span>
@@ -105,13 +101,6 @@
           </div>
         </div>
 
-        <aside class="legend-panel">
-          <div class="legend-title">
-            <span class="section-label">Color rack</span>
-            <strong>Wire colors</strong>
-          </div>
-          <div id="colorLegend" class="color-legend"></div>
-        </aside>
       </section>
 
       <div

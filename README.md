@@ -4,15 +4,15 @@ An open-source, browser-based wiring harness diagram editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.2.31**
+Current release: **v1.2.32**
 
 ## Use The App
 
 Open the live app in a modern desktop browser. No installation or account is required.
 
-Harness edits are stored locally in the browser. Use **Save** regularly to download a portable JSON project backup. The app can also export CSV tables, SVG drawings, and printable drawing/instruction packets.
+Harness edits are stored locally in the browser. The app can print the current harness drawing for production review.
 
-Data saved by the former Windows desktop version does not automatically move to the website because browsers keep storage separate for each address. Export the desktop project as JSON, then use **Import** in the website.
+Data saved by the former Windows desktop version does not automatically move to the website because browsers keep storage separate for each address.
 
 ## Features
 
@@ -24,7 +24,6 @@ Data saved by the former Windows desktop version does not automatically move to 
 - Illustrated Powerpole, SubConn, Molex, Dupont, PCB, barrel connection, ring terminal, and splice housings.
 - DNP filtering that removes unused wires, contacts, pins, and connector housings from the drawing.
 - Pasted Excel/CSV/TSV row import, including separate housing type, housing part, and terminal pin part fields.
-- JSON project import/export.
 - CSV, SVG drawing, printable guide, and browser print exports.
 - Local browser storage and no server-side project database.
 - Continuous electrical checks for duplicate endpoints, housing conflicts, pin capacity, incomplete splices, and missing wire details.
