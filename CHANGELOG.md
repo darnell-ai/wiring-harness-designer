@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.30 - 2026-06-07
+
+- Removed the selected-wire summary panel from the preview area.
+- Removed the editable-table search and active-only filter controls.
+- Expanded the live preview into the freed layout space.
+
 ## v1.2.29 - 2026-06-07
 
 - Moved the cable name input into the editor bar between left and right leg-name fields.

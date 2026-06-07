@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.29";
+const APP_VERSION = "1.2.30";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1001,6 +1001,10 @@ function startColumnResize(event, index) {
 }
 
 function renderSummary() {
+  if (!dom.selectedTitle) {
+    return;
+  }
+
   const row = selectedRow();
   if (!row) {
     dom.selectedTitle.textContent = "No row";
@@ -2336,8 +2340,12 @@ function focusIssueRow(rowId) {
     return;
   }
   state.selectedId = rowId;
-  dom.searchRows.value = "";
-  dom.activeOnly.checked = false;
+  if (dom.searchRows) {
+    dom.searchRows.value = "";
+  }
+  if (dom.activeOnly) {
+    dom.activeOnly.checked = false;
+  }
   saveState();
   render();
   const row = dom.wireRows.querySelector(`tr[data-id="${CSS.escape(rowId)}"]`);
@@ -2545,46 +2553,10 @@ function resetCatalogDefaults() {
 }
 
 function renderTable() {
-  const query = dom.searchRows.value.trim().toLowerCase();
-  const onlyActive = dom.activeOnly.checked;
   const issuesByRow = qualityIssuesByRow();
   let previousLeg = "";
 
-  const rows = state.rows
-    .map((row, index) => ({ row, index }))
-    .filter(({ row }) => {
-      if (onlyActive && !isActiveWireRow(row)) {
-        return false;
-      }
-
-      if (!query) {
-        return true;
-      }
-
-      return [
-        row.name,
-        row.leftLeg,
-        legNameFor("left", row.leftLeg),
-        row.leftPin,
-        dnpLabel(row, "left"),
-        row.housing,
-        row.leftHousingPart,
-        row.leftTerminalPart,
-        row.awg,
-        row.color,
-        row.length,
-        branchLabel(row),
-        row.rightLeg,
-        legNameFor("right", row.rightLeg),
-        row.rightPin,
-        dnpLabel(row, "right"),
-        row.rightHousingPart,
-        row.rightTerminalPart,
-        row.rightHousing,
-        row.toolUsed,
-        row.comments
-      ].join(" ").toLowerCase().includes(query);
-    });
+  const rows = state.rows.map((row, index) => ({ row, index }));
 
   dom.wireRows.innerHTML = rows.map(({ row, index }) => {
     const groupStart = previousLeg && previousLeg !== row.leftLeg;
@@ -2939,8 +2911,12 @@ function resetSample() {
   state.previewPaneHeight = previewPaneHeight;
   state.legNames = legNames;
   saveState();
-  dom.searchRows.value = "";
-  dom.activeOnly.checked = false;
+  if (dom.searchRows) {
+    dom.searchRows.value = "";
+  }
+  if (dom.activeOnly) {
+    dom.activeOnly.checked = false;
+  }
   render();
   showToast("Starter layout restored.");
 }
@@ -3230,8 +3206,12 @@ function applyImportedRows() {
     legNames: hasImportLegNames ? importLegNames : state.legNames
   });
   saveState();
-  dom.searchRows.value = "";
-  dom.activeOnly.checked = false;
+  if (dom.searchRows) {
+    dom.searchRows.value = "";
+  }
+  if (dom.activeOnly) {
+    dom.activeOnly.checked = false;
+  }
   render();
   closeImageImport();
   showToast("Imported rows applied.");
@@ -4190,8 +4170,12 @@ function importJson(file) {
       rememberUndo();
       state = normalizeState(parsed);
       saveState();
-      dom.searchRows.value = "";
-      dom.activeOnly.checked = false;
+      if (dom.searchRows) {
+        dom.searchRows.value = "";
+      }
+      if (dom.activeOnly) {
+        dom.activeOnly.checked = false;
+      }
       render();
       showToast("Project JSON imported.");
     } catch (error) {
@@ -4297,8 +4281,8 @@ dom.wireRows.addEventListener("change", (event) => {
   }
 });
 
-dom.searchRows.addEventListener("input", renderTable);
-dom.activeOnly.addEventListener("change", renderTable);
+dom.searchRows?.addEventListener("input", renderTable);
+dom.activeOnly?.addEventListener("change", renderTable);
 dom.leftLegNames.addEventListener("change", () => updateLegNames("left", dom.leftLegNames.value));
 dom.rightLegNames.addEventListener("change", () => updateLegNames("right", dom.rightLegNames.value));
 dom.undoButton.addEventListener("click", undoLastChange);

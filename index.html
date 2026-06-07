@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.29</title>
+    <title>Wiring Harness Designer v1.2.30</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.29</span>
+              <span class="version-badge">v1.2.30</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -88,46 +88,6 @@
       </header>
 
       <section class="preview-shell" aria-label="Harness preview">
-        <aside class="wire-summary">
-          <div class="summary-header">
-            <span class="section-label">Selected wire</span>
-            <strong id="selectedTitle">Pin 1</strong>
-          </div>
-          <dl class="summary-grid">
-            <div>
-              <dt>Status</dt>
-              <dd id="summaryStatus">Active</dd>
-            </div>
-            <div>
-              <dt>Gauge</dt>
-              <dd id="summaryGauge">16 AWG</dd>
-            </div>
-            <div>
-              <dt>Color</dt>
-              <dd>
-                <span id="summaryColorSwatch" class="swatch"></span>
-                <span id="summaryColor">BLACK</span>
-              </dd>
-            </div>
-            <div>
-              <dt>Length</dt>
-              <dd id="summaryLength">8 in</dd>
-            </div>
-            <div>
-              <dt>Left</dt>
-              <dd id="summaryLeft">Leg 1 / Pin 1</dd>
-            </div>
-            <div>
-              <dt>Right</dt>
-              <dd id="summaryRight">Not assigned</dd>
-            </div>
-            <div class="wide">
-              <dt>Housing</dt>
-              <dd id="summaryHousing">A POWER POLE</dd>
-            </div>
-          </dl>
-        </aside>
-
         <div class="diagram-panel">
           <div class="diagram-topline">
             <div>
@@ -186,16 +146,6 @@
             <label>
               <span>Right leg names</span>
               <input id="rightLegNames" type="text" placeholder="1=Name, 2=Name, 3=Name, 4=Name">
-            </label>
-          </div>
-          <div class="filter-tools">
-            <label>
-              <span>Find</span>
-              <input id="searchRows" type="search" placeholder="Name, part, pin, color, housing">
-            </label>
-            <label class="check-label">
-              <input id="activeOnly" type="checkbox">
-              <span>Active only</span>
             </label>
           </div>
         </div>
