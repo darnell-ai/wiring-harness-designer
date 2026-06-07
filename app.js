@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.32";
+const APP_VERSION = "1.2.33";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1046,9 +1046,7 @@ function renderPreview() {
   const selected = row && isActiveWireRow(row) ? row : {};
   const hasSelectedWire = Boolean(selected.id);
 
-  dom.previewName.textContent = hasSelectedWire
-    ? selected.name || state.harnessName || "Harness preview"
-    : active.length ? "Harness preview" : "No active wires";
+  dom.previewName.textContent = state.harnessName || (active.length ? "Harness preview" : "No active wires");
   dom.printHarnessTitle.textContent = state.harnessName || "Untitled Harness";
   dom.activeCount.textContent = String(active.length);
   dom.dnpCount.textContent = String(dnp);
@@ -1110,6 +1108,9 @@ function renderPreview() {
     ? `RIGHT LEG ${escapeXml(selected.rightLeg)} / PIN ${escapeXml(selected.rightPin || "-")}`
     : "UNASSIGNED";
   const selectedName = escapeXml(selected.name || state.harnessName || "Wire");
+  const selectedWireNameLabel = escapeXml(shortLabel(selected.name || "Wire", 34));
+  const selectedWireTagWidth = clamp((selected.name || "Wire").length * 8.5 + 34, 92, 280);
+  const selectedWireTag = wireNameTagPosition(selectedStart, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, selectedWireTagWidth);
   const lengthText = selected.length
     ? /\b(in|inch|inches)\b/i.test(selected.length)
       ? escapeXml(selected.length).toUpperCase()
@@ -1125,6 +1126,11 @@ function renderPreview() {
   const selectedWireMarkup = hasSelectedWire ? `
     <path d="${mainPath}" fill="none" stroke="${selected.color === "BLACK" ? "#f6fbf4" : "rgba(0,0,0,0.62)"}" stroke-width="11" stroke-linecap="round" stroke-linejoin="round" opacity="0.95" />
     <path d="${mainPath}" fill="none" stroke="${wireColor}" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round" opacity="1" filter="url(#wireGlow)" />
+
+    <g class="wire-name-tag" aria-label="Selected wire name ${selectedWireNameLabel}">
+      <rect x="${selectedWireTag.x - selectedWireTagWidth / 2}" y="${selectedWireTag.y - 22}" width="${selectedWireTagWidth}" height="28" rx="14" fill="#f8faf5" stroke="#d9dfd7" stroke-width="1.5" opacity="0.98" />
+      <text x="${selectedWireTag.x}" y="${selectedWireTag.y - 3}" text-anchor="middle">${selectedWireNameLabel}</text>
+    </g>
 
     ${selectedStart.exit === "splice" ? "" : `<circle cx="${selectedStart.x}" cy="${selectedStart.y}" r="13" fill="none" stroke="${SELECTED_START_COLOR}" stroke-width="3" />`}
     ${selectedEnd.exit === "splice" ? "" : `<circle cx="${selectedEnd.x}" cy="${selectedEnd.y}" r="12" fill="${selectedEnd.polarity ? "none" : "#15201b"}" stroke="${SELECTED_END_COLOR}" stroke-width="3" />`}
@@ -1164,6 +1170,7 @@ function renderPreview() {
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .housing-label { fill: #d6ded8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 850; paint-order: stroke; stroke: #15201b; stroke-width: 3px; }
         .wire-label { fill: #101814; font: 13px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-sub { fill: #eff8f1; font: 12px Segoe UI, Arial, sans-serif; font-weight: 750; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-role { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
@@ -2097,6 +2104,50 @@ function bottomExitWirePath(bottom, other, index, routeBaseY) {
     V ${laneY}
     H ${other.x}
     V ${other.y}`;
+}
+
+function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
+  const routeIndex = Math.max(0, index);
+  const sideMargin = tagWidth / 2 + 16;
+
+  if (start.exit === "bottom" && end.exit === "bottom") {
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
+    const startBusX = bottomBusX(start, index);
+    const endBusX = bottomBusX(end, index);
+    return wireLaneLabelPosition((startBusX + endBusX) / 2, laneY, previewHeight, sideMargin);
+  }
+
+  if (start.exit === "bottom" || end.exit === "bottom") {
+    const bottom = start.exit === "bottom" ? start : end;
+    const other = start.exit === "bottom" ? end : start;
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
+    const busX = bottomBusX(bottom, index);
+    return wireLaneLabelPosition((busX + other.x) / 2, laneY, previewHeight, sideMargin);
+  }
+
+  const x = (start.x + end.x) / 2;
+  const y = Math.min(start.y, end.y) - 18;
+  return {
+    x: clamp(x, sideMargin, 1000 - sideMargin),
+    y: clamp(y, 34, previewHeight - 24)
+  };
+}
+
+function wireLaneLabelPosition(x, laneY, previewHeight, sideMargin) {
+  const aboveY = laneY - 18;
+  const y = aboveY >= 34 ? aboveY : laneY + 34;
+  return {
+    x: clamp(x, sideMargin, 1000 - sideMargin),
+    y: clamp(y, 34, previewHeight - 24)
+  };
+}
+
+function shortLabel(input, maxLength) {
+  const text = value(input).trim();
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(1, maxLength - 3))}...`;
 }
 
 function numberOrDefault(input, fallback) {

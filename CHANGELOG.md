@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.33 - 2026-06-07
+
+- Moved the selected wire name out of the preview header and onto the wire route.
+
 ## v1.2.32 - 2026-06-07
 
 - Removed the JSON Save toolbar button.
