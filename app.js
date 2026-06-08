@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.52";
+const APP_VERSION = "1.2.53";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1743,9 +1743,9 @@ function renderPreview() {
         .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .heatshrink-sleeve { fill: rgba(2, 4, 3, 0.14); stroke: rgba(29, 36, 31, 0.55); stroke-width: 2; }
-        .heatshrink-title { fill: #f8fbf7; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .heatshrink-name { fill: #f2c84b; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
+        .heatshrink-title { fill: #f8fbf7; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .heatshrink-name { fill: #f2c84b; font: 11px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .cable-name-tag rect { fill: #6d128c; stroke: #a83ad1; stroke-width: 2; opacity: 0.96; }
         .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -3023,7 +3023,7 @@ function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part
     escapeXml(shortLabel(String(group.leg), 13)),
     escapeXml(shortLabel(legName || "Leg name", 15))
   ];
-  const box = heatshrinkGroupBox(group.routes, routeBaseY, previewHeight);
+  const box = heatshrinkGroupBox(group.routes, side, routeBaseY, previewHeight);
   const sleeveMarkup = `
       <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
   `;
@@ -3056,28 +3056,51 @@ function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part
   `;
 }
 
-function heatshrinkGroupBox(routes, routeBaseY, previewHeight) {
-  const width = 118;
-  const centers = routes.map(({ index, point }) => {
+function heatshrinkGroupBox(routes, side, routeBaseY, previewHeight) {
+  const terminalRuns = routes.map(({ index, point }) => {
     if (point.exit === "bottom") {
       const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
       const dropY = bottomDropY(point, index, laneY);
       return {
-        x: bottomBusX(point, index),
-        y: (dropY + laneY) / 2
+        index,
+        point,
+        laneY,
+        dropY,
+        busX: bottomBusX(point, index)
       };
     }
 
     return {
-      x: point.x + (point.side === "right" ? -74 : 74),
-      y: point.y + 28
+      index,
+      point,
+      laneY: point.y,
+      dropY: point.y,
+      busX: point.x
     };
   });
-  const minY = Math.min(...centers.map((item) => item.y));
-  const maxY = Math.max(...centers.map((item) => item.y));
-  const centerX = centers.reduce((sum, item) => sum + item.x, 0) / centers.length;
-  const centerY = (minY + maxY) / 2;
-  const height = clamp(maxY - minY + 72, 84, 146);
+
+  const pointXs = terminalRuns.map((item) => item.point.x);
+  const pointYs = terminalRuns.map((item) => item.point.y);
+  const minX = Math.min(...pointXs);
+  const maxX = Math.max(...pointXs);
+  const minY = Math.min(...pointYs);
+  const maxY = Math.max(...pointYs);
+  const laneY = terminalRuns.reduce((sum, item) => sum + item.laneY, 0) / terminalRuns.length;
+  const terminalY = pointYs.reduce((sum, y) => sum + y, 0) / pointYs.length;
+  const towardLane = terminalY <= laneY ? 1 : -1;
+  const horizontal = (maxX - minX) >= (maxY - minY);
+  const width = horizontal
+    ? clamp(maxX - minX + 52, 88, 170)
+    : 54;
+  const height = horizontal
+    ? 54
+    : clamp(maxY - minY + 52, 88, 170);
+  const centerX = horizontal
+    ? (minX + maxX) / 2
+    : terminalRuns.reduce((sum, item) => sum + item.busX, 0) / terminalRuns.length;
+  const centerY = horizontal
+    ? terminalY + towardLane * 38
+    : (minY + maxY) / 2 + towardLane * 18;
   const left = clamp(centerX - width / 2, 18, 1000 - width - 18);
   const top = clamp(centerY - height / 2, 44, previewHeight - height - 14);
   return {

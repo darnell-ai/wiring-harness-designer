@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.53 - 2026-06-07
+
+- Moved heatshrink sleeves closer to each leg's termination points.
+- Made the translucent heatshrink boxes darker and smaller so they read like termination sleeves without hiding the wires.
+
 ## v1.2.52 - 2026-06-07
 
 - Added heatshrink sleeves and labels for every active left and right leg group, not just the selected wire.
