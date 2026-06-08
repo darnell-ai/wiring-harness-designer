@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.57 - 2026-06-08
+
+- Changed pin-position numbers to orange with a dark outline so they stand out on the wire diagram.
+- Added used pin numbers at the actual wire termination points on both left and right connector ends.
+
 ## v1.2.56 - 2026-06-08
 
 - Shifted the harness cable tag left in the live diagram so it stays out of the crowded right-side routing.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.56";
+const APP_VERSION = "1.2.57";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1845,7 +1845,8 @@ function renderPreview() {
         <stop offset="1" stop-color="#3d7cc9" stop-opacity="0.32" />
       </linearGradient>
       <style>
-        .pin-number { fill: #c5d3c8; font: 12px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.68); stroke-width: 2.2; }
+        .wire-pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.82); stroke-width: 2.8; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
@@ -2489,7 +2490,7 @@ function renderConnector(connector, side, rows, selected) {
     const isUsed = usedPins.has(position);
     return `
       ${renderConnectorLead(connector, point, port, isSelected, isUsed, side)}
-      ${renderConnectorPin(connector, point, pin, isSelected, isUsed, side)}
+      ${renderConnectorPin(connector, point, port, pin, isSelected, isUsed, side)}
     `;
   }).join("");
   return `
@@ -2595,7 +2596,7 @@ function renderConnectorBody(connector) {
       const slotY = point.y - metrics.slotHeight / 2;
       return `
         <rect x="${slotX}" y="${slotY}" width="${metrics.slotWidth}" height="${metrics.slotHeight}" rx="4" fill="#070908" stroke="#edf3ee" stroke-width="1.8" />
-        <text x="${point.x}" y="${slotY + metrics.slotHeight + 12}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${slotFontSize}" font-weight="900" fill="#dbe5df">${pin}</text>
+        <text x="${point.x}" y="${slotY + metrics.slotHeight + 12}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${slotFontSize}" font-weight="900" fill="#f6a623" paint-order="stroke fill" stroke="rgba(8, 12, 10, 0.68)" stroke-width="2">${pin}</text>
       `;
     }).join("");
     return `
@@ -2704,21 +2705,16 @@ function renderPowerpoleModule(connector, item) {
   `;
 }
 
-function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
-  const centerX = connector.x + connector.width / 2;
+function renderConnectorPin(connector, point, port, pin, isSelected, isUsed, side) {
   const isSubconn = connector.family === "subconn";
   const isCpc = connector.family === "cpc";
-  const isHorizontalHousing = connector.family === "molex";
-  const isBottomTerminalHousing = connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45";
   const numericPin = numberOrDefault(pin, 0);
-  const cpcLayout = isCpc ? CPC_CONTACT_LOOKUP.get(numericPin) || CPC_CONTACT_LAYOUT[0] : null;
   let contact = "";
 
   if (connector.family === "powerpole") {
-    const module = powerpoleModuleRect(connector, pin);
     return `
       <circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#dce3de" stroke="#65736b" stroke-width="2" />
-      <text x="${module.x + module.width / 2}" y="${module.y + module.height - 8}" class="pin-number" text-anchor="middle">${pin}</text>
+      ${renderWireEndPinNumber(connector, point, port, pin, isUsed, side)}
     `;
   } else if (isSubconn && connector.gender === "female") {
     contact = `
@@ -2758,37 +2754,62 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   }
 
   if (connector.family === "minifit" || connector.family === "molex") {
-    return contact;
+    return `
+      ${contact}
+      ${renderWireEndPinNumber(connector, point, port, pin, isUsed, side)}
+    `;
   }
-
-  const radialSide = point.x >= centerX;
-  const cpcAnchor = cpcLayout?.dx < 0 ? "end" : "start";
-  const textX = connector.family === "barrel" && numericPin === 2
-    ? point.x + (side === "left" ? -13 : 13)
-    : isCpc
-    ? point.x + (cpcLayout?.dx < 0 ? -12 : 12)
-    : isBottomTerminalHousing
-    ? point.x
-    : isHorizontalHousing
-    ? point.x
-    : isSubconn
-    ? point.x + (radialSide ? 12 : -12)
-    : side === "left" ? point.x - 31 : point.x + 18;
-  const textY = connector.family === "barrel"
-    ? point.y + (numericPin === 1 ? 22 : -8)
-    : isCpc
-    ? point.y + (cpcLayout?.dy <= 0 ? -10 : 16)
-    : isBottomTerminalHousing ? point.y - 14 : isHorizontalHousing ? point.y + 24 : point.y + 4;
-  const anchor = connector.family === "barrel" && numericPin === 2
-    ? side === "left" ? "end" : "start"
-    : isCpc
-    ? cpcAnchor
-    : isBottomTerminalHousing || isHorizontalHousing ? "middle" : isSubconn ? (radialSide ? "start" : "end") : "start";
 
   return `
     ${contact}
-    <text x="${textX}" y="${textY}" class="pin-number" text-anchor="${anchor}">${pin}</text>
+    ${renderWireEndPinNumber(connector, point, port, pin, isUsed, side)}
   `;
+}
+
+function renderWireEndPinNumber(connector, contact, port, pin, isUsed, side) {
+  if (!isUsed || !pin) {
+    return "";
+  }
+
+  const label = wireEndPinNumberPosition(connector, contact, port, pin, side);
+  return `<text x="${label.x}" y="${label.y}" class="wire-pin-number" text-anchor="${label.anchor}" dominant-baseline="central">${escapeXml(pin)}</text>`;
+}
+
+function wireEndPinNumberPosition(connector, contact, port, pin, side) {
+  if (connector.family === "cpc") {
+    const layout = CPC_CONTACT_LOOKUP.get(numberOrDefault(pin, 0)) || CPC_CONTACT_LAYOUT[0];
+    const labelLeft = layout.dx < 0;
+    const highContact = layout.dy < 0;
+    return {
+      x: contact.x + (labelLeft ? -11 : 11),
+      y: contact.y + (highContact ? -8 : 8),
+      anchor: labelLeft ? "end" : "start"
+    };
+  }
+
+  if (port?.exit === "bottom") {
+    const lift = connector.family === "powerpole" ? 15 : 12;
+    return {
+      x: port.x,
+      y: port.y - lift,
+      anchor: "middle"
+    };
+  }
+
+  if (connector.family === "barrel") {
+    const polarityLift = port?.polarity === "negative" ? -10 : 14;
+    return {
+      x: contact.x,
+      y: contact.y + polarityLift,
+      anchor: "middle"
+    };
+  }
+
+  return {
+    x: contact.x + (side === "left" ? -14 : 14),
+    y: contact.y,
+    anchor: side === "left" ? "end" : "start"
+  };
 }
 
 function housingLabelLines(housing) {
