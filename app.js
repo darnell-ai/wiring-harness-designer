@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.51";
+const APP_VERSION = "1.2.52";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1645,7 +1645,13 @@ function renderPreview() {
   const previewHeight = previewCanvasHeight(leftConnectors, rightConnectors, active.length);
   const selectedWireIndex = Math.max(0, previewRows.findIndex((item) => item.id === selected.id));
   const splicePoints = buildSplicePoints(previewRows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight);
-  const selectedEndpoints = wireEndpoints(
+  const routedWires = active.map((item, index) => ({
+    item,
+    index,
+    endpoints: wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight)
+  }));
+  const selectedRoute = routedWires.find((route) => route.item.id === selected.id);
+  const selectedEndpoints = selectedRoute?.endpoints || wireEndpoints(
     selected,
     selectedWireIndex,
     leftMap,
@@ -1666,10 +1672,8 @@ function renderPreview() {
     ...rightConnectors.map((connector) => renderConnector(connector, "right", previewRows, selected))
   ].join("");
 
-  const backgroundWires = active
-    .map((item, index) => ({ item, index }))
-    .map(({ item, index }) => {
-      const endpoints = wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight);
+  const backgroundWires = routedWires
+    .map(({ item, index, endpoints }) => {
       const { start, end } = endpoints;
       const color = colorMap[item.color] || "#7e8a82";
       const path = wirePath(start, end, index, routeBaseY);
@@ -1683,18 +1687,15 @@ function renderPreview() {
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
   const heatshrinkSleeves = [
-    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight, "sleeve"),
-    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, "sleeve")
+    renderHeatshrinkGroupLabels("left", routedWires, routeBaseY, previewHeight, "sleeve"),
+    renderHeatshrinkGroupLabels("right", routedWires, routeBaseY, previewHeight, "sleeve")
   ].join("");
   const heatshrinkText = [
-    renderHeatshrinkLabel("left", selected, selectedStart, selectedWireIndex, routeBaseY, previewHeight, "text"),
-    renderHeatshrinkLabel("right", selected, selectedEnd, selectedWireIndex, routeBaseY, previewHeight, "text")
+    renderHeatshrinkGroupLabels("left", routedWires, routeBaseY, previewHeight, "text"),
+    renderHeatshrinkGroupLabels("right", routedWires, routeBaseY, previewHeight, "text")
   ].join("");
-  const wireNameTags = active
-    .map((item, index) => {
-      const endpoints = item.id === selected.id
-        ? selectedEndpoints
-        : wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight);
+  const wireNameTags = routedWires
+    .map(({ item, index, endpoints }) => {
       return renderWireNameTag(
         item,
         endpoints.start,
@@ -1705,10 +1706,7 @@ function renderPreview() {
       );
     })
     .join("");
-  const selectedWireMarkup = hasSelectedWire ? `
-    ${heatshrinkSleeves}
-    ${heatshrinkText}
-  ` : active.length ? "" : `
+  const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
   `;
@@ -1761,8 +1759,10 @@ function renderPreview() {
     <line x1="170" y1="34" x2="830" y2="34" stroke="url(#boardLine)" stroke-width="2" stroke-dasharray="8 8" />
     <line x1="170" y1="${previewHeight - 34}" x2="830" y2="${previewHeight - 34}" stroke="url(#boardLine)" stroke-width="2" stroke-dasharray="8 8" />
     ${connectors}
+    ${heatshrinkSleeves}
     ${backgroundWires}
     ${selectedWireMarkup}
+    ${heatshrinkText}
     ${spliceNodes}
     ${wireNameTags}
     ${selectedInfoBoxMarkup}
@@ -2973,6 +2973,121 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight) {
       <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
     </g>
   `;
+}
+
+function renderHeatshrinkGroupLabels(side, routedWires, routeBaseY, previewHeight, part = "full") {
+  const groups = new Map();
+
+  routedWires.forEach((route) => {
+    const row = route.item;
+    if (!rowUsesSide(row, side)) {
+      return;
+    }
+
+    const leg = side === "left" ? row.leftLeg : row.rightLeg;
+    if (!leg) {
+      return;
+    }
+
+    const point = side === "left" ? route.endpoints.start : route.endpoints.end;
+    if (!point || point.exit === "splice") {
+      return;
+    }
+
+    const key = legKey(leg);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        leg,
+        routes: []
+      });
+    }
+    groups.get(key).routes.push({
+      index: route.index,
+      point
+    });
+  });
+
+  return [...groups.values()]
+    .map((group) => renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part))
+    .join("");
+}
+
+function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part = "full") {
+  if (!group?.routes?.length) {
+    return "";
+  }
+
+  const legName = legNameFor(side, group.leg);
+  const label = `${side === "left" ? "LEFT" : "RIGHT"} ${group.leg}`;
+  const lines = [
+    escapeXml(shortLabel(String(group.leg), 13)),
+    escapeXml(shortLabel(legName || "Leg name", 15))
+  ];
+  const box = heatshrinkGroupBox(group.routes, routeBaseY, previewHeight);
+  const sleeveMarkup = `
+      <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
+  `;
+  const textMarkup = `
+      <text x="${box.cx}" y="${box.cy - 8}" class="heatshrink-title" text-anchor="middle">${lines[0]}</text>
+      <text x="${box.cx}" y="${box.cy + 14}" class="heatshrink-name" text-anchor="middle">${lines[1]}</text>
+  `;
+
+  if (part === "sleeve") {
+    return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
+      ${sleeveMarkup}
+    </g>
+  `;
+  }
+
+  if (part === "text") {
+    return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
+      ${textMarkup}
+    </g>
+  `;
+  }
+
+  return `
+    <g class="heatshrink-label" aria-label="${escapeXml(`${label} ${legName}`)}">
+      ${sleeveMarkup}
+      ${textMarkup}
+    </g>
+  `;
+}
+
+function heatshrinkGroupBox(routes, routeBaseY, previewHeight) {
+  const width = 118;
+  const centers = routes.map(({ index, point }) => {
+    if (point.exit === "bottom") {
+      const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
+      const dropY = bottomDropY(point, index, laneY);
+      return {
+        x: bottomBusX(point, index),
+        y: (dropY + laneY) / 2
+      };
+    }
+
+    return {
+      x: point.x + (point.side === "right" ? -74 : 74),
+      y: point.y + 28
+    };
+  });
+  const minY = Math.min(...centers.map((item) => item.y));
+  const maxY = Math.max(...centers.map((item) => item.y));
+  const centerX = centers.reduce((sum, item) => sum + item.x, 0) / centers.length;
+  const centerY = (minY + maxY) / 2;
+  const height = clamp(maxY - minY + 72, 84, 146);
+  const left = clamp(centerX - width / 2, 18, 1000 - width - 18);
+  const top = clamp(centerY - height / 2, 44, previewHeight - height - 14);
+  return {
+    x: left,
+    y: top,
+    cx: left + width / 2,
+    cy: top + height / 2,
+    width,
+    height
+  };
 }
 
 function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeight, part = "full") {

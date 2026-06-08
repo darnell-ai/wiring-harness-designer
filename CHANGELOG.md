@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.52 - 2026-06-07
+
+- Added heatshrink sleeves and labels for every active left and right leg group, not just the selected wire.
+- Layered heatshrink sleeves behind the wires while keeping the leg labels readable on top.
+
 ## v1.2.51 - 2026-06-07
 
 - Made W104 the built-in starter harness for fresh loads and reset.
