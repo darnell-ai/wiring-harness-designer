@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.54";
+const APP_VERSION = "1.2.55";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -168,6 +168,65 @@ function buildMiniFitPinoutImage(title, circuitCount, rowMode = "dual") {
 }
 
 const MINI_FIT_PINOUT_IMAGE = buildMiniFitPinoutImage("MINI-FIT JR", 20, "dual");
+
+function buildMolexMicroFitPinoutImage(title, circuitCount, rowMode = "single", lockStyle = "front") {
+  const pinCount = Math.max(1, Math.min(20, numberOrDefault(circuitCount, 2)));
+  const dualRow = rowMode === "dual" && pinCount > 1;
+  const rows = dualRow ? 2 : 1;
+  const columns = dualRow ? Math.ceil(pinCount / 2) : pinCount;
+  const pitch = 38;
+  const slotW = 28;
+  const slotH = 24;
+  const bodyWidth = columns * slotW + Math.max(0, columns - 1) * (pitch - slotW) + 60;
+  const bodyHeight = dualRow ? 132 : 96;
+  const bodyX = Math.round((900 - bodyWidth) / 2);
+  const bodyY = 124;
+  const topY = dualRow ? bodyY + 34 : bodyY + 46;
+  const bottomY = dualRow ? bodyY + 72 : topY;
+  const pinRows = Array.from({ length: rows }, (_, rowIndex) => {
+    return Array.from({ length: columns }, (_, columnIndex) => {
+      const pin = dualRow ? columnIndex * 2 + rowIndex + 1 : columnIndex + 1;
+      return pin <= pinCount ? pin : 0;
+    }).filter(Boolean);
+  });
+
+  const slots = pinRows.map((pins, rowIndex) => pins.map((pin, colIndex) => {
+    const x = bodyX + 30 + colIndex * pitch;
+    const y = rowIndex === 0 ? topY : bottomY;
+    return `
+      <rect x="${x}" y="${y}" width="${slotW}" height="${slotH}" rx="5" fill="#0c1110" stroke="#e6ede8" stroke-width="2" />
+      <text x="${x + slotW / 2}" y="${y + slotH + 17}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="900" fill="#dce4de">${pin}</text>
+    `;
+  }).join("")).join("");
+
+  const legend = dualRow
+    ? "Dual-row side-lock layout: odd pins top, even pins bottom."
+    : "Single-row front-lock layout: pin 1 at the left.";
+  const lockLabel = lockStyle === "side" ? "SIDE LOCK / 43025 FAMILY" : "FRONT LOCK / 43645 FAMILY";
+  const lockMarkup = lockStyle === "side"
+    ? `<path d="M ${bodyX + bodyWidth - 10} ${bodyY + 32} H ${bodyX + bodyWidth + 24} V ${bodyY + bodyHeight - 24} H ${bodyX + bodyWidth - 10} Z" fill="#121817" stroke="#7f8983" stroke-width="3" />`
+    : `<path d="M ${bodyX + bodyWidth / 2 - 48} ${bodyY + 3} L ${bodyX + bodyWidth / 2 - 34} ${bodyY - 18} H ${bodyX + bodyWidth / 2 + 34} L ${bodyX + bodyWidth / 2 + 48} ${bodyY + 3} Z" fill="#121817" stroke="#7f8983" stroke-width="3" />`;
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" role="img" aria-label="${title} pinout">
+      <rect width="900" height="420" rx="28" fill="#eef4ef" />
+      <text x="54" y="58" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="900" fill="#1f2722">${title}</text>
+      <text x="54" y="88" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="800" fill="#5d6a64">MOLEX MICRO-FIT 3.0 / ${lockLabel}</text>
+      <g>
+        ${lockMarkup}
+        <path d="M ${bodyX + 12} ${bodyY + 6} H ${bodyX + bodyWidth - 12} L ${bodyX + bodyWidth} ${bodyY + 20} V ${bodyY + bodyHeight - 12} L ${bodyX + bodyWidth - 12} ${bodyY + bodyHeight} H ${bodyX + 12} L ${bodyX} ${bodyY + bodyHeight - 12} V ${bodyY + 20} Z" fill="#171d1b" stroke="#8b948e" stroke-width="4" />
+        <rect x="${bodyX + 18}" y="${bodyY + 22}" width="${bodyWidth - 36}" height="${bodyHeight - 38}" rx="8" fill="#070908" stroke="#3d4641" stroke-width="3" />
+        ${slots}
+      </g>
+      <text x="450" y="374" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="15" font-weight="800" fill="#4d5a54">${legend}</text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+const MOLEX_MICRO_FIT_FRONT_IMAGE = buildMolexMicroFitPinoutImage("MOLEX MICRO-FIT FRONT LOCK", 20, "single", "front");
+const MOLEX_MICRO_FIT_SIDE_IMAGE = buildMolexMicroFitPinoutImage("MOLEX MICRO-FIT SIDE LOCK", 20, "dual", "side");
 
 const CPC_CONTACT_LAYOUT = [
   { pin: 2, dx: -16, dy: -38 },
@@ -479,25 +538,21 @@ function defaultCatalog() {
       catalogEntry(`SUBCONN ${positions} PIN MALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Male", terminalType: "Subsea connector contact" }),
       catalogEntry(`SUBCONN ${positions} PIN FEMALE`, "Connector", "subconn", positions, { manufacturer: "SubConn", gender: "Female", terminalType: "Subsea connector contact" })
     ]),
-    ...Array.from({ length: 8 }, (_, index) => {
-      const positions = index + 1;
-      return catalogEntry(`MOLEX ${positions} POS FRONT LOCK`, "Connector", "molex", positions, {
-        manufacturer: "Molex",
-        partNumber: positions === 2 ? "428160212" : "",
-        terminalType: "Molex crimp terminal",
-        terminalPart: positions === 2 ? "428150114" : "",
-        notes: "Front-lock housing"
-      });
+    catalogEntry("MOLEX MICRO-FIT FRONT LOCK", "Connector", "molex", 20, {
+      manufacturer: "Molex",
+      partNumber: "0436450200",
+      gender: "Female",
+      terminalType: "Micro-Fit 3.0 crimp terminal",
+      notes: "43645 front-lock/single-row Micro-Fit 3.0 receptacle family. The preview scales to the highest pin used on that leg.",
+      imageUrl: MOLEX_MICRO_FIT_FRONT_IMAGE
     }),
-    ...Array.from({ length: 8 }, (_, index) => {
-      const positions = index + 1;
-      return catalogEntry(`MOLEX ${positions} POS SIDE LOCK`, "Connector", "molex", positions, {
-        manufacturer: "Molex",
-        partNumber: positions === 2 ? "428160212" : "",
-        terminalType: "Molex crimp terminal",
-        terminalPart: positions === 2 ? "428150114" : "",
-        notes: "Side-lock housing"
-      });
+    catalogEntry("MOLEX MICRO-FIT SIDE LOCK", "Connector", "molex", 20, {
+      manufacturer: "Molex",
+      partNumber: "0430250210",
+      gender: "Female",
+      terminalType: "Micro-Fit 3.0 crimp terminal",
+      notes: "43025 side-lock/dual-row Micro-Fit 3.0 receptacle family. The preview scales to the highest pin used on that leg.",
+      imageUrl: MOLEX_MICRO_FIT_SIDE_IMAGE
     }),
     ...Array.from({ length: 12 }, (_, index) => catalogEntry(`DUPONT ${index + 1} POS FRONT LOCK`, "Connector", "dupont", index + 1, { manufacturer: "Generic", terminalType: "Dupont crimp terminal" })),
     catalogEntry("MOLEX MINI-FIT", "Connector", "minifit", 20, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal", notes: "Mini-Fit Jr dual-row family; the preview scales with circuit count.", imageUrl: MINI_FIT_PINOUT_IMAGE }),
@@ -534,6 +589,7 @@ function normalizeCatalog(catalog) {
   const names = new Set();
   const entries = source
     .map((item) => mergeDefaultCatalogDetails(normalizeCatalogEntry(item), defaultsByName.get(cleanCell(item?.name).toUpperCase())))
+    .filter((entry) => !isDeprecatedMolexSizedEntry(entry))
     .filter((entry) => entry.name && !names.has(entry.name) && names.add(entry.name));
   defaults.forEach((entry) => {
     if (!names.has(entry.name)) {
@@ -542,6 +598,11 @@ function normalizeCatalog(catalog) {
     }
   });
   return entries;
+}
+
+function isDeprecatedMolexSizedEntry(entry) {
+  const name = value(entry?.name).trim().toUpperCase();
+  return /^MOLEX\s+\d{1,2}\s+POS\s+(?:FRONT|SIDE)\s+LOCK$/.test(name);
 }
 
 function learnCatalogFromRows(rows, catalog) {
@@ -835,7 +896,13 @@ function inferCatalogTerminalType(housing, family, gender) {
     return "Subsea connector contact";
   }
   if (family === "molex") {
-    return text.includes("MINI-FIT") ? "Mini-Fit Jr crimp terminal" : "Molex crimp terminal";
+    if (text.includes("MINI-FIT")) {
+      return "Mini-Fit Jr crimp terminal";
+    }
+    if (text.includes("MICRO-FIT") || text.includes("FRONT LOCK") || text.includes("SIDE LOCK")) {
+      return "Micro-Fit 3.0 crimp terminal";
+    }
+    return "Molex crimp terminal";
   }
   if (family === "dupont") {
     return "Dupont crimp terminal";
@@ -855,6 +922,35 @@ function inferCatalogTerminalType(housing, family, gender) {
   if (family === "pcb") {
     return "PCB connection";
   }
+  return "";
+}
+
+function canonicalHousingName(input) {
+  const text = cleanCell(input).toUpperCase();
+  if (!text || text.includes("MINI-FIT")) {
+    return "";
+  }
+
+  const compact = text.replace(/[^A-Z0-9]+/g, "");
+  const looksMicroFit = text.includes("MOLEX")
+    || text.includes("MICRO-FIT")
+    || compact.includes("043025")
+    || compact.includes("43025")
+    || compact.includes("043645")
+    || compact.includes("43645")
+    || text.includes("WM1845");
+  if (!looksMicroFit) {
+    return "";
+  }
+
+  if (text.includes("SIDE") || compact.includes("043025") || compact.includes("43025")) {
+    return "MOLEX MICRO-FIT SIDE LOCK";
+  }
+
+  if (text.includes("FRONT") || compact.includes("043645") || compact.includes("43645") || text.includes("WM1845")) {
+    return "MOLEX MICRO-FIT FRONT LOCK";
+  }
+
   return "";
 }
 
@@ -898,12 +994,21 @@ function mergeDefaultCatalogDetails(entry, defaultEntry) {
 }
 
 function housingChoices() {
-  return ["", ...state.catalog.map((entry) => entry.name).sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))];
+  return ["", ...state.catalog
+    .filter((entry) => !isDeprecatedMolexSizedEntry(entry))
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))];
 }
 
 function catalogEntryByName(name) {
   const target = value(name).trim().toUpperCase();
-  return state.catalog.find((entry) => entry.name === target) || null;
+  const exact = state.catalog.find((entry) => entry.name === target);
+  if (exact) {
+    return exact;
+  }
+
+  const canonical = canonicalHousingName(target);
+  return canonical ? state.catalog.find((entry) => entry.name === canonical) || null : null;
 }
 
 function catalogPartFor(housing, field) {
@@ -1022,7 +1127,7 @@ function normalizeState(incoming) {
     name: value(row.name),
     leftPin: value(row.leftPin),
     dnp: isDnp(row.dnp),
-    housing: value(row.housing),
+    housing: canonicalHousingName(row.housing) || value(row.housing),
     leftHousingPart: value(row.leftHousingPart || row.housingPart),
     leftTerminalPart: value(row.leftTerminalPart || row.pinPart || row.terminalPart),
     awg: value(row.awg),
@@ -1033,7 +1138,7 @@ function normalizeState(incoming) {
     rightLeg: value(row.rightLeg),
     rightPin: value(row.rightPin),
     rightDnp: row.rightDnp === undefined ? isDnp(row.dnp) : isDnp(row.rightDnp),
-    rightHousing: value(row.rightHousing),
+    rightHousing: canonicalHousingName(row.rightHousing) || value(row.rightHousing),
     rightHousingPart: value(row.rightHousingPart),
     rightTerminalPart: value(row.rightTerminalPart || row.rightPinPart || row.rightTerminal),
     toolUsed: value(row.toolUsed),
@@ -1885,7 +1990,7 @@ function buildConnectors(keys, side, rows, selected) {
   }
 
   const gap = 90;
-  const top = 54;
+  const top = 72;
   let y = top;
 
   return keys.map((key) => {
@@ -1895,13 +2000,22 @@ function buildConnectors(keys, side, rows, selected) {
     const positionData = connectorPositionData(key, side, rows);
     const hasExplicitCount = housingHasExplicitPositionCount(housing);
     const maxUsedPosition = positionData.reduce((max, item) => Math.max(max, item.position), 0);
-    const connectorPinCount = family === "dupont" && !hasExplicitCount
+    const scalableMolex = family === "molex" && isMicroFitMolexHousing(housing);
+    const connectorPinCount = scalableMolex
+      ? Math.max(1, Math.min(20, Math.max(maxUsedPosition, positionData.length, 2)))
+      : family === "dupont" && !hasExplicitCount
       ? Math.max(pinCount, maxUsedPosition)
       : pinCount;
-    const dimensionPinCount = family === "dupont" && !hasExplicitCount
+    const dimensionPinCount = scalableMolex
+      ? connectorPinCount
+      : family === "dupont" && !hasExplicitCount
       ? Math.max(1, positionData.length || connectorPinCount)
       : connectorPinCount;
-    const rowMode = family === "minifit" ? minifitRowMode(housing, connectorPinCount) : "";
+    const rowMode = family === "minifit"
+      ? minifitRowMode(housing, connectorPinCount)
+      : family === "molex"
+        ? molexMicroFitRowMode(housing, connectorPinCount)
+        : "";
     const dimensions = connectorDimensions(family, dimensionPinCount, positionData.length, rowMode);
     const x = side === "left" ? 38 : 1000 - 38 - dimensions.width;
     const connector = {
@@ -2055,6 +2169,21 @@ function minifitRowMode(housing, pinCount) {
   return pinCount === 1 ? "single" : "dual";
 }
 
+function isMicroFitMolexHousing(housing) {
+  const text = value(housing).trim().toUpperCase();
+  return housingFamily(housing) === "molex"
+    && !text.includes("MINI-FIT")
+    && (text.includes("MICRO-FIT") || text.includes("FRONT LOCK") || text.includes("SIDE LOCK"));
+}
+
+function molexMicroFitRowMode(housing, pinCount) {
+  const text = value(housing).trim().toUpperCase();
+  if (text.includes("SIDE")) {
+    return pinCount > 1 ? "dual" : "single";
+  }
+  return "single";
+}
+
 function connectorDimensions(family, pinCount, positionCount, rowMode = "") {
   if (family === "subconn") {
     return { width: 176, height: 176 };
@@ -2093,9 +2222,12 @@ function connectorDimensions(family, pinCount, positionCount, rowMode = "") {
     return { width: 164, height: 88 };
   }
   if (family === "molex") {
+    const count = Math.max(1, Math.min(20, pinCount || 1));
+    const dualRow = rowMode === "dual" && count > 1;
+    const columns = dualRow ? Math.ceil(count / 2) : count;
     return {
-      width: clamp(72 + Math.max(0, pinCount - 1) * 34, 124, 360),
-      height: 112
+      width: clamp(82 + Math.max(0, columns - 1) * 28, 96, 360),
+      height: dualRow ? 106 : 84
     };
   }
   if (family === "dupont") {
@@ -2275,22 +2407,6 @@ function bottomEdgeTerminalPoint(connector, pin, inset, bottomOffset) {
   };
 }
 
-function isTwoPinFrontMolex(connector) {
-  const text = value(connector?.housing).toUpperCase();
-  return connector?.family === "molex"
-    && connector.pinCount === 2
-    && text.includes("FRONT")
-    && !text.includes("SIDE");
-}
-
-function twoPinFrontMolexTerminalPoint(connector, pin) {
-  const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
-  return {
-    x: connector.x + (safePin === 1 ? connector.width * 0.31 : connector.width * 0.69),
-    y: connector.y + connector.height * 0.6
-  };
-}
-
 function barrelTerminalPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
   const barrel = barrelGeometry(connector);
@@ -2368,7 +2484,7 @@ function renderConnector(connector, side, rows, selected) {
 }
 
 function renderConnectorLead(connector, contact, port, isSelected, isUsed, side) {
-  if (connector.family === "powerpole" || connector.family === "barrel" || isTwoPinFrontMolex(connector) || !isUsed) {
+  if (connector.family === "powerpole" || connector.family === "barrel" || !isUsed) {
     return "";
   }
 
@@ -2453,15 +2569,27 @@ function renderConnectorBody(connector) {
   }
 
   if (family === "molex") {
-    const lock = value(connector.housing).toUpperCase().includes("SIDE LOCK");
-    const lockX = side === "left" ? x + width - 7 : x - 9;
+    const metrics = molexMicroFitContactMetrics(connector);
+    const sideLock = metrics.lockStyle === "side";
+    const lockX = side === "left" ? x + width - 10 : x - 16;
+    const slotFontSize = metrics.pinCount > 14 ? 8 : metrics.pinCount > 10 ? 9 : 11;
+    const slots = Array.from({ length: metrics.pinCount }, (_, index) => {
+      const pin = index + 1;
+      const point = molexMicroFitContactPoint(connector, pin);
+      const slotX = point.x - metrics.slotWidth / 2;
+      const slotY = point.y - metrics.slotHeight / 2;
+      return `
+        <rect x="${slotX}" y="${slotY}" width="${metrics.slotWidth}" height="${metrics.slotHeight}" rx="4" fill="#070908" stroke="#edf3ee" stroke-width="1.8" />
+        <text x="${point.x}" y="${slotY + metrics.slotHeight + 12}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="${slotFontSize}" font-weight="900" fill="#dbe5df">${pin}</text>
+      `;
+    }).join("");
     return `
-      <path d="M ${x + 10} ${y + 6} H ${x + width - 10} L ${x + width} ${y + 18} V ${y + height - 10} L ${x + width - 10} ${y + height} H ${x + 10} L ${x} ${y + height - 10} V ${y + 18} Z" fill="#d7d6ca" stroke="#81857d" stroke-width="3" />
-      <rect x="${x + 13}" y="${y + 18}" width="${width - 26}" height="${height - 31}" rx="3" fill="#b8baaf" stroke="#f4f3e9" stroke-width="2" />
-      ${lock
-        ? `<path d="M ${lockX} ${centerY - 23} H ${lockX + 16} V ${centerY + 23} H ${lockX} Z" fill="#e7e6dc" stroke="#858980" stroke-width="2" />`
-        : `<path d="M ${centerX - 30} ${y + 2} L ${centerX - 21} ${y - 13} H ${centerX + 21} L ${centerX + 30} ${y + 2} Z" fill="#e7e6dc" stroke="#858980" stroke-width="2" />`}
-      <line x1="${x + 14}" y1="${y + height - 17}" x2="${x + width - 14}" y2="${y + height - 17}" stroke="#777d75" stroke-width="3" />
+      <path d="M ${x + 10} ${y + 6} H ${x + width - 10} L ${x + width} ${y + 18} V ${y + height - 10} L ${x + width - 10} ${y + height} H ${x + 10} L ${x} ${y + height - 10} V ${y + 18} Z" fill="#171d1b" stroke="#8b948e" stroke-width="3" />
+      <rect x="${x + 13}" y="${y + 18}" width="${width - 26}" height="${height - 30}" rx="5" fill="#050706" stroke="#3b4540" stroke-width="2.2" />
+      ${sideLock
+        ? `<path d="M ${lockX} ${centerY - 23} H ${lockX + 18} V ${centerY + 23} H ${lockX} Z" fill="#121817" stroke="#858f88" stroke-width="2.2" />`
+        : `<path d="M ${centerX - 30} ${y + 3} L ${centerX - 20} ${y - 12} H ${centerX + 20} L ${centerX + 30} ${y + 3} Z" fill="#121817" stroke="#858f88" stroke-width="2.2" />`}
+      ${slots}
     `;
   }
 
@@ -2566,7 +2694,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   const isSubconn = connector.family === "subconn";
   const isCpc = connector.family === "cpc";
   const isHorizontalHousing = connector.family === "molex";
-  const isBottomTerminalHousing = isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45";
+  const isBottomTerminalHousing = connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45";
   const numericPin = numberOrDefault(pin, 0);
   const cpcLayout = isCpc ? CPC_CONTACT_LOOKUP.get(numericPin) || CPC_CONTACT_LAYOUT[0] : null;
   let contact = "";
@@ -2597,7 +2725,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
   } else if (connector.family === "rj45") {
     contact = `<rect x="${point.x - 5.5}" y="${point.y - 4}" width="11" height="8" rx="2.5" fill="${isUsed ? "#e1bb68" : "#151d18"}" stroke="${isUsed ? "#f7e0a2" : "#6d776f"}" stroke-width="1.8" />`;
   } else if (connector.family === "molex") {
-    contact = `<rect x="${point.x - 6.5}" y="${point.y - 6.5}" width="13" height="13" rx="3" fill="${isUsed ? "#e5f0e9" : "#6f756e"}" stroke="#f5f4eb" stroke-width="2" />`;
+    contact = `<circle cx="${point.x}" cy="${point.y}" r="5" fill="${isUsed ? "#41b883" : "#6f756e"}" stroke="${isUsed ? "#d9f4e6" : "#f5f4eb"}" stroke-width="1.8" opacity="${isUsed ? "0.96" : "0.72"}" />`;
   } else if (isCpc) {
     const isFemale = value(connector.gender).toUpperCase() === "FEMALE";
     contact = isFemale
@@ -2614,7 +2742,7 @@ function renderConnectorPin(connector, point, pin, isSelected, isUsed, side) {
     contact = `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="${fill}" stroke="${stroke}" stroke-width="2" />`;
   }
 
-  if (connector.family === "minifit") {
+  if (connector.family === "minifit" || connector.family === "molex") {
     return contact;
   }
 
@@ -2732,6 +2860,47 @@ function minifitContactPoint(connector, pin) {
   };
 }
 
+function molexMicroFitContactMetrics(connector) {
+  const pinCount = Math.max(1, Math.min(20, connector?.pinCount || 2));
+  const rowMode = connector?.rowMode || molexMicroFitRowMode(connector?.housing, pinCount);
+  const dualRow = rowMode === "dual" && pinCount > 1;
+  const columns = dualRow ? Math.ceil(pinCount / 2) : pinCount;
+  const padX = columns === 1 ? connector.width / 2 : 28;
+  const pitch = columns > 1 ? (connector.width - padX * 2) / (columns - 1) : 0;
+  const slotWidth = columns > 1 ? Math.max(13, Math.min(24, pitch * 0.72)) : 24;
+  const slotHeight = dualRow ? 21 : 24;
+  const topY = dualRow ? connector.y + 38 : connector.y + connector.height / 2 - 2;
+  const bottomY = dualRow ? connector.y + 66 : topY;
+
+  return {
+    pinCount,
+    rowMode,
+    dualRow,
+    columns,
+    padX,
+    pitch,
+    slotWidth,
+    slotHeight,
+    topY,
+    bottomY,
+    lockStyle: rowMode === "dual" ? "side" : "front"
+  };
+}
+
+function molexMicroFitContactPoint(connector, pin) {
+  const metrics = molexMicroFitContactMetrics(connector);
+  const safePin = Math.max(1, Math.min(metrics.pinCount, numberOrDefault(pin, 1)));
+  const colIndex = metrics.dualRow ? Math.floor((safePin - 1) / 2) : safePin - 1;
+  const rowIndex = metrics.dualRow ? (safePin - 1) % 2 : 0;
+
+  return {
+    x: connector.x + metrics.padX + (metrics.columns > 1 ? colIndex * metrics.pitch : 0),
+    y: rowIndex === 0 ? metrics.topY : metrics.bottomY,
+    rowIndex,
+    colIndex
+  };
+}
+
 function connectorContactPoint(connector, pin, side) {
   if (!connector) {
     return { x: side === "left" ? 150 : 850, y: 180 };
@@ -2792,17 +2961,7 @@ function connectorContactPoint(connector, pin, side) {
   }
 
   if (connector.family === "molex") {
-    if (isTwoPinFrontMolex(connector)) {
-      return twoPinFrontMolexTerminalPoint(connector, safePin);
-    }
-
-    const x = pinCount === 1
-      ? connector.x + connector.width / 2
-      : connector.x + 32 + (safePin - 1) * ((connector.width - 64) / (pinCount - 1));
-    return {
-      x,
-      y: connector.y + connector.height / 2
-    };
+    return molexMicroFitContactPoint(connector, safePin);
   }
 
   if (connector.family === "barrel") {
@@ -2827,7 +2986,7 @@ function pinPoint(connector, pin, side) {
   const lane = connector.family === "cpc"
     ? safePin - 1
     : usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (isTwoPinFrontMolex(connector) || connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit") {
+  if (connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit") {
     return {
       x: contact.x,
       y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit" ? connector.y + connector.height + 6 : contact.y,
@@ -4968,6 +5127,11 @@ function matchColor(input) {
 
 function matchHousing(input) {
   const housing = cleanCell(input).toUpperCase();
+  const canonical = canonicalHousingName(housing);
+  if (canonical) {
+    return canonical;
+  }
+
   const choices = housingChoices();
   const exact = choices.find((choice) => choice && choice.toUpperCase() === housing);
   if (exact) {

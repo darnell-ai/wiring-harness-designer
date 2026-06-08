@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.55 - 2026-06-08
+
+- Replaced the old per-position Molex front/side lock dropdown entries with two scalable Micro-Fit choices.
+- Added front-lock single-row and side-lock dual-row Molex Micro-Fit drawings that scale to the highest used pin on each leg.
+- Mapped legacy Molex front/side lock names and part-number aliases to the new Micro-Fit catalog entries.
+
 ## v1.2.54 - 2026-06-07
 
 - Made wire-name tag backgrounds 50% transparent while keeping the label text solid.
