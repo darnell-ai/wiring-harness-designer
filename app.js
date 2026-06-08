@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.53";
+const APP_VERSION = "1.2.54";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -2969,7 +2969,7 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight) {
 
   return `
     <g class="wire-name-tag" aria-label="Wire name ${label}">
-      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" stroke="#d9dfd7" stroke-width="1.5" opacity="0.98" />
+      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" fill-opacity="0.5" stroke="#d9dfd7" stroke-opacity="0.65" stroke-width="1.5" />
       <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
     </g>
   `;

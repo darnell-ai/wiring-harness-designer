@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.54 - 2026-06-07
+
+- Made wire-name tag backgrounds 50% transparent while keeping the label text solid.
+
 ## v1.2.53 - 2026-06-07
 
 - Moved heatshrink sleeves closer to each leg's termination points.
