@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.2.61 - 2026-06-08
+
+- Added preview drag editing for routed cables so you can pull a wire into a better layout on the fly.
+- Added invisible wire hit targets and double-click reset behavior for manual route tweaks.
+- Kept the drag offsets in saved state so layout edits persist after reload.
+- Smoke-tested 50 randomized harness layouts with manual offsets and found no route, label, or persistence regressions.
+
+## v1.2.60 - 2026-06-08
+
+- Gave dense lower-bundle layouts a little more room near the right-side connector stack so the bundle reads less cramped.
+- Added crowd-aware compression for wire-name tags so longer names stay legible when the diagram gets busy.
+- Softened the lower-bundle visual hierarchy so the main route reads more clearly without losing the bundle structure.
+- Made heatshrink labels adapt a bit more to one-sided wire density so the sleeve blocks fit the layout better.
+- Smoke-tested 50 randomized harness layouts and found no path-token, wire-tag, or heatshrink-bound regressions.
+
+## v1.2.59 - 2026-06-08
+
+- Simplified bottom-to-bottom wire routing so lower bundles no longer make a fake leftward branch before reaching the right-side connector stack.
+- Kept wire-name labels aligned to the cleaner center spine for the lower bundle.
+- Smoke-tested 20 randomized starter harness layouts and found no horizontal backtracking regressions in the active wire paths.
+## v1.2.58 - 2026-06-08
+
+- Prevented bottom-routed wires from doubling back when a right-side connector is shifted left in the crescent layout.
+- Anchored wire-name tags to the start of their horizontal route so wires no longer poke out as loose-looking stubs before the label.
+
 ## v1.2.57 - 2026-06-08
 
 - Changed pin-position numbers to orange with a dark outline so they stand out on the wire diagram.

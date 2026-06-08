@@ -1,11 +1,13 @@
 "use strict";
 
-const APP_VERSION = "1.2.57";
+const APP_VERSION = "1.2.61";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
 const WIRE_EXIT_GAP = 14;
 const WIRE_BUS_GAP = 18;
+const WIRE_ROUTE_DRAG_LIMIT_X = 240;
+const WIRE_ROUTE_DRAG_LIMIT_Y = 140;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
@@ -463,6 +465,7 @@ Object.assign(dom, {
 let state = loadState();
 let undoStack = [];
 let toastTimer = 0;
+let wireDragState = null;
 let pendingImportRows = [];
 let pendingImportContext = { harnessName: "", legNames: { left: {}, right: {} } };
 let selectedCatalogId = "";
@@ -1142,7 +1145,9 @@ function normalizeState(incoming) {
     rightHousingPart: value(row.rightHousingPart),
     rightTerminalPart: value(row.rightTerminalPart || row.rightPinPart || row.rightTerminal),
     toolUsed: value(row.toolUsed),
-    comments: value(row.comments)
+    comments: value(row.comments),
+    routeOffsetX: Number.isFinite(Number(row.routeOffsetX)) ? Number(row.routeOffsetX) : 0,
+    routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0
   }));
   const learnedCatalog = learnCatalogFromRows(rows, incoming.catalog);
 
@@ -1780,11 +1785,20 @@ function renderPreview() {
     .map(({ item, index, endpoints }) => {
       const { start, end } = endpoints;
       const color = colorMap[item.color] || "#7e8a82";
-      const path = wirePath(start, end, index, routeBaseY);
+      const path = wirePath(start, end, index, routeBaseY, routedWires.length, item);
       const outline = item.color === "BLACK" ? "#edf4ef" : "#07100b";
+      const crowd = crowdingFactor(routedWires.length, 10, 6);
+      const lowerBundle = start.exit === "bottom" && end.exit === "bottom";
+      const outlineOpacity = lowerBundle ? 0.66 - crowd * 0.06 : 0.8;
+      const fillOpacity = lowerBundle ? 0.84 - crowd * 0.06 : 0.9;
+      const outlineWidth = lowerBundle ? 6.4 : 7;
+      const fillWidth = lowerBundle ? 4.2 : 4.5;
       return `
-        <path d="${path}" fill="none" stroke="${outline}" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" opacity="0.8" />
-        <path d="${path}" fill="none" stroke="${color}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.9" />
+        <g class="wire-route" data-wire-id="${escapeXml(item.id)}" aria-label="Wire ${escapeXml(item.name || "")}">
+          <path class="wire-route-hit" d="${path}" />
+          <path d="${path}" fill="none" stroke="${outline}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${outlineOpacity}" />
+          <path d="${path}" fill="none" stroke="${color}" stroke-width="${fillWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${fillOpacity}" />
+        </g>
       `;
     })
     .join("");
@@ -1806,7 +1820,8 @@ function renderPreview() {
         endpoints.end,
         index,
         routeBaseY,
-        previewHeight
+        previewHeight,
+        routedWires.length
       );
     })
     .join("");
@@ -1830,6 +1845,7 @@ function renderPreview() {
 
   dom.wirePreview.setAttribute("viewBox", `0 0 1000 ${previewHeight}`);
   dom.wirePreview.style.height = `${previewHeight}px`;
+  dom.wirePreview.style.touchAction = "none";
   dom.wirePreview.innerHTML = `
     <defs>
       <filter id="wireGlow" x="-20%" y="-60%" width="140%" height="220%">
@@ -1848,6 +1864,9 @@ function renderPreview() {
         .pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.68); stroke-width: 2.2; }
         .wire-pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.82); stroke-width: 2.8; }
         .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
+        .wire-route-hit:active { cursor: grabbing; }
+        .wire-route:hover .wire-route-hit, .wire-name-tag { cursor: grab; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -1873,6 +1892,140 @@ function renderPreview() {
     ${wireNameTags}
     ${selectedInfoBoxMarkup}
   `;
+}
+
+function wirePreviewPoint(event) {
+  if (!dom.wirePreview) {
+    return { x: 0, y: 0 };
+  }
+
+  const rect = dom.wirePreview.getBoundingClientRect();
+  if (!rect.width || !rect.height) {
+    return { x: 0, y: 0 };
+  }
+
+  const viewBox = value(dom.wirePreview.getAttribute("viewBox")).split(/\s+/).map(Number);
+  const viewBoxWidth = Number.isFinite(viewBox[2]) ? viewBox[2] : 1000;
+  const viewBoxHeight = Number.isFinite(viewBox[3]) ? viewBox[3] : 600;
+  return {
+    x: clamp((event.clientX - rect.left) * viewBoxWidth / rect.width, 0, viewBoxWidth),
+    y: clamp((event.clientY - rect.top) * viewBoxHeight / rect.height, 0, viewBoxHeight)
+  };
+}
+
+function wireRowById(rowId) {
+  return state.rows.find((row) => row.id === rowId) || null;
+}
+
+function startWireDrag(event) {
+  if (!dom.wirePreview || (event.button !== undefined && event.button !== 0)) {
+    return;
+  }
+
+  const target = event.target?.closest?.("[data-wire-id]");
+  if (!target) {
+    return;
+  }
+
+  const row = wireRowById(target.dataset.wireId);
+  if (!row || !isActiveWireRow(row)) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  const rowSelected = state.selectedId === row.id;
+  if (!rowSelected) {
+    state.selectedId = row.id;
+    saveState();
+    syncSelectedRowClass();
+    renderSummary();
+    updateActionState();
+    renderPreview();
+  }
+
+  const point = wirePreviewPoint(event);
+  wireDragState = {
+    pointerId: event.pointerId,
+    rowId: row.id,
+    startPoint: point,
+    startOffsetX: numberOrZero(row.routeOffsetX),
+    startOffsetY: numberOrZero(row.routeOffsetY),
+    dragging: false,
+    savedUndo: false
+  };
+  dom.wirePreview.style.cursor = "grabbing";
+  document.addEventListener("pointermove", moveWireDrag);
+  document.addEventListener("pointerup", endWireDrag);
+  document.addEventListener("pointercancel", endWireDrag);
+}
+
+function moveWireDrag(event) {
+  if (!wireDragState || event.pointerId !== wireDragState.pointerId) {
+    return;
+  }
+
+  const row = wireRowById(wireDragState.rowId);
+  if (!row) {
+    return;
+  }
+
+  const point = wirePreviewPoint(event);
+  const dx = point.x - wireDragState.startPoint.x;
+  const dy = point.y - wireDragState.startPoint.y;
+  const distance = Math.hypot(dx, dy);
+  if (!wireDragState.dragging && distance < 3) {
+    return;
+  }
+
+  if (!wireDragState.dragging) {
+    wireDragState.dragging = true;
+    if (!wireDragState.savedUndo) {
+      rememberUndo();
+      wireDragState.savedUndo = true;
+    }
+  }
+
+  setWireRouteOffset(row, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
+  saveState();
+  renderPreview();
+}
+
+function endWireDrag(event) {
+  if (!wireDragState || (event.pointerId !== undefined && event.pointerId !== wireDragState.pointerId)) {
+    return;
+  }
+
+  const didDrag = wireDragState.dragging;
+  document.removeEventListener("pointermove", moveWireDrag);
+  document.removeEventListener("pointerup", endWireDrag);
+  document.removeEventListener("pointercancel", endWireDrag);
+  wireDragState = null;
+  dom.wirePreview.style.cursor = "";
+  saveState();
+  if (didDrag && event.type === "pointerup") {
+    showToast("Cable route updated.");
+  }
+}
+
+function resetWireDrag(event) {
+  const target = event.target?.closest?.("[data-wire-id]");
+  if (!target) {
+    return;
+  }
+
+  const row = wireRowById(target.dataset.wireId);
+  if (!row || !isActiveWireRow(row)) {
+    return;
+  }
+
+  event.preventDefault();
+  rememberUndo();
+  resetWireRouteOffset(row);
+  saveState();
+  renderPreview();
+  showToast("Cable route reset.");
 }
 
 function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight) {
@@ -3063,33 +3216,78 @@ function clamp(input, min, max) {
   return Math.max(min, Math.min(max, input));
 }
 
-function wirePath(start, end, index, routeBaseY) {
+function numberOrZero(input) {
+  const numeric = Number(input);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function wireRouteOffset(row) {
+  return {
+    x: numberOrZero(row?.routeOffsetX),
+    y: numberOrZero(row?.routeOffsetY)
+  };
+}
+
+function setWireRouteOffset(row, x, y) {
+  if (!row) {
+    return;
+  }
+
+  row.routeOffsetX = Math.round(clamp(Number(x) || 0, -WIRE_ROUTE_DRAG_LIMIT_X, WIRE_ROUTE_DRAG_LIMIT_X));
+  row.routeOffsetY = Math.round(clamp(Number(y) || 0, -WIRE_ROUTE_DRAG_LIMIT_Y, WIRE_ROUTE_DRAG_LIMIT_Y));
+}
+
+function resetWireRouteOffset(row) {
+  if (!row) {
+    return;
+  }
+
+  row.routeOffsetX = 0;
+  row.routeOffsetY = 0;
+}
+
+function crowdingFactor(count, start = 8, span = 8) {
+  return clamp((Math.max(0, count) - start) / Math.max(1, span), 0, 1);
+}
+
+function routeControlX(controlX, startX, endX, padding = 22) {
+  const min = Math.min(startX, endX) + padding;
+  const max = Math.max(startX, endX) - padding;
+  if (min >= max) {
+    return Math.round((startX + endX) / 2);
+  }
+
+  return Math.round(clamp(controlX, min, max));
+}
+
+function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
+  const offset = wireRouteOffset(row);
   if (start.exit === "bottom" && end.exit === "bottom") {
-    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
+    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
     const startDropY = bottomDropY(start, index, laneY);
-    const endDropY = bottomDropY(end, index, laneY);
-    const startBusX = bottomBusX(start, index);
-    const endBusX = bottomBusX(end, index);
+    const routeBusX = routeControlX(bottomRouteCenterX(start, end, index, wireCount) + offset.x, start.x, end.x);
     return `M ${start.x} ${start.y}
       V ${startDropY}
-      H ${startBusX}
+      H ${routeBusX}
       V ${laneY}
-      H ${endBusX}
-      V ${endDropY}
       H ${end.x}
       V ${end.y}`;
   }
 
   if (start.exit === "bottom") {
-    return bottomExitWirePath(start, end, index, routeBaseY);
+    return bottomExitWirePath(start, end, index, routeBaseY, wireCount, row);
   }
 
   if (end.exit === "bottom") {
-    return bottomExitWirePath(end, start, index, routeBaseY);
+    return bottomExitWirePath(end, start, index, routeBaseY, wireCount, row);
   }
 
-  const middleX = 500 + ((Math.max(0, index) % 7) - 3) * 12;
-  return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
+  const middleX = routeControlX(500 + ((Math.max(0, index) % 7) - 3) * 12 + offset.x, start.x, end.x);
+  if (!offset.y) {
+    return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
+  }
+  const middleY = Math.round((start.y + end.y) / 2 + offset.y);
+  return `M ${start.x} ${start.y} H ${middleX} V ${middleY} H ${end.x} V ${end.y}`;
 }
 
 function bottomDropY(point, index, laneY = point.y) {
@@ -3102,21 +3300,50 @@ function bottomDropY(point, index, laneY = point.y) {
   return Math.min(laneY, point.y + offset);
 }
 
-function bottomBusX(point, index) {
+function bottomBusX(point, index, wireCount = 0) {
   const nudge = Math.max(0, index) * WIRE_BUS_GAP;
+  const crowd = crowdingFactor(wireCount, 10, 6);
   if (point.side === "left") {
     return point.edgeX + nudge;
   }
   if (point.side === "right") {
-    return point.edgeX - nudge;
+    return point.edgeX - nudge - Math.round(crowd * 14);
   }
   return point.x;
 }
 
-function bottomExitWirePath(bottom, other, index, routeBaseY) {
-  const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
+function bottomBusPair(start, end, index, wireCount = 0) {
+  const startBusX = bottomBusX(start, index, wireCount);
+  let endBusX = bottomBusX(end, index, wireCount);
+  const minSpan = 48 + Math.round(crowdingFactor(wireCount, 10, 6) * 12);
+
+  if (start.side === "left" && end.side === "right" && endBusX < startBusX + minSpan) {
+    endBusX = startBusX + minSpan;
+  } else if (start.side === "right" && end.side === "left" && endBusX > startBusX - minSpan) {
+    endBusX = startBusX - minSpan;
+  }
+
+  return { startBusX, endBusX };
+}
+
+function bottomRouteCenterX(start, end, index, wireCount = 0) {
+  const { startBusX, endBusX } = bottomBusPair(start, end, index, wireCount);
+  const midpoint = (startBusX + endBusX) / 2;
+  const crowd = crowdingFactor(wireCount, 10, 6);
+  const flow = start.side === "left" && end.side === "right"
+    ? -1
+    : start.side === "right" && end.side === "left"
+      ? 1
+      : 0;
+  const extraPull = flow * (8 + crowd * 12 + Math.min(6, Math.max(0, index)) * 1.5);
+  return Math.round(clamp(midpoint + extraPull, Math.min(startBusX, endBusX) + 22, Math.max(startBusX, endBusX) - 22));
+}
+
+function bottomExitWirePath(bottom, other, index, routeBaseY, wireCount = 0, row = null) {
+  const offset = wireRouteOffset(row);
+  const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
   const dropY = bottomDropY(bottom, index, laneY);
-  const busX = bottomBusX(bottom, index);
+  const busX = routeControlX(bottomBusX(bottom, index, wireCount) + offset.x, bottom.x, other.x);
   return `M ${bottom.x} ${bottom.y}
     V ${dropY}
     H ${busX}
@@ -3125,47 +3352,61 @@ function bottomExitWirePath(bottom, other, index, routeBaseY) {
     V ${other.y}`;
 }
 
-function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth) {
+function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth, wireCount = 0, row = null) {
   const routeIndex = Math.max(0, index);
   const sideMargin = tagWidth / 2 + 16;
+  const crowd = crowdingFactor(wireCount, 8, 8);
+  const offset = wireRouteOffset(row);
 
   if (start.exit === "bottom" && end.exit === "bottom") {
-    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const startBusX = bottomBusX(start, index);
-    const endBusX = bottomBusX(end, index);
-    return wireLaneLabelPosition((startBusX + endBusX) / 2, laneY, previewHeight, sideMargin);
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP + offset.y;
+    const routeBusX = routeControlX(bottomRouteCenterX(start, end, index, wireCount) + offset.x, start.x, end.x);
+    return wireLaneLabelPosition(routeBusX, laneY, previewHeight, sideMargin);
   }
 
   if (start.exit === "bottom" || end.exit === "bottom") {
     const bottom = start.exit === "bottom" ? start : end;
     const other = start.exit === "bottom" ? end : start;
-    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
-    const busX = bottomBusX(bottom, index);
-    return wireLaneLabelPosition((busX + other.x) / 2, laneY, previewHeight, sideMargin);
+    const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP + offset.y;
+    const busX = routeControlX(bottomBusX(bottom, index, wireCount) + offset.x, bottom.x, other.x);
+    const labelX = wireLaneLabelX(busX, other.x, tagWidth);
+    return wireLaneLabelPosition(labelX - (start.side === "right" || end.side === "right" ? Math.round(crowd * 8) : 0), laneY, previewHeight, sideMargin);
   }
 
-  const x = (start.x + end.x) / 2;
-  const y = (start.y + end.y) / 2;
+  const x = (start.x + end.x) / 2 + offset.x;
+  const y = (start.y + end.y) / 2 + offset.y;
   return {
     x: clamp(x, sideMargin, 1000 - sideMargin),
     y: clamp(y, 48, previewHeight - 24)
   };
 }
 
-function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight) {
+function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, wireCount = 0) {
   const rawLabel = value(row?.name).trim();
   if (!rawLabel) {
     return "";
   }
 
-  const label = escapeXml(shortLabel(rawLabel, 34));
-  const tagWidth = clamp(rawLabel.length * 8.5 + 34, 92, 280);
-  const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth);
+  const crowd = crowdingFactor(wireCount, 8, 8);
+  const compact = crowd > 0.36;
+  const tagWidth = clamp(
+    rawLabel.length * (compact ? 7.2 : 8.5) + (compact ? 28 : 34),
+    compact ? 84 : 92,
+    compact ? 240 : 280
+  );
+  const maxChars = Math.max(8, Math.floor((tagWidth - (compact ? 28 : 34)) / (compact ? 6.9 : 7.5)));
+  const labelText = compact ? shortLabel(rawLabel, maxChars) : rawLabel;
+  const label = escapeXml(labelText);
+  const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth, wireCount, row);
+  const textLength = compact || labelText !== rawLabel ? ` textLength="${Math.max(40, tagWidth - 28)}" lengthAdjust="spacingAndGlyphs"` : "";
+  const fontSize = compact ? 12 : 14;
+  const boxOpacity = compact ? 0.56 : 0.5;
 
   return `
-    <g class="wire-name-tag" aria-label="Wire name ${label}">
-      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" fill-opacity="0.5" stroke="#d9dfd7" stroke-opacity="0.65" stroke-width="1.5" />
-      <text x="${tag.x}" y="${tag.y + 5}" text-anchor="middle">${label}</text>
+    <g class="wire-name-tag" data-wire-id="${escapeXml(row?.id || "")}" aria-label="Wire name ${escapeXml(rawLabel)}">
+      <title>${escapeXml(rawLabel)}</title>
+      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" fill-opacity="${boxOpacity}" stroke="#d9dfd7" stroke-opacity="${compact ? 0.72 : 0.65}" stroke-width="1.5" />
+      <text x="${tag.x}" y="${tag.y + (fontSize >= 14 ? 5 : 4)}" text-anchor="middle" font-size="${fontSize}"${textLength}>${label}</text>
     </g>
   `;
 }
@@ -3198,7 +3439,8 @@ function renderHeatshrinkGroupLabels(side, routedWires, routeBaseY, previewHeigh
     }
     groups.get(key).routes.push({
       index: route.index,
-      point
+      point,
+      row: route.item
     });
   });
 
@@ -3212,13 +3454,14 @@ function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part
     return "";
   }
 
+  const crowd = crowdingFactor(group.routes.length, 3, 5);
   const legName = legNameFor(side, group.leg);
   const label = `${side === "left" ? "LEFT" : "RIGHT"} ${group.leg}`;
   const lines = [
-    escapeXml(shortLabel(String(group.leg), 13)),
-    escapeXml(shortLabel(legName || "Leg name", 15))
+    escapeXml(shortLabel(String(group.leg), crowd > 0.35 ? 11 : 13)),
+    escapeXml(shortLabel(legName || "Leg name", crowd > 0.35 ? 13 : 15))
   ];
-  const box = heatshrinkGroupBox(group.routes, side, routeBaseY, previewHeight);
+  const box = heatshrinkGroupBox(group.routes, side, routeBaseY, previewHeight, crowd);
   const sleeveMarkup = `
       <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
   `;
@@ -3251,7 +3494,7 @@ function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part
   `;
 }
 
-function heatshrinkGroupBox(routes, side, routeBaseY, previewHeight) {
+function heatshrinkGroupBox(routes, side, routeBaseY, previewHeight, crowd = 0) {
   const terminalRuns = routes.map(({ index, point }) => {
     if (point.exit === "bottom") {
       const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP;
@@ -3261,7 +3504,7 @@ function heatshrinkGroupBox(routes, side, routeBaseY, previewHeight) {
         point,
         laneY,
         dropY,
-        busX: bottomBusX(point, index)
+        busX: bottomBusX(point, index, routes.length)
       };
     }
 
@@ -3283,19 +3526,28 @@ function heatshrinkGroupBox(routes, side, routeBaseY, previewHeight) {
   const laneY = terminalRuns.reduce((sum, item) => sum + item.laneY, 0) / terminalRuns.length;
   const terminalY = pointYs.reduce((sum, y) => sum + y, 0) / pointYs.length;
   const towardLane = terminalY <= laneY ? 1 : -1;
+  const routeOffset = routes.reduce((sum, item) => {
+    const offset = wireRouteOffset(item.row);
+    return {
+      x: sum.x + offset.x,
+      y: sum.y + offset.y
+    };
+  }, { x: 0, y: 0 });
+  const offsetX = routes.length ? routeOffset.x / routes.length : 0;
+  const offsetY = routes.length ? routeOffset.y / routes.length : 0;
   const horizontal = (maxX - minX) >= (maxY - minY);
   const width = horizontal
-    ? clamp(maxX - minX + 52, 88, 170)
+    ? clamp(maxX - minX + 44 + crowd * 14, 88, 180)
     : 54;
   const height = horizontal
-    ? 54
-    : clamp(maxY - minY + 52, 88, 170);
+    ? clamp(50 + crowd * 6, 50, 60)
+    : clamp(maxY - minY + 44 + crowd * 14, 88, 180);
   const centerX = horizontal
-    ? (minX + maxX) / 2
-    : terminalRuns.reduce((sum, item) => sum + item.busX, 0) / terminalRuns.length;
+    ? (minX + maxX) / 2 + offsetX * 0.24
+    : terminalRuns.reduce((sum, item) => sum + item.busX, 0) / terminalRuns.length + offsetX * 0.18;
   const centerY = horizontal
-    ? terminalY + towardLane * 38
-    : (minY + maxY) / 2 + towardLane * 18;
+    ? terminalY + towardLane * (32 - crowd * 10) + offsetY * 0.24
+    : (minY + maxY) / 2 + towardLane * (14 - crowd * 4) + offsetY * 0.2;
   const left = clamp(centerX - width / 2, 18, 1000 - width - 18);
   const top = clamp(centerY - height / 2, 44, previewHeight - height - 14);
   return {
@@ -3325,7 +3577,7 @@ function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeigh
     escapeXml(shortLabel(String(leg), 13)),
     escapeXml(shortLabel(legName || "Leg name", 15)),
   ];
-  const box = heatshrinkBox(point, index, routeBaseY, previewHeight);
+  const box = heatshrinkBox(point, index, routeBaseY, previewHeight, crowdingFactor(index + 1, 4, 6));
   const sleeveMarkup = `
       <rect class="heatshrink-sleeve" x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" rx="4" />
   `;
@@ -3358,9 +3610,9 @@ function renderHeatshrinkLabel(side, row, point, index, routeBaseY, previewHeigh
   `;
 }
 
-function heatshrinkBox(point, index, routeBaseY, previewHeight) {
-  const width = 118;
-  const height = 84;
+function heatshrinkBox(point, index, routeBaseY, previewHeight, crowd = 0) {
+  const width = Math.round(clamp(118 - crowd * 16, 94, 118));
+  const height = Math.round(clamp(84 - crowd * 10, 72, 84));
   const routeIndex = Math.max(0, index);
   let x = point.x;
   let y = point.y;
@@ -3368,11 +3620,12 @@ function heatshrinkBox(point, index, routeBaseY, previewHeight) {
   if (point.exit === "bottom") {
     const laneY = routeBaseY + routeIndex * WIRE_LANE_GAP;
     const dropY = bottomDropY(point, index, laneY);
-    x = bottomBusX(point, index);
+    x = bottomBusX(point, index, crowd > 0 ? 4 : 0);
     y = (dropY + laneY) / 2;
   } else {
-    x = point.x + (point.side === "right" ? -74 : 74);
-    y = point.y + 28;
+    const nudge = Math.round(74 - crowd * 16);
+    x = point.x + (point.side === "right" ? -nudge : nudge);
+    y = point.y + 28 - Math.round(crowd * 4);
   }
 
   const left = clamp(x - width / 2, 18, 1000 - width - 18);
@@ -3392,6 +3645,17 @@ function wireLaneLabelPosition(x, laneY, previewHeight, sideMargin) {
     x: clamp(x, sideMargin, 1000 - sideMargin),
     y: clamp(laneY, 48, previewHeight - 24)
   };
+}
+
+function wireLaneLabelX(leftX, rightX, tagWidth) {
+  const minX = Math.min(leftX, rightX);
+  const maxX = Math.max(leftX, rightX);
+  if (maxX - minX <= tagWidth + 24) {
+    return (leftX + rightX) / 2;
+  }
+
+  const desired = minX + tagWidth / 2 + 8;
+  return clamp(desired, minX + tagWidth / 2 + 8, maxX - tagWidth / 2 - 8);
 }
 
 function shortLabel(input, maxLength) {
@@ -4067,7 +4331,9 @@ function addRow() {
     rightHousingPart: current?.rightHousingPart || "",
     rightTerminalPart: current?.rightTerminalPart || "",
     toolUsed: current?.toolUsed || "",
-    comments: ""
+    comments: "",
+    routeOffsetX: 0,
+    routeOffsetY: 0
   };
 
   rememberUndo();
@@ -4161,7 +4427,9 @@ function clearRow(rowId) {
     rightHousingPart: "",
     rightTerminalPart: "",
     toolUsed: "",
-    comments: ""
+    comments: "",
+    routeOffsetX: 0,
+    routeOffsetY: 0
   });
 
   state.selectedId = state.rows.find(isActiveWireRow)?.id || row.id;
@@ -5535,6 +5803,8 @@ dom.importText.addEventListener("input", () => {
     dom.imageStatus.textContent = "Text changed. Press Translate to preview rows.";
   }
 });
+dom.wirePreview.addEventListener("pointerdown", startWireDrag);
+dom.wirePreview.addEventListener("dblclick", resetWireDrag);
 
 setupColumnResizers();
 setupLayoutSplitter();
