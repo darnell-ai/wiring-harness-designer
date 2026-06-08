@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.50";
+const APP_VERSION = "1.2.51";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -456,6 +456,15 @@ function defaultCatalog() {
       gender: "Male",
       terminalType: "CPC size 17-16 pin contact",
       notes: "TE receptacle housing, size 17 shell, 16 positions, pin contacts.",
+      imageUrl: CPC_MALE_IMAGE
+    }),
+    catalogEntry("16 PIN CPC", "Connector", "cpc", 16, {
+      manufacturer: "TE Connectivity",
+      partNumber: "A1305-ND",
+      gender: "Male",
+      terminalType: "CPC size 17-16 pin contact",
+      terminalPart: "1003-T2P20MC1SZCT-ND",
+      notes: "Starter W104 CPC housing alias for the 16-position CPC connector.",
       imageUrl: CPC_MALE_IMAGE
     }),
     catalogEntry("CPC 16 SOCKET FEMALE", "Connector", "cpc", 16, {
@@ -926,75 +935,65 @@ function makeId() {
 }
 
 function createStarterRows() {
-  const rows = [];
+  const starterRows = [
+    ["TO SH A", "1", "WHITE", "4", "1", "TO SH", "1", "2243-1327G7-BK-ND"],
+    ["TO SH B", "2", "BLUE", "4", "1", "TO SH", "2", "2243-1327G8-ND"],
+    ["TO SH C", "3", "GREEN", "4", "1", "TO SH", "3", "2243-1327G5-ND"],
+    ["TO SV A", "4", "WHITE", "5", "2", "TO SV", "4", "2243-1327G7-BK-ND"],
+    ["TO SV B", "5", "BLUE", "5", "2", "TO SV", "5", "2243-1327G8-ND"],
+    ["TO SVC", "6", "GREEN", "5", "2", "TO SV", "6", "2243-1327G5-ND"],
+    ["TO PV A", "7", "WHITE", "5", "3", "TO PV", "7", "2243-1327G7-BK-ND"],
+    ["TO PV B", "8", "BLUE", "5", "3", "TO PV", "8", "2243-1327G8-ND"],
+    ["TO PV C", "9", "GREEN", "5", "3", "TO PV", "9", "2243-1327G5-ND"],
+    ["TO PH A", "10", "WHITE", "6", "4", "TO PH", "10", "2243-1327G7-BK-ND"],
+    ["TO PH B", "11", "BLUE", "6", "4", "TO PH", "11", "2243-1327G8-ND"],
+    ["TO PH C", "12", "GREEN", "6", "4", "TO PH", "12", "2243-1327G5-ND"],
+    ["LED POWER", "13", "RED", "7", "5", "PCB", "13", "2243-1327-ND"],
+    ["BWD", "14", "RED", "7", "5", "PCB", "14", "2243-1327-ND"],
+    ["BWA", "15", "RED", "7", "5", "PCB", "15", "2243-1327-ND"],
+    ["BW GND", "16", "BLACK", "7", "5", "PCB", "16", "242-1327G6-ND"]
+  ];
 
-  for (let pin = 1; pin <= 16; pin += 1) {
-    const active = pin <= 4;
-    rows.push({
-      id: makeId(),
-      leftLeg: "1",
-      name: pin === 1 ? "CPC 1 POWER" : "",
-      leftPin: String(pin),
-      dnp: !active,
-      housing: active ? "A POWER POLE" : "",
-      leftHousingPart: "",
-      leftTerminalPart: "",
-      awg: active ? "16" : "",
-      color: active ? (pin === 1 ? "BLACK" : "RED") : "",
-      length: active ? "8" : "",
-      spliceId: "",
-      spliceRole: "",
-      rightLeg: "",
-      rightPin: "",
-      rightDnp: !active,
-      rightHousing: "",
-      rightHousingPart: "",
-      rightTerminalPart: "",
-      toolUsed: "",
-      comments: ""
-    });
-  }
-
-  for (let pin = 1; pin <= 16; pin += 1) {
-    rows.push({
-      id: makeId(),
-      leftLeg: "2",
-      name: "",
-      leftPin: String(pin),
-      dnp: true,
-      housing: "",
-      leftHousingPart: "",
-      leftTerminalPart: "",
-      awg: "",
-      color: "",
-      length: "",
-      spliceId: "",
-      spliceRole: "",
-      rightLeg: "",
-      rightPin: "",
-      rightDnp: true,
-      rightHousing: "",
-      rightHousingPart: "",
-      rightTerminalPart: "",
-      toolUsed: "",
-      comments: ""
-    });
-  }
-
-  return rows;
+  return starterRows.map(([name, leftPin, color, length, rightLeg, , rightPin, rightHousingPart]) => ({
+    id: makeId(),
+    leftLeg: "1",
+    name,
+    leftPin,
+    dnp: false,
+    housing: "16 Pin CPC",
+    leftHousingPart: "A1305-ND",
+    leftTerminalPart: "1003-T2P20MC1SZCT-ND",
+    awg: "16",
+    color,
+    length,
+    spliceId: "",
+    spliceRole: "",
+    rightLeg,
+    rightPin,
+    rightDnp: false,
+    rightHousing: "A POWER POLE",
+    rightHousingPart,
+    rightTerminalPart: "2243-1332-BK-ND",
+    toolUsed: "APIOLO",
+    comments: ""
+  }));
 }
 
 function starterState() {
   const rows = createStarterRows();
+  const learnedCatalog = learnCatalogFromRows(rows, defaultCatalog());
   return {
-    harnessName: "CPC Power Harness",
+    harnessName: "W104",
     selectedId: rows[0]?.id || "",
     rows,
-    catalog: defaultCatalog(),
+    catalog: normalizeCatalog(learnedCatalog.catalog),
     bomAllowance: 10,
     tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
     previewPaneHeight: defaultPreviewPaneHeight(),
-    legNames: { left: {}, right: {} }
+    legNames: {
+      left: { "1": "CPC 1" },
+      right: { "1": "TO SH", "2": "TO SV", "3": "TO PV", "4": "TO PH", "5": "PCB" }
+    }
   };
 }
 
@@ -3843,18 +3842,16 @@ function resetSample() {
     return;
   }
 
-  const catalog = state.catalog;
+  const previousCatalog = state.catalog;
   const bomAllowance = state.bomAllowance;
   const tableColumnWidths = state.tableColumnWidths;
   const previewPaneHeight = state.previewPaneHeight;
-  const legNames = state.legNames;
   rememberUndo();
   state = starterState();
-  state.catalog = catalog;
+  state.catalog = normalizeCatalog(learnCatalogFromRows(state.rows, previousCatalog).catalog);
   state.bomAllowance = bomAllowance;
   state.tableColumnWidths = tableColumnWidths;
   state.previewPaneHeight = previewPaneHeight;
-  state.legNames = legNames;
   saveState();
   if (dom.searchRows) {
     dom.searchRows.value = "";

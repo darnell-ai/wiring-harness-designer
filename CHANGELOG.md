@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.51 - 2026-06-07
+
+- Made W104 the built-in starter harness for fresh loads and reset.
+- Seeded the starter catalog from the W104 CPC and A Power Pole part numbers.
+- Added the `16 PIN CPC` housing alias so the starter harness validates cleanly.
+
 ## v1.2.50 - 2026-06-07
 
 - Reworked wire routing so left-side wires drop beside the source connector and right-side wires rise beside their destinations before meeting through the middle lane.
