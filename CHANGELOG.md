@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.56 - 2026-06-08
+
+- Shifted the harness cable tag left in the live diagram so it stays out of the crowded right-side routing.
+- Moved right-side leg connector groups onto a soft crescent layout to spread terminations across the preview.
+
 ## v1.2.55 - 2026-06-08
 
 - Replaced the old per-position Molex front/side lock dropdown entries with two scalable Micro-Fit choices.

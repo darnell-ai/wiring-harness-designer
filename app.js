@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.55";
+const APP_VERSION = "1.2.56";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -1768,7 +1768,6 @@ function renderPreview() {
   const selectedStart = selectedEndpoints.start;
   const selectedEnd = selectedEndpoints.end;
   const spliceSelected = isSpliceRow(selected);
-  const labelX = spliceSelected ? 205 : 384;
   const labelY = spliceSelected
     ? clamp((selectedStart.exit === "splice" ? selectedStart.y : selectedEnd.y) - 140, 74, previewHeight - 112)
     : 54;
@@ -1818,11 +1817,12 @@ function renderPreview() {
 
   const cableNameText = shortLabel(state.harnessName || "", 14);
   const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
-  const infoBoxWidth = state.harnessName ? cableNameWidth + 40 : 236;
+  const cableNameCenterX = 372;
+  const cableNameY = labelY + 15;
   const cableNameMarkup = state.harnessName ? `
     <g class="cable-name-tag" aria-label="Cable name ${escapeXml(state.harnessName)}">
-      <rect x="${labelX + infoBoxWidth - cableNameWidth - 12}" y="${labelY + 15}" width="${cableNameWidth}" height="46" rx="4" />
-      <text x="${labelX + infoBoxWidth - (cableNameWidth / 2) - 12}" y="${labelY + 44}" text-anchor="middle">${escapeXml(cableNameText)}</text>
+      <rect x="${cableNameCenterX - cableNameWidth / 2}" y="${cableNameY}" width="${cableNameWidth}" height="46" rx="4" />
+      <text x="${cableNameCenterX}" y="${cableNameY + 29}" text-anchor="middle">${escapeXml(cableNameText)}</text>
     </g>
   ` : "";
 
@@ -1993,7 +1993,7 @@ function buildConnectors(keys, side, rows, selected) {
   const top = 72;
   let y = top;
 
-  return keys.map((key) => {
+  return keys.map((key, index) => {
     const housing = connectorHousing(key, side, rows, selected);
     const pinCount = housingPositionCount(housing);
     const family = housingFamily(housing);
@@ -2017,7 +2017,10 @@ function buildConnectors(keys, side, rows, selected) {
         ? molexMicroFitRowMode(housing, connectorPinCount)
         : "";
     const dimensions = connectorDimensions(family, dimensionPinCount, positionData.length, rowMode);
-    const x = side === "left" ? 38 : 1000 - 38 - dimensions.width;
+    const baseX = side === "left" ? 38 : 1000 - 38 - dimensions.width;
+    const x = side === "right"
+      ? rightConnectorCrescentX(baseX, index, keys.length, dimensions.width)
+      : baseX;
     const connector = {
       key,
       side,
@@ -2035,6 +2038,18 @@ function buildConnectors(keys, side, rows, selected) {
     y += dimensions.height + gap;
     return connector;
   });
+}
+
+function rightConnectorCrescentX(baseX, index, count, width) {
+  if (count <= 1) {
+    return baseX;
+  }
+
+  const progress = count <= 1 ? 0 : index / Math.max(1, count - 1);
+  const outerShift = count >= 4 ? 160 : count === 3 ? 118 : 72;
+  const middleRelief = count >= 4 ? 74 : count === 3 ? 48 : 0;
+  const shift = outerShift - middleRelief * Math.sin(progress * Math.PI);
+  return Math.round(clamp(baseX - shift, 470, 1000 - width - 24));
 }
 
 function balanceConnectorColumns(leftConnectors, rightConnectors) {
