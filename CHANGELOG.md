@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.66 - 2026-06-09
+
+- Switched the draw.io export background from a covering rectangle to the page background so exported wires and connector artwork stay visible.
+
 ## v1.2.65 - 2026-06-09
 
 - Clamped the dragged cable title so it stays inside the preview and the draw.io export canvas.

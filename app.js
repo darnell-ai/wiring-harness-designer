@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.65";
+const APP_VERSION = "1.2.66";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -6227,7 +6227,6 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
   const connectorPadX = 26;
   const connectorPadTop = 20;
   const connectorPadBottom = 58;
-  const backgroundId = "bg";
   const cells = [];
   const addCell = (cell) => cells.push(cell);
 
@@ -6442,22 +6441,6 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     }));
   };
 
-  const makeBackgroundGrid = () => mxCellXml({
-    id: backgroundId,
-    value: "",
-    style: "rounded=0;whiteSpace=wrap;html=1;fillColor=#15201b;strokeColor=none;opacity=100;",
-    vertex: 1,
-    parent: "1"
-  }, mxGeometryXml({
-    x: 0,
-    y: 0,
-    width: pageWidth,
-    height: pageHeight,
-    as: "geometry"
-  }));
-
-  addCell(makeBackgroundGrid());
-
   scene.routedWires.forEach(({ item, index, endpoints }) => {
     const { start, end } = endpoints;
     const color = colorMap[item.color] || "#7e8a82";
@@ -6521,7 +6504,7 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="Wiring Harness Designer" type="device">
   <diagram id="${drawIoSafeId(state.harnessName || "harness")}" name="${diagramName}">
-    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${pageWidth}" pageHeight="${pageHeight}" math="0" shadow="0">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${pageWidth}" pageHeight="${pageHeight}" background="#15201b" math="0" shadow="0">
       <root>
         ${mxCellXml({ id: "0" })}
         ${mxCellXml({ id: "1", parent: "0" })}
