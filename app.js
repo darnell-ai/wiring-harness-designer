@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.61";
+const APP_VERSION = "1.2.62";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -8,6 +8,7 @@ const WIRE_EXIT_GAP = 14;
 const WIRE_BUS_GAP = 18;
 const WIRE_ROUTE_DRAG_LIMIT_X = 240;
 const WIRE_ROUTE_DRAG_LIMIT_Y = 140;
+const WIRE_BEND_HANDLE_SIZE = 12;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
@@ -1083,7 +1084,11 @@ function createStarterRows() {
     rightHousingPart,
     rightTerminalPart: "2243-1332-BK-ND",
     toolUsed: "APIOLO",
-    comments: ""
+    comments: "",
+    routeOffsetX: 0,
+    routeOffsetY: 0,
+    routeBendX: null,
+    routeBendY: null
   }));
 }
 
@@ -1147,7 +1152,9 @@ function normalizeState(incoming) {
     toolUsed: value(row.toolUsed),
     comments: value(row.comments),
     routeOffsetX: Number.isFinite(Number(row.routeOffsetX)) ? Number(row.routeOffsetX) : 0,
-    routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0
+    routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0,
+    routeBendX: Number.isFinite(Number(row.routeBendX)) ? Number(row.routeBendX) : null,
+    routeBendY: Number.isFinite(Number(row.routeBendY)) ? Number(row.routeBendY) : null
   }));
   const learnedCatalog = learnCatalogFromRows(rows, incoming.catalog);
 
@@ -1825,6 +1832,9 @@ function renderPreview() {
       );
     })
     .join("");
+  const bendHandles = routedWires
+    .map(({ item }) => renderWireBendHandle(item, previewHeight))
+    .join("");
   const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
@@ -1868,6 +1878,10 @@ function renderPreview() {
         .wire-route-hit:active { cursor: grabbing; }
         .wire-route:hover .wire-route-hit, .wire-name-tag { cursor: grab; }
         .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .wire-bend-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; cursor: grab; }
+        .wire-bend-handle:active .wire-bend-hit { cursor: grabbing; }
+        .wire-bend-core { fill: rgba(7, 10, 9, 0.88); stroke: rgba(242, 200, 75, 0.96); stroke-width: 1.8; pointer-events: none; }
+        .wire-bend-handle:hover .wire-bend-core { fill: rgba(7, 10, 9, 0.98); }
         .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 11px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -1890,6 +1904,7 @@ function renderPreview() {
     ${heatshrinkText}
     ${spliceNodes}
     ${wireNameTags}
+    ${bendHandles}
     ${selectedInfoBoxMarkup}
   `;
 }
@@ -1922,12 +1937,14 @@ function startWireDrag(event) {
     return;
   }
 
-  const target = event.target?.closest?.("[data-wire-id]");
+  const bendTarget = event.target?.closest?.("[data-wire-bend-id]");
+  const target = bendTarget || event.target?.closest?.("[data-wire-id]");
   if (!target) {
     return;
   }
 
-  const row = wireRowById(target.dataset.wireId);
+  const rowId = target.dataset.wireBendId || target.dataset.wireId;
+  const row = wireRowById(rowId);
   if (!row || !isActiveWireRow(row)) {
     return;
   }
@@ -1949,9 +1966,13 @@ function startWireDrag(event) {
   wireDragState = {
     pointerId: event.pointerId,
     rowId: row.id,
+    mode: bendTarget ? "bend" : "route",
     startPoint: point,
     startOffsetX: numberOrZero(row.routeOffsetX),
     startOffsetY: numberOrZero(row.routeOffsetY),
+    startBendX: numberOrZero(row.routeBendX),
+    startBendY: numberOrZero(row.routeBendY),
+    lastPoint: point,
     dragging: false,
     savedUndo: false
   };
@@ -1972,6 +1993,7 @@ function moveWireDrag(event) {
   }
 
   const point = wirePreviewPoint(event);
+  wireDragState.lastPoint = point;
   const dx = point.x - wireDragState.startPoint.x;
   const dy = point.y - wireDragState.startPoint.y;
   const distance = Math.hypot(dx, dy);
@@ -1987,7 +2009,11 @@ function moveWireDrag(event) {
     }
   }
 
-  setWireRouteOffset(row, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
+  if (wireDragState.mode === "bend") {
+    setWireRouteBend(row, wireDragState.startBendX + dx, wireDragState.startBendY + dy);
+  } else {
+    setWireRouteOffset(row, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
+  }
   saveState();
   renderPreview();
 }
@@ -2010,12 +2036,12 @@ function endWireDrag(event) {
 }
 
 function resetWireDrag(event) {
-  const target = event.target?.closest?.("[data-wire-id]");
+  const target = event.target?.closest?.("[data-wire-id], [data-wire-bend-id]");
   if (!target) {
     return;
   }
 
-  const row = wireRowById(target.dataset.wireId);
+  const row = wireRowById(target.dataset.wireBendId || target.dataset.wireId);
   if (!row || !isActiveWireRow(row)) {
     return;
   }
@@ -2023,9 +2049,52 @@ function resetWireDrag(event) {
   event.preventDefault();
   rememberUndo();
   resetWireRouteOffset(row);
+  resetWireRouteBend(row);
   saveState();
   renderPreview();
   showToast("Cable route reset.");
+}
+
+function addWireBendFromShortcut(event) {
+  const isDigitNine = event.code === "Digit9" || event.code === "Numpad9" || event.key === "9";
+  if (!isDigitNine || event.repeat) {
+    return;
+  }
+
+  const target = event.target;
+  const tagName = value(target?.tagName).toLowerCase();
+  if (target?.isContentEditable || ["input", "textarea", "select"].includes(tagName)) {
+    return;
+  }
+
+  if (!wireDragState || wireDragState.mode === "bend") {
+    return;
+  }
+
+  const row = wireRowById(wireDragState.rowId);
+  if (!row || !isActiveWireRow(row)) {
+    return;
+  }
+
+  const point = wireDragState.lastPoint || wireDragState.startPoint;
+  if (!point) {
+    return;
+  }
+
+  event.preventDefault();
+  if (!wireDragState.savedUndo) {
+    rememberUndo();
+    wireDragState.savedUndo = true;
+  }
+
+  setWireRouteBend(row, point.x, point.y);
+  wireDragState.mode = "bend";
+  wireDragState.startPoint = point;
+  wireDragState.startBendX = point.x;
+  wireDragState.startBendY = point.y;
+  saveState();
+  renderPreview();
+  showToast("Added a bend point.");
 }
 
 function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight) {
@@ -3228,6 +3297,22 @@ function wireRouteOffset(row) {
   };
 }
 
+function wireRouteBend(row) {
+  const rawX = row?.routeBendX;
+  const rawY = row?.routeBendY;
+  if (rawX === null || rawX === undefined || rawY === null || rawY === undefined || rawX === "" || rawY === "") {
+    return null;
+  }
+
+  const x = Number(rawX);
+  const y = Number(rawY);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+
+  return { x, y };
+}
+
 function setWireRouteOffset(row, x, y) {
   if (!row) {
     return;
@@ -3246,6 +3331,24 @@ function resetWireRouteOffset(row) {
   row.routeOffsetY = 0;
 }
 
+function setWireRouteBend(row, x, y) {
+  if (!row) {
+    return;
+  }
+
+  row.routeBendX = Math.round(Number(x) || 0);
+  row.routeBendY = Math.round(Number(y) || 0);
+}
+
+function resetWireRouteBend(row) {
+  if (!row) {
+    return;
+  }
+
+  row.routeBendX = null;
+  row.routeBendY = null;
+}
+
 function crowdingFactor(count, start = 8, span = 8) {
   return clamp((Math.max(0, count) - start) / Math.max(1, span), 0, 1);
 }
@@ -3262,10 +3365,21 @@ function routeControlX(controlX, startX, endX, padding = 22) {
 
 function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
   const offset = wireRouteOffset(row);
+  const bend = wireRouteBend(row);
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
     const startDropY = bottomDropY(start, index, laneY);
     const routeBusX = routeControlX(bottomRouteCenterX(start, end, index, wireCount) + offset.x, start.x, end.x);
+    if (bend) {
+      return `M ${start.x} ${start.y}
+      V ${startDropY}
+      H ${routeBusX}
+      V ${Math.round(bend.y)}
+      H ${Math.round(bend.x)}
+      V ${laneY}
+      H ${end.x}
+      V ${end.y}`;
+    }
     return `M ${start.x} ${start.y}
       V ${startDropY}
       H ${routeBusX}
@@ -3283,6 +3397,16 @@ function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
   }
 
   const middleX = routeControlX(500 + ((Math.max(0, index) % 7) - 3) * 12 + offset.x, start.x, end.x);
+  if (bend) {
+    const middleY = Math.round((start.y + end.y) / 2 + offset.y);
+    return `M ${start.x} ${start.y}
+      H ${middleX}
+      V ${Math.round(bend.y)}
+      H ${Math.round(bend.x)}
+      V ${middleY}
+      H ${end.x}
+      V ${end.y}`;
+  }
   if (!offset.y) {
     return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
   }
@@ -3341,9 +3465,20 @@ function bottomRouteCenterX(start, end, index, wireCount = 0) {
 
 function bottomExitWirePath(bottom, other, index, routeBaseY, wireCount = 0, row = null) {
   const offset = wireRouteOffset(row);
+  const bend = wireRouteBend(row);
   const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
   const dropY = bottomDropY(bottom, index, laneY);
   const busX = routeControlX(bottomBusX(bottom, index, wireCount) + offset.x, bottom.x, other.x);
+  if (bend) {
+    return `M ${bottom.x} ${bottom.y}
+    V ${dropY}
+    H ${busX}
+    V ${Math.round(bend.y)}
+    H ${Math.round(bend.x)}
+    V ${laneY}
+    H ${other.x}
+    V ${other.y}`;
+  }
   return `M ${bottom.x} ${bottom.y}
     V ${dropY}
     H ${busX}
@@ -3407,6 +3542,23 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, wi
       <title>${escapeXml(rawLabel)}</title>
       <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" fill-opacity="${boxOpacity}" stroke="#d9dfd7" stroke-opacity="${compact ? 0.72 : 0.65}" stroke-width="1.5" />
       <text x="${tag.x}" y="${tag.y + (fontSize >= 14 ? 5 : 4)}" text-anchor="middle" font-size="${fontSize}"${textLength}>${label}</text>
+    </g>
+  `;
+}
+
+function renderWireBendHandle(row, previewHeight) {
+  const bend = wireRouteBend(row);
+  if (!bend) {
+    return "";
+  }
+
+  const x = Math.round(clamp(bend.x, 12, 988));
+  const y = Math.round(clamp(bend.y, 12, Math.max(12, previewHeight - 12)));
+  const half = WIRE_BEND_HANDLE_SIZE / 2;
+  return `
+    <g class="wire-bend-handle" data-wire-id="${escapeXml(row?.id || "")}" data-wire-bend-id="${escapeXml(row?.id || "")}" aria-label="Route bend for ${escapeXml(value(row?.name) || "wire")}">
+      <rect class="wire-bend-hit" x="${x - 13}" y="${y - 13}" width="26" height="26" rx="6" />
+      <rect class="wire-bend-core" x="${x - half}" y="${y - half}" width="${WIRE_BEND_HANDLE_SIZE}" height="${WIRE_BEND_HANDLE_SIZE}" rx="2" />
     </g>
   `;
 }
@@ -4333,7 +4485,9 @@ function addRow() {
     toolUsed: current?.toolUsed || "",
     comments: "",
     routeOffsetX: 0,
-    routeOffsetY: 0
+    routeOffsetY: 0,
+    routeBendX: null,
+    routeBendY: null
   };
 
   rememberUndo();
@@ -4429,7 +4583,9 @@ function clearRow(rowId) {
     toolUsed: "",
     comments: "",
     routeOffsetX: 0,
-    routeOffsetY: 0
+    routeOffsetY: 0,
+    routeBendX: null,
+    routeBendY: null
   });
 
   state.selectedId = state.rows.find(isActiveWireRow)?.id || row.id;
@@ -5805,6 +5961,7 @@ dom.importText.addEventListener("input", () => {
 });
 dom.wirePreview.addEventListener("pointerdown", startWireDrag);
 dom.wirePreview.addEventListener("dblclick", resetWireDrag);
+document.addEventListener("keydown", addWireBendFromShortcut);
 
 setupColumnResizers();
 setupLayoutSplitter();

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.62 - 2026-06-08
+
+- Added a second manual route control point so a dragged wire can pick up an extra bend and slip around crowded housings.
+- Added a keyboard shortcut while dragging a wire: press `9` to drop the bend point at the current pointer location.
+- Added a visible bend handle you can grab later to refine that extra elbow without moving the whole route.
+- Kept the bend point in saved state and smoke-tested the route math so the extra flex stays stable after reload.
+
 ## v1.2.61 - 2026-06-08
 
 - Added preview drag editing for routed cables so you can pull a wire into a better layout on the fly.
