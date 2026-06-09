@@ -1,6 +1,7 @@
 "use strict";
 
-const APP_VERSION = "1.2.63";
+const APP_VERSION = "1.2.64";
+const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const WIRE_LANE_GAP = 32;
@@ -401,6 +402,7 @@ const dom = {
   importJson: document.querySelector("#importJson"),
   importJsonButton: document.querySelector("#importJsonButton"),
   imageImportButton: document.querySelector("#imageImportButton"),
+  drawIoButton: document.querySelector("#drawIoButton"),
   imageDialog: document.querySelector("#imageDialog"),
   closeImageDialog: document.querySelector("#closeImageDialog"),
   translateImageText: document.querySelector("#translateImageText"),
@@ -467,6 +469,10 @@ let state = loadState();
 let undoStack = [];
 let toastTimer = 0;
 let wireDragState = null;
+let drawIoWindow = null;
+let drawIoMessageHandler = null;
+let drawIoReady = false;
+let drawIoPendingXml = "";
 let pendingImportRows = [];
 let pendingImportContext = { harnessName: "", legNames: { left: {}, right: {} } };
 let selectedCatalogId = "";
@@ -1106,6 +1112,7 @@ function starterState() {
     tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
     previewPaneHeight: defaultPreviewPaneHeight(),
     previewLayout: defaultPreviewLayout(),
+    drawioXml: "",
     legNames: {
       left: { "1": "CPC 1" },
       right: { "1": "TO SH", "2": "TO SV", "3": "TO PV", "4": "TO PH", "5": "PCB" }
@@ -1173,6 +1180,7 @@ function normalizeState(incoming) {
     tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
     previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight),
     previewLayout: normalizePreviewLayout(incoming.previewLayout),
+    drawioXml: value(incoming.drawioXml || incoming.drawIoXml),
     legNames: normalizeLegNames(incoming.legNames)
   };
 }
@@ -1946,6 +1954,80 @@ function renderPreview() {
     ${bendHandles}
     ${selectedInfoBoxMarkup}
   `;
+}
+
+function buildPreviewScene() {
+  const row = selectedRow();
+  const active = activeRows();
+  const dnp = state.rows.length - active.length;
+  const total = active.reduce((sum, item) => sum + parseFloat(item.length || 0), 0);
+  const selected = row && isActiveWireRow(row) ? row : {};
+  const hasSelectedWire = Boolean(selected.id);
+  const previewRows = active;
+  const leftConnectors = buildConnectors(legKeys(previewRows, "left", selected), "left", previewRows, selected);
+  const rightConnectors = buildConnectors(legKeys(previewRows, "right", selected), "right", previewRows, selected);
+  balanceConnectorColumns(leftConnectors, rightConnectors);
+  const leftMap = new Map(leftConnectors.map((connector) => [connector.key, connector]));
+  const rightMap = new Map(rightConnectors.map((connector) => [connector.key, connector]));
+  const routeBaseY = wireRouteBase(leftConnectors, rightConnectors, active.length);
+  const previewHeight = previewCanvasHeight(leftConnectors, rightConnectors, active.length);
+  const selectedWireIndex = Math.max(0, previewRows.findIndex((item) => item.id === selected.id));
+  const splicePoints = buildSplicePoints(previewRows, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight);
+  const routedWires = active.map((item, index) => ({
+    item,
+    index,
+    endpoints: wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight)
+  }));
+  const selectedRoute = routedWires.find((route) => route.item.id === selected.id);
+  const selectedEndpoints = selectedRoute?.endpoints || wireEndpoints(
+    selected,
+    selectedWireIndex,
+    leftMap,
+    rightMap,
+    leftConnectors,
+    splicePoints,
+    previewHeight
+  );
+  const selectedStart = selectedEndpoints.start;
+  const selectedEnd = selectedEndpoints.end;
+  const spliceSelected = isSpliceRow(selected);
+  const labelY = spliceSelected
+    ? clamp((selectedStart.exit === "splice" ? selectedStart.y : selectedEnd.y) - 140, 74, previewHeight - 112)
+    : 54;
+  const cableNameText = shortLabel(state.harnessName || "", 14);
+  const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
+  const titleOffset = previewLayoutPoint("title");
+  const cableNameCenterX = 372 + titleOffset.x;
+  const cableNameY = labelY + 15 + titleOffset.y;
+  return {
+    row,
+    active,
+    dnp,
+    total,
+    selected,
+    hasSelectedWire,
+    previewRows,
+    leftConnectors,
+    rightConnectors,
+    leftMap,
+    rightMap,
+    routeBaseY,
+    previewHeight,
+    selectedWireIndex,
+    splicePoints,
+    routedWires,
+    selectedRoute,
+    selectedEndpoints,
+    selectedStart,
+    selectedEnd,
+    spliceSelected,
+    labelY,
+    cableNameText,
+    cableNameWidth,
+    titleOffset,
+    cableNameCenterX,
+    cableNameY
+  };
 }
 
 function wirePreviewPoint(event) {
@@ -3635,54 +3717,104 @@ function routeControlX(controlX, startX, endX, padding = 22) {
 }
 
 function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
+  return pointsToOrthogonalPath(wireRoutePoints(start, end, index, routeBaseY, wireCount, row));
+}
+
+function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = null) {
   const offset = wireRouteOffset(row);
   const bend = wireRouteBend(row);
+  const points = [];
+  const pushPoint = (x, y) => {
+    const point = { x: Math.round(x), y: Math.round(y) };
+    const last = points[points.length - 1];
+    if (!last || last.x !== point.x || last.y !== point.y) {
+      points.push(point);
+    }
+  };
+
   if (start.exit === "bottom" && end.exit === "bottom") {
     const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
     const startDropY = bottomDropY(start, index, laneY);
     const routeBusX = routeControlX(bottomRouteCenterX(start, end, index, wireCount) + offset.x, start.x, end.x);
+    pushPoint(start.x, start.y);
+    pushPoint(start.x, startDropY);
+    pushPoint(routeBusX, startDropY);
     if (bend) {
-      return `M ${start.x} ${start.y}
-      V ${startDropY}
-      H ${routeBusX}
-      V ${Math.round(bend.y)}
-      H ${Math.round(bend.x)}
-      V ${laneY}
-      H ${end.x}
-      V ${end.y}`;
+      pushPoint(routeBusX, bend.y);
+      pushPoint(bend.x, bend.y);
+      pushPoint(bend.x, laneY);
+    } else {
+      pushPoint(routeBusX, laneY);
     }
-    return `M ${start.x} ${start.y}
-      V ${startDropY}
-      H ${routeBusX}
-      V ${laneY}
-      H ${end.x}
-      V ${end.y}`;
+    pushPoint(end.x, laneY);
+    pushPoint(end.x, end.y);
+    return points;
   }
 
   if (start.exit === "bottom") {
-    return bottomExitWirePath(start, end, index, routeBaseY, wireCount, row);
+    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
+    const dropY = bottomDropY(start, index, laneY);
+    const busX = routeControlX(bottomBusX(start, index, wireCount) + offset.x, start.x, end.x);
+    pushPoint(start.x, start.y);
+    pushPoint(start.x, dropY);
+    pushPoint(busX, dropY);
+    if (bend) {
+      pushPoint(busX, bend.y);
+      pushPoint(bend.x, bend.y);
+      pushPoint(bend.x, laneY);
+    } else {
+      pushPoint(busX, laneY);
+    }
+    pushPoint(end.x, laneY);
+    pushPoint(end.x, end.y);
+    return points;
   }
 
   if (end.exit === "bottom") {
-    return bottomExitWirePath(end, start, index, routeBaseY, wireCount, row);
+    return wireRoutePoints(end, start, index, routeBaseY, wireCount, row).slice().reverse();
   }
 
   const middleX = routeControlX(500 + ((Math.max(0, index) % 7) - 3) * 12 + offset.x, start.x, end.x);
+  pushPoint(start.x, start.y);
+  pushPoint(middleX, start.y);
   if (bend) {
     const middleY = Math.round((start.y + end.y) / 2 + offset.y);
-    return `M ${start.x} ${start.y}
-      H ${middleX}
-      V ${Math.round(bend.y)}
-      H ${Math.round(bend.x)}
-      V ${middleY}
-      H ${end.x}
-      V ${end.y}`;
+    pushPoint(middleX, bend.y);
+    pushPoint(bend.x, bend.y);
+    pushPoint(bend.x, middleY);
+    pushPoint(end.x, middleY);
+    pushPoint(end.x, end.y);
+  } else if (offset.y) {
+    const middleY = Math.round((start.y + end.y) / 2 + offset.y);
+    pushPoint(middleX, middleY);
+    pushPoint(end.x, middleY);
+    pushPoint(end.x, end.y);
+  } else {
+    pushPoint(middleX, end.y);
+    pushPoint(end.x, end.y);
   }
-  if (!offset.y) {
-    return `M ${start.x} ${start.y} H ${middleX} V ${end.y} H ${end.x}`;
+  return points;
+}
+
+function pointsToOrthogonalPath(points) {
+  if (!points.length) {
+    return "";
   }
-  const middleY = Math.round((start.y + end.y) / 2 + offset.y);
-  return `M ${start.x} ${start.y} H ${middleX} V ${middleY} H ${end.x} V ${end.y}`;
+
+  const [first, ...rest] = points;
+  return [
+    `M ${Math.round(first.x)} ${Math.round(first.y)}`,
+    ...rest.map((point, index) => {
+      const prev = points[index];
+      if (point.x === prev.x) {
+        return `V ${Math.round(point.y)}`;
+      }
+      if (point.y === prev.y) {
+        return `H ${Math.round(point.x)}`;
+      }
+      return `L ${Math.round(point.x)} ${Math.round(point.y)}`;
+    })
+  ].join(" ");
 }
 
 function bottomDropY(point, index, laneY = point.y) {
@@ -3844,6 +3976,12 @@ function renderWireBendHandle(row, previewHeight) {
 }
 
 function renderHeatshrinkGroupLabels(side, routedWires, routeBaseY, previewHeight, part = "full") {
+  return collectHeatshrinkGroups(side, routedWires)
+    .map((group) => renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part))
+    .join("");
+}
+
+function collectHeatshrinkGroups(side, routedWires) {
   const groups = new Map();
 
   routedWires.forEach((route) => {
@@ -3876,9 +4014,7 @@ function renderHeatshrinkGroupLabels(side, routedWires, routeBaseY, previewHeigh
     });
   });
 
-  return [...groups.values()]
-    .map((group) => renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part))
-    .join("");
+  return [...groups.values()];
 }
 
 function renderHeatshrinkGroupLabel(side, group, routeBaseY, previewHeight, part = "full") {
@@ -6040,6 +6176,453 @@ function exportInstructions() {
   showToast("Printable guide downloaded.");
 }
 
+function xmlAttrs(attrs) {
+  return Object.entries(attrs)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([name, value]) => `${name}="${escapeXml(String(value)).replace(/\r?\n/g, "&#xa;")}"`)
+    .join(" ");
+}
+
+function xmlTag(name, attrs = {}, inner = "") {
+  const attrText = xmlAttrs(attrs);
+  if (inner) {
+    return `<${name}${attrText ? ` ${attrText}` : ""}>${inner}</${name}>`;
+  }
+
+  return `<${name}${attrText ? ` ${attrText}` : ""} />`;
+}
+
+function mxTextValue(input) {
+  return value(input);
+}
+
+function mxPointXml(x, y) {
+  return xmlTag("mxPoint", {
+    x: Math.round(x),
+    y: Math.round(y)
+  });
+}
+
+function mxGeometryXml(attrs = {}, inner = "") {
+  return xmlTag("mxGeometry", attrs, inner);
+}
+
+function mxCellXml(attrs = {}, inner = "") {
+  return xmlTag("mxCell", attrs, inner);
+}
+
+function drawIoSafeId(input) {
+  return value(input)
+    .replace(/[^a-zA-Z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "item";
+}
+
+function svgDataUri(svg) {
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+}
+
+function buildDrawIoXml(scene = buildPreviewScene()) {
+  const pageWidth = 1000;
+  const pageHeight = scene.previewHeight;
+  const connectorPadX = 26;
+  const connectorPadTop = 20;
+  const connectorPadBottom = 58;
+  const backgroundId = "bg";
+  const cells = [];
+  const addCell = (cell) => cells.push(cell);
+
+  const connectorAsset = (connector, side) => {
+    const assetWidth = Math.max(1, Math.ceil(connector.width + connectorPadX * 2));
+    const assetHeight = Math.max(1, Math.ceil(connector.height + connectorPadTop + connectorPadBottom));
+    const translateX = connectorPadX - connector.x;
+    const translateY = connectorPadTop - connector.y;
+    const assetSvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${assetWidth}" height="${assetHeight}" viewBox="0 0 ${assetWidth} ${assetHeight}" overflow="visible">
+        <style>
+          .pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.68); stroke-width: 2.2; }
+          .wire-pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.82); stroke-width: 2.8; }
+        </style>
+        <g transform="translate(${translateX}, ${translateY})">
+          ${renderConnector(connector, side, scene.previewRows, scene.selected)}
+        </g>
+      </svg>
+    `;
+    return svgDataUri(assetSvg);
+  };
+
+  const makeConnectorCell = (connector, side) => {
+    const connectorId = `conn_${side}_${drawIoSafeId(connector.key)}`;
+    const groupX = Math.round(connector.x - connectorPadX);
+    const groupY = Math.round(connector.y - connectorPadTop);
+    const groupWidth = Math.round(connector.width + connectorPadX * 2);
+    const groupHeight = Math.round(connector.height + connectorPadTop + connectorPadBottom);
+    const imageWidth = Math.round(connector.width);
+    const imageHeight = Math.round(connector.height);
+    const imageUri = connectorAsset(connector, side);
+    const ports = Array.from({ length: Math.max(1, connector.pinCount || 1) }, (_, index) => {
+      const pin = String(index + 1);
+      const point = pinPoint(connector, pin, side);
+      const portId = `${connectorId}_pin_${pin}`;
+      const portX = Math.round(point.x - groupX - 3);
+      const portY = Math.round(point.y - groupY - 3);
+      return mxCellXml({
+        id: portId,
+        value: "",
+        style: "ellipse;opacity=0;fillOpacity=0;strokeOpacity=0;connectable=1;movable=0;resizable=0;deletable=0;editable=0;noLabel=1;",
+        vertex: 1,
+        connectable: 1,
+        parent: connectorId
+      }, mxGeometryXml({
+        x: portX,
+        y: portY,
+        width: 6,
+        height: 6,
+        as: "geometry"
+      }));
+    }).join("");
+
+    return `
+      ${mxCellXml({
+        id: connectorId,
+        value: "",
+        style: "group;html=1;movable=1;resizable=0;rotatable=0;editable=0;deletable=1;connectable=0;strokeColor=none;fillColor=none;",
+        vertex: 1,
+        parent: "1",
+        [`data-type`]: "connector",
+        [`data-side`]: side,
+        [`data-key`]: connector.key,
+        [`data-housing`]: connector.housing || "",
+        [`data-family`]: connector.family || "",
+        [`data-pin-count`]: connector.pinCount || 0
+      }, `
+        ${mxGeometryXml({
+          x: groupX,
+          y: groupY,
+          width: groupWidth,
+          height: groupHeight,
+          as: "geometry"
+        })}
+        ${mxCellXml({
+          id: `${connectorId}_image`,
+          value: "",
+          style: `shape=image;image=${imageUri};aspect=fixed;imageAspect=0;movable=0;resizable=0;rotatable=0;editable=0;deletable=0;connectable=0;noLabel=1;`,
+          vertex: 1,
+          parent: connectorId
+        }, mxGeometryXml({
+          x: connectorPadX,
+          y: connectorPadTop,
+          width: imageWidth,
+          height: imageHeight,
+          as: "geometry"
+        }))}
+        ${ports}
+      `)}
+    `;
+  };
+
+  const makeEdgePoints = (start, end, index, row) => {
+    const points = wireRoutePoints(start, end, index, scene.routeBaseY, scene.routedWires.length, row);
+    return points.slice(1, -1).map((point) => mxPointXml(point.x, point.y)).join("");
+  };
+
+  const connectorPortId = (side, key, pin) => `conn_${side}_${drawIoSafeId(key)}_pin_${String(pin)}`;
+
+  const makeHiddenPointCell = (id, point) => mxCellXml({
+    id,
+    value: "",
+    style: "ellipse;opacity=0;fillOpacity=0;strokeOpacity=0;movable=1;resizable=0;editable=0;deletable=0;connectable=1;noLabel=1;",
+    vertex: 1,
+    parent: "1"
+  }, mxGeometryXml({
+    x: Math.round(point.x - 3),
+    y: Math.round(point.y - 3),
+    width: 6,
+    height: 6,
+    as: "geometry"
+  }));
+
+  const makeSpliceCell = (point) => {
+    const spliceId = `splice_${drawIoSafeId(point.spliceId || "splice")}`;
+    const label = mxTextValue(`${point.spliceId || "SPLICE"}\n${point.parentCount} PARENT / ${point.branchCount} BRANCH`);
+    return mxCellXml({
+      id: spliceId,
+      value: label,
+      style: "shape=hexagon;whiteSpace=wrap;html=1;rounded=0;fillColor=#a8b6ae;strokeColor=#93ad9f;strokeWidth=2;fontColor=#101814;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      vertex: 1,
+      parent: "1",
+      [`data-type`]: "splice",
+      [`data-splice-id`]: point.spliceId || ""
+    }, mxGeometryXml({
+      x: Math.round(point.x - 34),
+      y: Math.round(point.y - 26),
+      width: 68,
+      height: 52,
+      as: "geometry"
+    }));
+  };
+
+  const makeWireLabelCell = (row, start, end, index) => {
+    const rawLabel = value(row?.name).trim();
+    if (!rawLabel) {
+      return "";
+    }
+
+    const crowd = crowdingFactor(scene.routedWires.length, 8, 8);
+    const compact = crowd > 0.36;
+    const tagWidth = clamp(
+      rawLabel.length * (compact ? 7.2 : 8.5) + (compact ? 28 : 34),
+      compact ? 84 : 92,
+      compact ? 240 : 280
+    );
+    const maxChars = Math.max(8, Math.floor((tagWidth - (compact ? 28 : 34)) / (compact ? 6.9 : 7.5)));
+    const labelText = compact ? shortLabel(rawLabel, maxChars) : rawLabel;
+    const tag = wireNameTagPosition(start, end, index, scene.routeBaseY, scene.previewHeight, tagWidth, scene.routedWires.length, row);
+    return mxCellXml({
+      id: `wire_label_${drawIoSafeId(row.id)}`,
+      value: mxTextValue(labelText),
+      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=${compact ? 56 : 50};strokeColor=#d9dfd7;strokeOpacity=${compact ? 72 : 65};strokeWidth=1.5;fontColor=#101814;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
+      vertex: 1,
+      parent: "1",
+      [`data-type`]: "wire-label",
+      [`data-row-id`]: row.id || "",
+      [`data-wire-name`]: rawLabel
+    }, mxGeometryXml({
+      x: Math.round(tag.x - tagWidth / 2),
+      y: Math.round(tag.y - 14),
+      width: Math.round(tagWidth),
+      height: 28,
+      as: "geometry"
+    }));
+  };
+
+  const makeHeatshrinkCell = (side, group, routeBaseY, previewHeight) => {
+    const crowd = crowdingFactor(group.routes.length, 3, 5);
+    const legName = legNameFor(side, group.leg);
+    const box = heatshrinkGroupBox(group, side, routeBaseY, previewHeight, crowd);
+    const text = `${side === "left" ? "LEFT" : "RIGHT"} ${group.leg}\n${legName || "Leg name"}\n${group.routes[0]?.row?.housing || "Housing"}`;
+    return mxCellXml({
+      id: `heat_${side}_${drawIoSafeId(group.leg)}`,
+      value: mxTextValue(text),
+      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;fillOpacity=${Math.max(22, 30 - Math.round(crowd * 8))};strokeColor=#0f1110;strokeOpacity=${Math.max(48, 62 - Math.round(crowd * 10))};strokeWidth=1.5;fontColor=#f8fbf7;align=center;verticalAlign=middle;movable=1;resizable=1;rotatable=0;editable=1;deletable=1;`,
+      vertex: 1,
+      parent: "1",
+      [`data-type`]: "heatshrink",
+      [`data-side`]: side,
+      [`data-leg`]: group.leg || "",
+      [`data-leg-name`]: legName || ""
+    }, mxGeometryXml({
+      x: Math.round(box.x),
+      y: Math.round(box.y),
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+      as: "geometry"
+    }));
+  };
+
+  const makeTitleCell = () => {
+    if (!state.harnessName) {
+      return "";
+    }
+
+    const width = scene.cableNameWidth || 120;
+    const height = 46;
+    return mxCellXml({
+      id: "harness_title",
+      value: mxTextValue(scene.cableNameText || state.harnessName),
+      style: "rounded=1;whiteSpace=wrap;html=1;fillColor=#6d128c;strokeColor=#a83ad1;strokeWidth=2;fontColor=#fff5ff;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      vertex: 1,
+      parent: "1",
+      [`data-type`]: "title"
+    }, mxGeometryXml({
+      x: Math.round(scene.cableNameCenterX - width / 2),
+      y: Math.round(scene.cableNameY),
+      width: Math.round(width),
+      height,
+      as: "geometry"
+    }));
+  };
+
+  const makeBackgroundGrid = () => mxCellXml({
+    id: backgroundId,
+    value: "",
+    style: "rounded=0;whiteSpace=wrap;html=1;fillColor=#15201b;strokeColor=none;opacity=100;",
+    vertex: 1,
+    parent: "1"
+  }, mxGeometryXml({
+    x: 0,
+    y: 0,
+    width: pageWidth,
+    height: pageHeight,
+    as: "geometry"
+  }));
+
+  addCell(makeBackgroundGrid());
+
+  scene.routedWires.forEach(({ item, index, endpoints }) => {
+    const { start, end } = endpoints;
+    const color = colorMap[item.color] || "#7e8a82";
+    const isBlack = item.color === "BLACK";
+    const pathPoints = wireRoutePoints(start, end, index, scene.routeBaseY, scene.routedWires.length, item);
+    const sourceId = start.exit === "splice"
+      ? `splice_${drawIoSafeId(start.spliceId || "")}`
+      : start.exit === "bottom" && end.exit === "bottom"
+        ? connectorPortId(start.side, start.side === "left" ? item.leftLeg : item.rightLeg, start.side === "left" ? item.leftPin || 1 : item.rightPin || 1)
+        : start.side === "left"
+          ? connectorPortId("left", item.leftLeg, item.leftPin || 1)
+          : connectorPortId("right", item.rightLeg, item.rightPin || item.leftPin || 1);
+    const targetId = end.exit === "splice"
+      ? `splice_${drawIoSafeId(end.spliceId || "")}`
+      : !isDnp(item.rightDnp) && item.rightLeg
+        ? connectorPortId("right", item.rightLeg, item.rightPin || 1)
+        : `unassigned_${drawIoSafeId(item.id)}`;
+    if (targetId.startsWith("unassigned_")) {
+      addCell(makeHiddenPointCell(targetId, end));
+    }
+    if (sourceId.startsWith("unassigned_")) {
+      addCell(makeHiddenPointCell(sourceId, start));
+    }
+
+    addCell(mxCellXml({
+      id: `wire_${drawIoSafeId(item.id)}`,
+      value: "",
+      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${color};strokeWidth=${isBlack ? 4 : 3};endArrow=none;startArrow=none;`,
+      edge: 1,
+      parent: "1",
+      source: sourceId,
+      target: targetId,
+      [`data-type`]: "wire",
+      [`data-row-id`]: item.id || "",
+      [`data-wire-name`]: item.name || "",
+      [`data-color`]: item.color || "",
+      [`data-length`]: item.length || ""
+    }, mxGeometryXml({
+      relative: 1,
+      as: "geometry"
+    }, pathPoints.slice(1, -1).map((point) => mxPointXml(point.x, point.y)).join(""))));
+
+    addCell(makeWireLabelCell(item, start, end, index));
+  });
+
+  scene.leftConnectors.forEach((connector) => addCell(makeConnectorCell(connector, "left")));
+  scene.rightConnectors.forEach((connector) => addCell(makeConnectorCell(connector, "right")));
+
+  scene.splicePoints.forEach((point) => addCell(makeSpliceCell(point)));
+
+  collectHeatshrinkGroups("left", scene.routedWires).forEach((group) => {
+    addCell(makeHeatshrinkCell("left", group, scene.routeBaseY, scene.previewHeight));
+  });
+  collectHeatshrinkGroups("right", scene.routedWires).forEach((group) => {
+    addCell(makeHeatshrinkCell("right", group, scene.routeBaseY, scene.previewHeight));
+  });
+
+  addCell(makeTitleCell());
+
+  const diagramName = escapeXml(state.harnessName || "Harness");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="Wiring Harness Designer" type="device">
+  <diagram id="${drawIoSafeId(state.harnessName || "harness")}" name="${diagramName}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${pageWidth}" pageHeight="${pageHeight}" math="0" shadow="0">
+      <root>
+        ${mxCellXml({ id: "0" })}
+        ${mxCellXml({ id: "1", parent: "0" })}
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function postDrawIoMessage(message) {
+  if (!drawIoWindow || drawIoWindow.closed) {
+    return false;
+  }
+
+  drawIoWindow.postMessage(JSON.stringify(message), DRAWIO_EMBED_ORIGIN);
+  return true;
+}
+
+function openDrawIoEditor() {
+  const xml = buildDrawIoXml();
+  state.drawioXml = xml;
+  saveState();
+
+  const width = Math.min(1600, Math.max(1120, Math.round(window.innerWidth * 0.9)));
+  const height = Math.min(1100, Math.max(820, Math.round(window.innerHeight * 0.88)));
+  const url = `${DRAWIO_EMBED_ORIGIN}/?embed=1&proto=json&spin=1&libraries=1&saveAndExit=1`;
+  if (!drawIoWindow || drawIoWindow.closed) {
+    drawIoReady = false;
+    drawIoPendingXml = xml;
+    drawIoWindow = window.open(url, "wiringHarnessDrawIo", `popup=yes,width=${width},height=${height}`);
+  } else {
+    drawIoPendingXml = xml;
+    if (drawIoReady) {
+      postDrawIoMessage({
+        action: "load",
+        xml,
+        title: state.harnessName || "Untitled Harness"
+      });
+    } else {
+      drawIoWindow.focus();
+    }
+  }
+
+  if (!drawIoWindow) {
+    downloadText(`${fileSafeName(state.harnessName)}.drawio`, xml, "application/xml");
+    showToast("Popup blocked. Downloaded a .drawio file instead.");
+    return;
+  }
+
+  drawIoWindow.focus();
+  showToast("Opening draw.io...");
+}
+
+function handleDrawIoMessage(event) {
+  if (event.origin !== DRAWIO_EMBED_ORIGIN) {
+    return;
+  }
+
+  let message = event.data;
+  if (typeof message === "string") {
+    try {
+      message = JSON.parse(message);
+    } catch (error) {
+      return;
+    }
+  }
+
+  if (!message || typeof message !== "object") {
+    return;
+  }
+
+  if (message.event === "init") {
+    drawIoReady = true;
+    const xml = drawIoPendingXml || buildDrawIoXml();
+    drawIoPendingXml = "";
+    postDrawIoMessage({
+      action: "load",
+      xml,
+      title: state.harnessName || "Untitled Harness"
+    });
+    return;
+  }
+
+  if (message.event === "save" || message.event === "exit") {
+    if (message.xml) {
+      state.drawioXml = message.xml;
+      saveState();
+    }
+    showToast(message.event === "exit" ? "draw.io export closed." : "draw.io diagram saved.");
+    if (message.event === "exit" && drawIoWindow && !drawIoWindow.closed) {
+      drawIoWindow.close();
+    }
+    if (message.event === "exit") {
+      drawIoReady = false;
+      drawIoWindow = null;
+      drawIoPendingXml = "";
+    }
+  }
+}
+
 function printHarness() {
   renderPreview();
   window.print();
@@ -6233,6 +6816,7 @@ dom.applyImageRows.addEventListener("click", applyImportedRows);
 dom.exportCsv.addEventListener("click", exportCsv);
 dom.exportDrawing.addEventListener("click", exportDrawingSvg);
 dom.exportInstructions.addEventListener("click", exportInstructions);
+dom.drawIoButton.addEventListener("click", openDrawIoEditor);
 dom.printButton.addEventListener("click", printHarness);
 dom.importJsonButton.addEventListener("click", () => dom.importJson.click());
 dom.importJson.addEventListener("change", () => {
@@ -6250,6 +6834,8 @@ dom.importText.addEventListener("input", () => {
 dom.wirePreview.addEventListener("pointerdown", startWireDrag);
 dom.wirePreview.addEventListener("dblclick", resetWireDrag);
 document.addEventListener("keydown", addWireBendFromShortcut);
+drawIoMessageHandler = handleDrawIoMessage;
+window.addEventListener("message", drawIoMessageHandler);
 
 setupColumnResizers();
 setupLayoutSplitter();

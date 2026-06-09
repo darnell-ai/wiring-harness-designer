@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.64 - 2026-06-08
+
+- Added a draw.io handoff button that exports the current harness into a diagrams.net editor session.
+- Preserved connector images, wire colors, wire names, splice nodes, heatshrink labels, and cable title metadata in the exported diagram.
+- Saved the returned draw.io XML back into project state for later reuse.
+
 ## v1.2.63 - 2026-06-08
 
 - Added drag handles for the purple harness title, connector housings, heatshrink labels, and wire-name tags so the whole preview can be nudged after population.
