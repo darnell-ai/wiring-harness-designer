@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.67 - 2026-06-09
+
+- Changed draw.io wires to visible absolute colored polylines with outline strokes so they match the live harness routes.
+- Made exported connector SVG images use draw.io-safe data URIs so connector artwork comes across with the diagram.
+
 ## v1.2.66 - 2026-06-09
 
 - Switched the draw.io export background from a covering rectangle to the page background so exported wires and connector artwork stay visible.

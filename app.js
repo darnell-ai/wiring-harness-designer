@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.66";
+const APP_VERSION = "1.2.67";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -6196,11 +6196,16 @@ function mxTextValue(input) {
   return value(input);
 }
 
-function mxPointXml(x, y) {
+function mxPointXml(x, y, as = "") {
   return xmlTag("mxPoint", {
     x: Math.round(x),
-    y: Math.round(y)
+    y: Math.round(y),
+    as
   });
+}
+
+function mxArrayXml(attrs = {}, inner = "") {
+  return xmlTag("Array", attrs, inner);
 }
 
 function mxGeometryXml(attrs = {}, inner = "") {
@@ -6218,7 +6223,7 @@ function drawIoSafeId(input) {
 }
 
 function svgDataUri(svg) {
-  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function buildDrawIoXml(scene = buildPreviewScene()) {
@@ -6319,26 +6324,19 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     `;
   };
 
-  const makeEdgePoints = (start, end, index, row) => {
-    const points = wireRoutePoints(start, end, index, scene.routeBaseY, scene.routedWires.length, row);
-    return points.slice(1, -1).map((point) => mxPointXml(point.x, point.y)).join("");
+  const makeWireGeometry = (points) => {
+    const [sourcePoint] = points;
+    const targetPoint = points[points.length - 1];
+    const waypoints = points.slice(1, -1).map((point) => mxPointXml(point.x, point.y)).join("");
+    return mxGeometryXml({
+      relative: 1,
+      as: "geometry"
+    }, `
+      ${mxPointXml(sourcePoint.x, sourcePoint.y, "sourcePoint")}
+      ${mxPointXml(targetPoint.x, targetPoint.y, "targetPoint")}
+      ${waypoints ? mxArrayXml({ as: "points" }, waypoints) : ""}
+    `);
   };
-
-  const connectorPortId = (side, key, pin) => `conn_${side}_${drawIoSafeId(key)}_pin_${String(pin)}`;
-
-  const makeHiddenPointCell = (id, point) => mxCellXml({
-    id,
-    value: "",
-    style: "ellipse;opacity=0;fillOpacity=0;strokeOpacity=0;movable=1;resizable=0;editable=0;deletable=0;connectable=1;noLabel=1;",
-    vertex: 1,
-    parent: "1"
-  }, mxGeometryXml({
-    x: Math.round(point.x - 3),
-    y: Math.round(point.y - 3),
-    width: 6,
-    height: 6,
-    as: "geometry"
-  }));
 
   const makeSpliceCell = (point) => {
     const spliceId = `splice_${drawIoSafeId(point.spliceId || "splice")}`;
@@ -6446,42 +6444,30 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     const color = colorMap[item.color] || "#7e8a82";
     const isBlack = item.color === "BLACK";
     const pathPoints = wireRoutePoints(start, end, index, scene.routeBaseY, scene.routedWires.length, item);
-    const sourceId = start.exit === "splice"
-      ? `splice_${drawIoSafeId(start.spliceId || "")}`
-      : start.exit === "bottom" && end.exit === "bottom"
-        ? connectorPortId(start.side, start.side === "left" ? item.leftLeg : item.rightLeg, start.side === "left" ? item.leftPin || 1 : item.rightPin || 1)
-        : start.side === "left"
-          ? connectorPortId("left", item.leftLeg, item.leftPin || 1)
-          : connectorPortId("right", item.rightLeg, item.rightPin || item.leftPin || 1);
-    const targetId = end.exit === "splice"
-      ? `splice_${drawIoSafeId(end.spliceId || "")}`
-      : !isDnp(item.rightDnp) && item.rightLeg
-        ? connectorPortId("right", item.rightLeg, item.rightPin || 1)
-        : `unassigned_${drawIoSafeId(item.id)}`;
-    if (targetId.startsWith("unassigned_")) {
-      addCell(makeHiddenPointCell(targetId, end));
-    }
-    if (sourceId.startsWith("unassigned_")) {
-      addCell(makeHiddenPointCell(sourceId, start));
-    }
+    const outlineColor = isBlack ? "#edf4ef" : "#07100b";
+
+    addCell(mxCellXml({
+      id: `wire_outline_${drawIoSafeId(item.id)}`,
+      value: "",
+      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${outlineColor};strokeWidth=${isBlack ? 7 : 6};strokeOpacity=82;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
+      edge: 1,
+      parent: "1",
+      [`data-type`]: "wire-outline",
+      [`data-row-id`]: item.id || ""
+    }, makeWireGeometry(pathPoints)));
 
     addCell(mxCellXml({
       id: `wire_${drawIoSafeId(item.id)}`,
       value: "",
-      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${color};strokeWidth=${isBlack ? 4 : 3};endArrow=none;startArrow=none;`,
+      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${color};strokeWidth=${isBlack ? 4 : 3};endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
       edge: 1,
       parent: "1",
-      source: sourceId,
-      target: targetId,
       [`data-type`]: "wire",
       [`data-row-id`]: item.id || "",
       [`data-wire-name`]: item.name || "",
       [`data-color`]: item.color || "",
       [`data-length`]: item.length || ""
-    }, mxGeometryXml({
-      relative: 1,
-      as: "geometry"
-    }, pathPoints.slice(1, -1).map((point) => mxPointXml(point.x, point.y)).join(""))));
+    }, makeWireGeometry(pathPoints)));
 
     addCell(makeWireLabelCell(item, start, end, index));
   });
