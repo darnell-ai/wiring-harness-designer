@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.63 - 2026-06-08
+
+- Added drag handles for the purple harness title, connector housings, heatshrink labels, and wire-name tags so the whole preview can be nudged after population.
+- Kept the route drag and bend-point behavior intact while broadening the same interaction model to the other preview objects.
+- Added double-click resets for the new draggable preview items so you can put any piece back where the layout logic started it.
+
 ## v1.2.62 - 2026-06-08
 
 - Added a second manual route control point so a dragged wire can pick up an extra bend and slip around crowded housings.
