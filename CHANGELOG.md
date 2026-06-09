@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.68 - 2026-06-09
+
+- Fixed saved blank wire bend data being interpreted as a bend at the canvas origin, which sent routes through the upper-left corner.
+- Added an app script cache-buster so browser refreshes load the corrected routing code.
+
 ## v1.2.67 - 2026-06-09
 
 - Changed draw.io wires to visible absolute colored polylines with outline strokes so they match the live harness routes.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.67";
+const APP_VERSION = "1.2.68";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -1139,35 +1139,38 @@ function loadState() {
 }
 
 function normalizeState(incoming) {
-  const rows = incoming.rows.map((row) => ({
-    id: row.id || makeId(),
-    leftLeg: value(row.leftLeg),
-    name: value(row.name),
-    leftPin: value(row.leftPin),
-    dnp: isDnp(row.dnp),
-    housing: canonicalHousingName(row.housing) || value(row.housing),
-    leftHousingPart: value(row.leftHousingPart || row.housingPart),
-    leftTerminalPart: value(row.leftTerminalPart || row.pinPart || row.terminalPart),
-    awg: value(row.awg),
-    color: value(row.color).toUpperCase(),
-    length: value(row.length),
-    spliceId: value(row.spliceId).trim().toUpperCase(),
-    spliceRole: normalizedSpliceRole(row),
-    rightLeg: value(row.rightLeg),
-    rightPin: value(row.rightPin),
-    rightDnp: row.rightDnp === undefined ? isDnp(row.dnp) : isDnp(row.rightDnp),
-    rightHousing: canonicalHousingName(row.rightHousing) || value(row.rightHousing),
-    rightHousingPart: value(row.rightHousingPart),
-    rightTerminalPart: value(row.rightTerminalPart || row.rightPinPart || row.rightTerminal),
-    toolUsed: value(row.toolUsed),
-    comments: value(row.comments),
-    routeOffsetX: Number.isFinite(Number(row.routeOffsetX)) ? Number(row.routeOffsetX) : 0,
-    routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0,
-    routeBendX: Number.isFinite(Number(row.routeBendX)) ? Number(row.routeBendX) : null,
-    routeBendY: Number.isFinite(Number(row.routeBendY)) ? Number(row.routeBendY) : null,
-    wireLabelOffsetX: Number.isFinite(Number(row.wireLabelOffsetX)) ? Number(row.wireLabelOffsetX) : 0,
-    wireLabelOffsetY: Number.isFinite(Number(row.wireLabelOffsetY)) ? Number(row.wireLabelOffsetY) : 0
-  }));
+  const rows = incoming.rows.map((row) => {
+    const routeBend = normalizedRouteBend(row);
+    return {
+      id: row.id || makeId(),
+      leftLeg: value(row.leftLeg),
+      name: value(row.name),
+      leftPin: value(row.leftPin),
+      dnp: isDnp(row.dnp),
+      housing: canonicalHousingName(row.housing) || value(row.housing),
+      leftHousingPart: value(row.leftHousingPart || row.housingPart),
+      leftTerminalPart: value(row.leftTerminalPart || row.pinPart || row.terminalPart),
+      awg: value(row.awg),
+      color: value(row.color).toUpperCase(),
+      length: value(row.length),
+      spliceId: value(row.spliceId).trim().toUpperCase(),
+      spliceRole: normalizedSpliceRole(row),
+      rightLeg: value(row.rightLeg),
+      rightPin: value(row.rightPin),
+      rightDnp: row.rightDnp === undefined ? isDnp(row.dnp) : isDnp(row.rightDnp),
+      rightHousing: canonicalHousingName(row.rightHousing) || value(row.rightHousing),
+      rightHousingPart: value(row.rightHousingPart),
+      rightTerminalPart: value(row.rightTerminalPart || row.rightPinPart || row.rightTerminal),
+      toolUsed: value(row.toolUsed),
+      comments: value(row.comments),
+      routeOffsetX: Number.isFinite(Number(row.routeOffsetX)) ? Number(row.routeOffsetX) : 0,
+      routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0,
+      routeBendX: routeBend.x,
+      routeBendY: routeBend.y,
+      wireLabelOffsetX: Number.isFinite(Number(row.wireLabelOffsetX)) ? Number(row.wireLabelOffsetX) : 0,
+      wireLabelOffsetY: Number.isFinite(Number(row.wireLabelOffsetY)) ? Number(row.wireLabelOffsetY) : 0
+    };
+  });
   const learnedCatalog = learnCatalogFromRows(rows, incoming.catalog);
 
   const incomingAllowance = Number(incoming.bomAllowance);
@@ -3556,6 +3559,25 @@ function numberOrZero(input) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function optionalFiniteNumber(input) {
+  if (input === null || input === undefined || input === "") {
+    return null;
+  }
+
+  const numeric = Number(input);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function normalizedRouteBend(row) {
+  const x = optionalFiniteNumber(row?.routeBendX);
+  const y = optionalFiniteNumber(row?.routeBendY);
+  if (x === null || y === null || (x === 0 && y === 0)) {
+    return { x: null, y: null };
+  }
+
+  return { x, y };
+}
+
 function wireRouteOffset(row) {
   return {
     x: numberOrZero(row?.routeOffsetX),
@@ -3571,19 +3593,12 @@ function wireLabelOffset(row) {
 }
 
 function wireRouteBend(row) {
-  const rawX = row?.routeBendX;
-  const rawY = row?.routeBendY;
-  if (rawX === null || rawX === undefined || rawY === null || rawY === undefined || rawX === "" || rawY === "") {
+  const bend = normalizedRouteBend(row);
+  if (bend.x === null || bend.y === null) {
     return null;
   }
 
-  const x = Number(rawX);
-  const y = Number(rawY);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) {
-    return null;
-  }
-
-  return { x, y };
+  return bend;
 }
 
 function setWireRouteOffset(row, x, y) {
