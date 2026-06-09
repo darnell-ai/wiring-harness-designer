@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.65 - 2026-06-09
+
+- Clamped the dragged cable title so it stays inside the preview and the draw.io export canvas.
+
 ## v1.2.64 - 2026-06-08
 
 - Added a draw.io handoff button that exports the current harness into a diagrams.net editor session.

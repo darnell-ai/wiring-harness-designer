@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.64";
+const APP_VERSION = "1.2.65";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -1886,7 +1886,7 @@ function renderPreview() {
   const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
   const titleOffset = previewLayoutPoint("title");
   const cableNameCenterX = 372 + titleOffset.x;
-  const cableNameY = labelY + 15 + titleOffset.y;
+  const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
   const cableNameMarkup = state.harnessName ? `
     <g class="cable-name-tag" data-drag-kind="cable-title" aria-label="Cable name ${escapeXml(state.harnessName)}">
       <rect x="${cableNameCenterX - cableNameWidth / 2}" y="${cableNameY}" width="${cableNameWidth}" height="46" rx="4" />
@@ -1998,7 +1998,7 @@ function buildPreviewScene() {
   const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
   const titleOffset = previewLayoutPoint("title");
   const cableNameCenterX = 372 + titleOffset.x;
-  const cableNameY = labelY + 15 + titleOffset.y;
+  const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
   return {
     row,
     active,
