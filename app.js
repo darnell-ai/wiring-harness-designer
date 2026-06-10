@@ -1,16 +1,17 @@
 "use strict";
 
-const APP_VERSION = "1.2.71";
+const APP_VERSION = "1.2.72";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const BLANK_ROW_COUNT = 24;
-const WIRE_LANE_GAP = 32;
-const WIRE_EXIT_GAP = 14;
-const WIRE_BUS_GAP = 18;
-const WIRE_ROUTE_DRAG_LIMIT_X = 240;
-const WIRE_ROUTE_DRAG_LIMIT_Y = 140;
+const WIRE_LANE_GAP = 40;
+const WIRE_EXIT_GAP = 18;
+const WIRE_BUS_GAP = 22;
+const WIRE_ROUTE_DRAG_LIMIT_X = 480;
+const WIRE_ROUTE_DRAG_LIMIT_Y = 280;
 const WIRE_BEND_HANDLE_SIZE = 12;
+const MAX_WIRE_ROUTE_BENDS = 10;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
@@ -1078,6 +1079,7 @@ function blankWireFields() {
     comments: "",
     routeOffsetX: 0,
     routeOffsetY: 0,
+    routeBends: [],
     routeBendX: null,
     routeBendY: null,
     wireLabelOffsetX: 0,
@@ -1130,7 +1132,8 @@ function loadState() {
 function normalizeState(incoming) {
   const incomingHarnessName = value(incoming.harnessName);
   const rows = incoming.rows.map((row, index) => {
-    const routeBend = normalizedRouteBend(row);
+    const routeBends = normalizedRouteBends(row);
+    const routeBend = routeBends[0] || { x: null, y: null };
     return {
       id: row.id || makeId(),
       cableName: value(row.cableName || row.harnessName || (index === 0 ? incomingHarnessName : "")),
@@ -1156,6 +1159,7 @@ function normalizeState(incoming) {
       comments: value(row.comments),
       routeOffsetX: Number.isFinite(Number(row.routeOffsetX)) ? Number(row.routeOffsetX) : 0,
       routeOffsetY: Number.isFinite(Number(row.routeOffsetY)) ? Number(row.routeOffsetY) : 0,
+      routeBends,
       routeBendX: routeBend.x,
       routeBendY: routeBend.y,
       wireLabelOffsetX: Number.isFinite(Number(row.wireLabelOffsetX)) ? Number(row.wireLabelOffsetX) : 0,
@@ -1887,7 +1891,7 @@ function renderPreview() {
     })
     .join("");
   const bendHandles = routedWires
-    .map(({ item }) => renderWireBendHandle(item, previewHeight))
+    .map(({ item }) => renderWireBendHandles(item, previewHeight))
     .join("");
   const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
@@ -1898,7 +1902,7 @@ function renderPreview() {
   const cableNameText = shortLabel(state.harnessName || "", 14);
   const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
   const titleOffset = previewLayoutPoint("title");
-  const cableNameCenterX = 372 + titleOffset.x;
+  const cableNameCenterX = 500 + titleOffset.x;
   const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
   const cableNameMarkup = state.harnessName ? `
     <g class="cable-name-tag" data-drag-kind="cable-title" aria-label="Cable name ${escapeXml(state.harnessName)}">
@@ -1943,6 +1947,7 @@ function renderPreview() {
         .wire-bend-handle:active .wire-bend-hit { cursor: grabbing; }
         .wire-bend-core { fill: rgba(7, 10, 9, 0.88); stroke: rgba(242, 200, 75, 0.96); stroke-width: 1.8; pointer-events: none; }
         .wire-bend-handle:hover .wire-bend-core { fill: rgba(7, 10, 9, 0.98); }
+        .wire-bend-index { fill: #f8fbf7; font: 8px Segoe UI, Arial, sans-serif; font-weight: 900; pointer-events: none; }
         .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
         .heatshrink-title { fill: #f8fbf7; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .heatshrink-name { fill: #f2c84b; font: 11px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -2013,7 +2018,7 @@ function buildPreviewScene() {
   const cableNameText = shortLabel(state.harnessName || "", 14);
   const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
   const titleOffset = previewLayoutPoint("title");
-  const cableNameCenterX = 372 + titleOffset.x;
+  const cableNameCenterX = 500 + titleOffset.x;
   const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
   return {
     row,
@@ -2112,11 +2117,15 @@ function resetDragForTarget(target) {
       return false;
     }
     rememberUndo();
-    resetWireRouteOffset(row);
-    resetWireRouteBend(row);
+    if (dragKind === "wire-bend" && target?.dataset?.wireBendIndex !== undefined) {
+      removeWireRouteBend(row, target.dataset.wireBendIndex);
+    } else {
+      resetWireRouteOffset(row);
+      resetWireRouteBend(row);
+    }
     saveState();
     renderPreview();
-    showToast("Cable route reset.");
+    showToast(dragKind === "wire-bend" ? "Cable bend removed." : "Cable route reset.");
     return true;
   }
 
@@ -2185,6 +2194,8 @@ function startWireDrag(event) {
   const dragKind = dragKindForTarget(target);
   const rowId = target.dataset.wireBendId || target.dataset.wireId;
   const row = rowId ? wireRowById(rowId) : null;
+  const bendIndex = dragKind === "wire-bend" ? clamp(Math.round(Number(target.dataset.wireBendIndex) || 0), 0, MAX_WIRE_ROUTE_BENDS - 1) : 0;
+  const bendStart = row ? wireRouteBends(row)[bendIndex] || { x: 0, y: 0 } : { x: 0, y: 0 };
   const side = value(target?.dataset?.connectorSide || target?.dataset?.heatshrinkSide);
   const key = value(target?.dataset?.connectorKey || target?.dataset?.heatshrinkKey);
   const hasWire = dragKind === "wire-route" || dragKind === "wire-bend" || dragKind === "wire-label";
@@ -2230,11 +2241,12 @@ function startWireDrag(event) {
     side,
     key,
     mode: dragKind === "wire-bend" ? "bend" : (dragKind === "wire-route" ? "route" : "move"),
+    bendIndex,
     startPoint: point,
     startOffsetX: row ? numberOrZero(row.routeOffsetX) : numberOrZero(previewPoint?.x ?? 0),
     startOffsetY: row ? numberOrZero(row.routeOffsetY) : numberOrZero(previewPoint?.y ?? 0),
-    startBendX: row ? numberOrZero(row.routeBendX) : 0,
-    startBendY: row ? numberOrZero(row.routeBendY) : 0,
+    startBendX: bendStart.x,
+    startBendY: bendStart.y,
     startLabelOffsetX: labelOffset.x,
     startLabelOffsetY: labelOffset.y,
     lastPoint: point,
@@ -2277,13 +2289,13 @@ function moveWireDrag(event) {
   switch (wireDragState.kind) {
     case "wire-route":
       if (wireDragState.mode === "bend") {
-        setWireRouteBend(row, wireDragState.startBendX + dx, wireDragState.startBendY + dy);
+        setWireRouteBend(row, wireDragState.startBendX + dx, wireDragState.startBendY + dy, wireDragState.bendIndex);
       } else {
         setWireRouteOffset(row, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
       }
       break;
     case "wire-bend":
-      setWireRouteBend(row, wireDragState.startBendX + dx, wireDragState.startBendY + dy);
+      setWireRouteBend(row, wireDragState.startBendX + dx, wireDragState.startBendY + dy, wireDragState.bendIndex);
       break;
     case "wire-label":
       setWireLabelOffset(row, wireDragState.startLabelOffsetX + dx, wireDragState.startLabelOffsetY + dy);
@@ -2344,7 +2356,7 @@ function addWireBendFromShortcut(event) {
     return;
   }
 
-  if (!wireDragState || wireDragState.kind !== "wire-route" || wireDragState.mode === "bend") {
+  if (!wireDragState || !["wire-route", "wire-bend"].includes(wireDragState.kind)) {
     return;
   }
 
@@ -2364,8 +2376,13 @@ function addWireBendFromShortcut(event) {
     wireDragState.savedUndo = true;
   }
 
-  setWireRouteBend(row, point.x, point.y);
+  const bendIndex = addWireRouteBend(row, point.x, point.y);
+  if (bendIndex < 0) {
+    showToast(`This wire already has ${MAX_WIRE_ROUTE_BENDS} bend points.`);
+    return;
+  }
   wireDragState.mode = "bend";
+  wireDragState.bendIndex = bendIndex;
   wireDragState.startPoint = point;
   wireDragState.startBendX = point.x;
   wireDragState.startBendY = point.y;
@@ -2489,7 +2506,7 @@ function buildConnectors(keys, side, rows, selected) {
     return [];
   }
 
-  const gap = 90;
+  const gap = 112;
   const top = 72;
   let y = top;
 
@@ -2547,10 +2564,10 @@ function rightConnectorCrescentX(baseX, index, count, width) {
   }
 
   const progress = count <= 1 ? 0 : index / Math.max(1, count - 1);
-  const outerShift = count >= 4 ? 160 : count === 3 ? 118 : 72;
-  const middleRelief = count >= 4 ? 74 : count === 3 ? 48 : 0;
+  const outerShift = count >= 4 ? 118 : count === 3 ? 82 : 46;
+  const middleRelief = count >= 4 ? 44 : count === 3 ? 28 : 0;
   const shift = outerShift - middleRelief * Math.sin(progress * Math.PI);
-  return Math.round(clamp(baseX - shift, 470, 1000 - width - 24));
+  return Math.round(clamp(baseX - shift, 590, 1000 - width - 24));
 }
 
 function balanceConnectorColumns(leftConnectors, rightConnectors) {
@@ -2790,9 +2807,9 @@ function wireRouteBase(leftConnectors, rightConnectors, wireCount = 0) {
   const leftBottom = leftConnectors.length ? connectorBottom(leftConnectors, []) : bottom;
   const routeSpan = Math.max(0, Math.max(1, wireCount) - 1) * WIRE_LANE_GAP;
   const centeredBase = (top + bottom) / 2 - routeSpan / 2;
-  const sourceDropBase = leftBottom + 70;
-  const lowerBound = Math.max(220, sourceDropBase);
-  const upperBound = Math.max(lowerBound, bottom - routeSpan - 120);
+  const sourceDropBase = leftBottom + 92;
+  const lowerBound = Math.max(240, sourceDropBase);
+  const upperBound = Math.max(lowerBound, bottom - routeSpan - 140);
   return Math.round(clamp(Math.max(centeredBase, sourceDropBase), lowerBound, upperBound));
 }
 
@@ -2800,8 +2817,8 @@ function previewCanvasHeight(leftConnectors, rightConnectors, wireCount = 0) {
   const routeBaseY = wireRouteBase(leftConnectors, rightConnectors, wireCount);
   return Math.max(
     360,
-    connectorBottom(leftConnectors, rightConnectors) + 74,
-    routeBaseY + Math.max(1, wireCount) * WIRE_LANE_GAP + 54
+    connectorBottom(leftConnectors, rightConnectors) + 92,
+    routeBaseY + Math.max(1, wireCount) * WIRE_LANE_GAP + 72
   );
 }
 
@@ -3631,14 +3648,43 @@ function optionalFiniteNumber(input) {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function normalizedRouteBend(row) {
+function legacyRouteBend(row) {
   const x = optionalFiniteNumber(row?.routeBendX);
   const y = optionalFiniteNumber(row?.routeBendY);
   if (x === null || y === null || (x === 0 && y === 0)) {
     return { x: null, y: null };
   }
 
-  return { x, y };
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function cleanRouteBend(point) {
+  const x = optionalFiniteNumber(point?.x);
+  const y = optionalFiniteNumber(point?.y);
+  if (x === null || y === null || (x === 0 && y === 0)) {
+    return null;
+  }
+
+  return { x: Math.round(x), y: Math.round(y) };
+}
+
+function normalizedRouteBends(row) {
+  const bends = Array.isArray(row?.routeBends)
+    ? row.routeBends.map(cleanRouteBend).filter(Boolean)
+    : [];
+  if (!bends.length) {
+    const legacy = legacyRouteBend(row);
+    if (legacy.x !== null && legacy.y !== null) {
+      bends.push(legacy);
+    }
+  }
+
+  return bends.slice(0, MAX_WIRE_ROUTE_BENDS);
+}
+
+function normalizedRouteBend(row) {
+  const bend = normalizedRouteBends(row)[0];
+  return bend || { x: null, y: null };
 }
 
 function wireRouteOffset(row) {
@@ -3656,12 +3702,11 @@ function wireLabelOffset(row) {
 }
 
 function wireRouteBend(row) {
-  const bend = normalizedRouteBend(row);
-  if (bend.x === null || bend.y === null) {
-    return null;
-  }
+  return wireRouteBends(row)[0] || null;
+}
 
-  return bend;
+function wireRouteBends(row) {
+  return normalizedRouteBends(row);
 }
 
 function setWireRouteOffset(row, x, y) {
@@ -3700,13 +3745,57 @@ function resetWireLabelOffset(row) {
   row.wireLabelOffsetY = 0;
 }
 
-function setWireRouteBend(row, x, y) {
+function syncLegacyWireRouteBend(row) {
   if (!row) {
     return;
   }
 
-  row.routeBendX = Math.round(Number(x) || 0);
-  row.routeBendY = Math.round(Number(y) || 0);
+  const bend = normalizedRouteBends(row)[0] || null;
+  row.routeBendX = bend ? bend.x : null;
+  row.routeBendY = bend ? bend.y : null;
+}
+
+function setWireRouteBend(row, x, y, index = 0) {
+  if (!row) {
+    return;
+  }
+
+  const bends = normalizedRouteBends(row);
+  const bendIndex = clamp(Math.round(Number(index) || 0), 0, MAX_WIRE_ROUTE_BENDS - 1);
+  while (bends.length <= bendIndex) {
+    bends.push({ x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) });
+  }
+  bends[bendIndex] = { x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) };
+  row.routeBends = bends.slice(0, MAX_WIRE_ROUTE_BENDS);
+  syncLegacyWireRouteBend(row);
+}
+
+function addWireRouteBend(row, x, y) {
+  if (!row) {
+    return -1;
+  }
+
+  const bends = normalizedRouteBends(row);
+  if (bends.length >= MAX_WIRE_ROUTE_BENDS) {
+    return -1;
+  }
+
+  bends.push({ x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) });
+  row.routeBends = bends;
+  syncLegacyWireRouteBend(row);
+  return bends.length - 1;
+}
+
+function removeWireRouteBend(row, index) {
+  if (!row) {
+    return;
+  }
+
+  const bends = normalizedRouteBends(row);
+  const bendIndex = clamp(Math.round(Number(index) || 0), 0, Math.max(0, bends.length - 1));
+  bends.splice(bendIndex, 1);
+  row.routeBends = bends;
+  syncLegacyWireRouteBend(row);
 }
 
 function resetWireRouteBend(row) {
@@ -3714,6 +3803,7 @@ function resetWireRouteBend(row) {
     return;
   }
 
+  row.routeBends = [];
   row.routeBendX = null;
   row.routeBendY = null;
 }
@@ -3794,13 +3884,36 @@ function routeControlX(controlX, startX, endX, padding = 22) {
   return Math.round(clamp(controlX, min, max));
 }
 
+function pushOrthogonalPoint(points, pushPoint, x, y, preference = "vh") {
+  const last = points[points.length - 1];
+  const target = { x: Math.round(x), y: Math.round(y) };
+  if (!last || last.x === target.x || last.y === target.y) {
+    pushPoint(target.x, target.y);
+    return;
+  }
+
+  if (preference === "hv") {
+    pushPoint(target.x, last.y);
+  } else {
+    pushPoint(last.x, target.y);
+  }
+  pushPoint(target.x, target.y);
+}
+
+function pushManualBends(points, pushPoint, bends, startPreference = "vh") {
+  bends.forEach((bend, index) => {
+    const preference = index % 2 === 0 ? startPreference : startPreference === "vh" ? "hv" : "vh";
+    pushOrthogonalPoint(points, pushPoint, bend.x, bend.y, preference);
+  });
+}
+
 function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
   return pointsToOrthogonalPath(wireRoutePoints(start, end, index, routeBaseY, wireCount, row));
 }
 
 function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = null) {
   const offset = wireRouteOffset(row);
-  const bend = wireRouteBend(row);
+  const bends = wireRouteBends(row);
   const points = [];
   const pushPoint = (x, y) => {
     const point = { x: Math.round(x), y: Math.round(y) };
@@ -3817,14 +3930,13 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
     pushPoint(start.x, start.y);
     pushPoint(start.x, startDropY);
     pushPoint(routeBusX, startDropY);
-    if (bend) {
-      pushPoint(routeBusX, bend.y);
-      pushPoint(bend.x, bend.y);
-      pushPoint(bend.x, laneY);
+    if (bends.length) {
+      pushManualBends(points, pushPoint, bends, "vh");
+      pushOrthogonalPoint(points, pushPoint, end.x, laneY, "hv");
     } else {
       pushPoint(routeBusX, laneY);
+      pushPoint(end.x, laneY);
     }
-    pushPoint(end.x, laneY);
     pushPoint(end.x, end.y);
     return points;
   }
@@ -3836,14 +3948,13 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
     pushPoint(start.x, start.y);
     pushPoint(start.x, dropY);
     pushPoint(busX, dropY);
-    if (bend) {
-      pushPoint(busX, bend.y);
-      pushPoint(bend.x, bend.y);
-      pushPoint(bend.x, laneY);
+    if (bends.length) {
+      pushManualBends(points, pushPoint, bends, "vh");
+      pushOrthogonalPoint(points, pushPoint, end.x, laneY, "hv");
     } else {
       pushPoint(busX, laneY);
+      pushPoint(end.x, laneY);
     }
-    pushPoint(end.x, laneY);
     pushPoint(end.x, end.y);
     return points;
   }
@@ -3855,13 +3966,9 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
   const middleX = routeControlX(500 + ((Math.max(0, index) % 7) - 3) * 12 + offset.x, start.x, end.x);
   pushPoint(start.x, start.y);
   pushPoint(middleX, start.y);
-  if (bend) {
-    const middleY = Math.round((start.y + end.y) / 2 + offset.y);
-    pushPoint(middleX, bend.y);
-    pushPoint(bend.x, bend.y);
-    pushPoint(bend.x, middleY);
-    pushPoint(end.x, middleY);
-    pushPoint(end.x, end.y);
+  if (bends.length) {
+    pushManualBends(points, pushPoint, bends, "vh");
+    pushOrthogonalPoint(points, pushPoint, end.x, end.y, "hv");
   } else if (offset.y) {
     const middleY = Math.round((start.y + end.y) / 2 + offset.y);
     pushPoint(middleX, middleY);
@@ -3945,27 +4052,7 @@ function bottomRouteCenterX(start, end, index, wireCount = 0) {
 }
 
 function bottomExitWirePath(bottom, other, index, routeBaseY, wireCount = 0, row = null) {
-  const offset = wireRouteOffset(row);
-  const bend = wireRouteBend(row);
-  const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
-  const dropY = bottomDropY(bottom, index, laneY);
-  const busX = routeControlX(bottomBusX(bottom, index, wireCount) + offset.x, bottom.x, other.x);
-  if (bend) {
-    return `M ${bottom.x} ${bottom.y}
-    V ${dropY}
-    H ${busX}
-    V ${Math.round(bend.y)}
-    H ${Math.round(bend.x)}
-    V ${laneY}
-    H ${other.x}
-    V ${other.y}`;
-  }
-  return `M ${bottom.x} ${bottom.y}
-    V ${dropY}
-    H ${busX}
-    V ${laneY}
-    H ${other.x}
-    V ${other.y}`;
+  return pointsToOrthogonalPath(wireRoutePoints(bottom, other, index, routeBaseY, wireCount, row));
 }
 
 function wireAwgLabel(row) {
@@ -4112,21 +4199,24 @@ function renderDrawingToolNote(rows, previewHeight) {
   `;
 }
 
-function renderWireBendHandle(row, previewHeight) {
-  const bend = wireRouteBend(row);
-  if (!bend) {
+function renderWireBendHandles(row, previewHeight) {
+  const bends = wireRouteBends(row);
+  if (!bends.length) {
     return "";
   }
 
-  const x = Math.round(clamp(bend.x, 12, 988));
-  const y = Math.round(clamp(bend.y, 12, Math.max(12, previewHeight - 12)));
   const half = WIRE_BEND_HANDLE_SIZE / 2;
-  return `
-    <g class="wire-bend-handle" data-drag-kind="wire-bend" data-wire-id="${escapeXml(row?.id || "")}" data-wire-bend-id="${escapeXml(row?.id || "")}" aria-label="Route bend for ${escapeXml(value(row?.name) || "wire")}">
-      <rect class="wire-bend-hit" x="${x - 13}" y="${y - 13}" width="26" height="26" rx="6" />
-      <rect class="wire-bend-core" x="${x - half}" y="${y - half}" width="${WIRE_BEND_HANDLE_SIZE}" height="${WIRE_BEND_HANDLE_SIZE}" rx="2" />
-    </g>
-  `;
+  return bends.map((bend, index) => {
+    const x = Math.round(clamp(bend.x, 12, 988));
+    const y = Math.round(clamp(bend.y, 12, Math.max(12, previewHeight - 12)));
+    return `
+      <g class="wire-bend-handle" data-drag-kind="wire-bend" data-wire-id="${escapeXml(row?.id || "")}" data-wire-bend-id="${escapeXml(row?.id || "")}" data-wire-bend-index="${index}" aria-label="Route bend ${index + 1} for ${escapeXml(value(row?.name) || "wire")}">
+        <rect class="wire-bend-hit" x="${x - 13}" y="${y - 13}" width="26" height="26" rx="6" />
+        <rect class="wire-bend-core" x="${x - half}" y="${y - half}" width="${WIRE_BEND_HANDLE_SIZE}" height="${WIRE_BEND_HANDLE_SIZE}" rx="2" />
+        <text class="wire-bend-index" x="${x}" y="${y + 3}" text-anchor="middle">${index + 1}</text>
+      </g>
+    `;
+  }).join("");
 }
 
 function renderHeatshrinkGroupLabels(side, routedWires, routeBaseY, previewHeight, part = "full") {

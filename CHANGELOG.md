@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.72 - 2026-06-10
+
+- Opened up the default drawing layout with wider wire lanes, larger connector spacing, a centered cable title, and right-side connectors kept farther out of the wire field.
+- Doubled the manual movement range for wire routes, wire labels, connectors, heatshrink labels, and the cable title.
+- Replaced the single manual route bend with up to ten saved 90-degree bend points per wire; press `9` while dragging a cable to add the next bend.
+- Made individual bend handles draggable and removable with a double-click.
+
 ## v1.2.71 - 2026-06-10
 
 - Removed the duplicate Cable Name, Left leg names, and Right leg names fields above the editor.
