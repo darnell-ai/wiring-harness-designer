@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.73";
+const APP_VERSION = "1.2.74";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];

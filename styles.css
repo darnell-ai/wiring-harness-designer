@@ -84,7 +84,7 @@ button:disabled {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto;
+  grid-template-columns: minmax(330px, auto) minmax(360px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 14px 18px;
@@ -148,6 +148,48 @@ button:disabled {
 .harness-table input:focus {
   border-color: var(--green);
   box-shadow: 0 0 0 3px rgba(65, 184, 131, 0.2);
+}
+
+.route-shortcut-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.08);
+  color: #d9e6dd;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.route-shortcut-note span {
+  color: #b9c8be;
+}
+
+.route-shortcut-note strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #f8fbf7;
+  font-size: 12px;
+}
+
+.route-shortcut-note kbd {
+  display: inline-grid;
+  min-width: 21px;
+  height: 21px;
+  place-items: center;
+  border: 1px solid rgba(242, 200, 75, 0.38);
+  border-radius: 5px;
+  background: rgba(242, 200, 75, 0.16);
+  color: var(--amber);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
 }
 
 .toolbar {
@@ -1291,6 +1333,12 @@ body.is-resizing-column {
 
   .topbar {
     grid-template-columns: 1fr;
+  }
+
+  .route-shortcut-note {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 
   .toolbar {

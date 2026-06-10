@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.74 - 2026-06-10
+
+- Added the wire route drag shortcuts to the top header so `9` add bend, `8` remove bend, and `7` straighten are visible while working.
+
 ## v1.2.73 - 2026-06-10
 
 - Added route-drag shortcuts: `8` removes the active or most recent wire bend, and `7` clears route bends and offset for the straightest automatic path.

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.73</title>
+    <title>Wiring Harness Designer v1.2.74</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,10 +14,17 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.73</span>
+              <span class="version-badge">v1.2.74</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
+        </div>
+
+        <div class="route-shortcut-note" aria-label="Wire route drag shortcuts" title="9 adds a bend point. 8 removes the bend you are dragging, or the most recent bend if you are holding the wire body. 7 clears route bends and route offset for the cleanest automatic path.">
+          <span>While dragging a wire</span>
+          <strong><kbd>9</kbd> Add bend</strong>
+          <strong><kbd>8</kbd> Remove bend</strong>
+          <strong><kbd>7</kbd> Straighten</strong>
         </div>
 
         <div class="toolbar" aria-label="Harness actions">
@@ -372,6 +379,6 @@
       <option value="SPARE"></option>
     </datalist>
 
-    <script src="app.js?v=1.2.73" defer></script>
+    <script src="app.js?v=1.2.74" defer></script>
   </body>
 </html>
