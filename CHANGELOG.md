@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.70 - 2026-06-10
+
+- Added a built-in VESC housing type as a board-style motor controller.
+- Rendered VESC boards with ESC-specific PCB artwork, including battery pads, phase pads, signal pads, and MOSFET blocks.
+
 ## v1.2.69 - 2026-06-10
 
 - Made Reset create a blank wiring sheet instead of restoring the W104 starter harness.

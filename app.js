@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.69";
+const APP_VERSION = "1.2.70";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -506,6 +506,11 @@ function defaultCatalog() {
     catalogEntry("A POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("B POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("PCB", "Board", "pcb", 32, { terminalType: "PCB connection" }),
+    catalogEntry("VESC", "Board", "pcb", 12, {
+      manufacturer: "VESC",
+      terminalType: "Motor controller terminal",
+      notes: "Generic VESC-style electronic speed controller board for battery, phase, sensor, and control wiring."
+    }),
     catalogEntry("RJ45 PLUG", "Connector", "rj45", 8, {
       manufacturer: "Generic",
       gender: "Male",
@@ -793,7 +798,7 @@ function inferCatalogFamily(housing) {
   if (text.includes("POWER POLE")) {
     return "powerpole";
   }
-  if (text === "PCB") {
+  if (text === "PCB" || text.includes("VESC")) {
     return "pcb";
   }
   if (text.includes("RJ45") || text.includes("8P8C")) {
@@ -3096,6 +3101,10 @@ function renderConnectorBody(connector) {
   }
 
   if (family === "pcb") {
+    if (value(connector.housing).toUpperCase().includes("VESC")) {
+      return renderVescBoard(connector);
+    }
+
     return `
       <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="6" fill="#165f42" stroke="#6ebd91" stroke-width="3" />
       <rect x="${x + 11}" y="${y + 11}" width="${width - 22}" height="${height - 22}" rx="3" fill="#194e39" stroke="#0b3525" stroke-width="2" />
@@ -3154,6 +3163,53 @@ function renderConnectorBody(connector) {
   }
 
   return `<rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#26352e" stroke="#607168" stroke-width="2" />`;
+}
+
+function renderVescBoard(connector) {
+  const { x, y, width, height } = connector;
+  const centerX = x + width / 2;
+  const innerX = x + 11;
+  const innerY = y + 11;
+  const innerWidth = width - 22;
+  const innerHeight = height - 22;
+  const phaseY = y + height - 31;
+  const phaseXs = [centerX - 38, centerX, centerX + 38];
+  const mosfetY = y + 38;
+  const mosfets = Array.from({ length: 6 }, (_, index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    const fetX = centerX - 49 + col * 34;
+    const fetY = mosfetY + row * 27;
+    return `
+      <rect x="${fetX}" y="${fetY}" width="24" height="17" rx="3" fill="#1b2220" stroke="#d7d4c4" stroke-width="1.4" />
+      <line x1="${fetX + 5}" y1="${fetY + 4}" x2="${fetX + 19}" y2="${fetY + 4}" stroke="#6d776f" stroke-width="1" />
+    `;
+  }).join("");
+
+  const signalPads = Array.from({ length: 6 }, (_, index) => {
+    const padX = x + 21 + index * Math.max(12, (width - 42) / 5);
+    return `<circle cx="${padX}" cy="${y + 24}" r="3.4" fill="#d7aa42" stroke="#f5e4a7" stroke-width="1.2" />`;
+  }).join("");
+
+  return `
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="9" fill="#153f32" stroke="#7bc9a2" stroke-width="3" />
+    <rect x="${innerX}" y="${innerY}" width="${innerWidth}" height="${innerHeight}" rx="5" fill="#123226" stroke="#082117" stroke-width="2.2" />
+    <text x="${centerX}" y="${y + 22}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="900" fill="#f3f7ef" paint-order="stroke fill" stroke="#07110d" stroke-width="2">VESC</text>
+    <rect x="${x + 18}" y="${y + height - 48}" width="${width - 36}" height="30" rx="5" fill="#101713" stroke="#617268" stroke-width="1.7" />
+    ${phaseXs.map((phaseX, index) => `
+      <circle cx="${phaseX}" cy="${phaseY}" r="8.5" fill="#c9a24a" stroke="#f6e1a0" stroke-width="2" />
+      <text x="${phaseX}" y="${phaseY + 4}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#18211d">${["U", "V", "W"][index]}</text>
+    `).join("")}
+    <rect x="${x + 21}" y="${y + 42}" width="28" height="38" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
+    <rect x="${x + width - 49}" y="${y + 42}" width="28" height="38" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
+    <text x="${x + 35}" y="${y + 64}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B+</text>
+    <text x="${x + width - 35}" y="${y + 64}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B-</text>
+    ${mosfets}
+    ${signalPads}
+    <path d="M ${x + 24} ${phaseY - 18} H ${phaseXs[0]} V ${phaseY - 9} M ${centerX} ${y + 84} V ${phaseY - 9} M ${x + width - 24} ${phaseY - 18} H ${phaseXs[2]} V ${phaseY - 9}" fill="none" stroke="#d7aa42" stroke-width="2.2" opacity="0.82" />
+    <circle cx="${x + 22}" cy="${y + height - 20}" r="4" fill="#0b1510" stroke="#d9e3dc" stroke-width="1.5" />
+    <circle cx="${x + width - 22}" cy="${y + height - 20}" r="4" fill="#0b1510" stroke="#d9e3dc" stroke-width="1.5" />
+  `;
 }
 
 function renderPowerpoleModule(connector, item) {
