@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.74";
+const APP_VERSION = "1.2.75";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -32,6 +32,32 @@ const colorMap = {
   BROWN: "#76513a",
   VIOLET: "#8054c8",
   GRAY: "#8a928d"
+};
+
+const colorAliases = {
+  BK: "BLACK",
+  BLK: "BLACK",
+  WH: "WHITE",
+  WHT: "WHITE",
+  GN: "GREEN",
+  GRN: "GREEN",
+  BU: "BLUE",
+  BLU: "BLUE",
+  YE: "YELLOW",
+  YEL: "YELLOW",
+  YLW: "YELLOW",
+  OG: "ORANGE",
+  ORG: "ORANGE",
+  BN: "BROWN",
+  BRN: "BROWN",
+  GY: "GRAY",
+  GRY: "GRAY",
+  GREY: "GRAY",
+  VT: "VIOLET",
+  VIO: "VIOLET",
+  PUR: "VIOLET",
+  PU: "VIOLET",
+  RD: "RED"
 };
 
 const options = {
@@ -1766,7 +1792,7 @@ function renderSummary() {
     dom.summaryLeft.textContent = "-";
     dom.summaryRight.textContent = "-";
     dom.summaryHousing.textContent = "-";
-    dom.summaryColorSwatch.style.setProperty("--swatch", "#d9dfd7");
+    applyColorSwatch(dom.summaryColorSwatch, "");
     return;
   }
 
@@ -1778,7 +1804,7 @@ function renderSummary() {
   dom.summaryStatus.textContent = isActiveWireRow(row) ? "Active" : "DNP";
   dom.summaryGauge.textContent = row.awg ? `${row.awg} AWG` : "Not set";
   dom.summaryColor.textContent = color;
-  dom.summaryColorSwatch.style.setProperty("--swatch", colorMap[row.color] || "#d9dfd7");
+  applyColorSwatch(dom.summaryColorSwatch, row.color);
   dom.summaryLength.textContent = row.length
     ? /\b(in|inch|inches)\b/i.test(row.length)
       ? row.length
@@ -1845,24 +1871,36 @@ function renderPreview() {
     ...leftConnectors.map((connector) => renderConnector(connector, "left", previewRows, selected)),
     ...rightConnectors.map((connector) => renderConnector(connector, "right", previewRows, selected))
   ].join("");
+  const allConnectors = [...leftConnectors, ...rightConnectors];
 
   const backgroundWires = routedWires
     .map(({ item, index, endpoints }) => {
       const { start, end } = endpoints;
-      const color = colorMap[item.color] || "#7e8a82";
+      const wireStyle = wireDrawingStyle(item);
       const path = wirePath(start, end, index, routeBaseY, routedWires.length, item);
-      const outline = item.color === "BLACK" ? "#edf4ef" : "#07100b";
       const crowd = crowdingFactor(routedWires.length, 10, 6);
       const lowerBundle = start.exit === "bottom" && end.exit === "bottom";
       const outlineOpacity = lowerBundle ? 0.66 - crowd * 0.06 : 0.8;
       const fillOpacity = lowerBundle ? 0.84 - crowd * 0.06 : 0.9;
       const outlineWidth = lowerBundle ? 6.4 : 7;
       const fillWidth = lowerBundle ? 4.2 : 4.5;
+      const shieldMarkup = wireStyle.shielded
+        ? `<path d="${path}" fill="none" stroke="#6f7771" stroke-width="${outlineWidth + 5}" stroke-linecap="round" stroke-linejoin="round" opacity="0.34" stroke-dasharray="18 12" />`
+        : "";
+      const stripeMarkup = wireStyle.stripe
+        ? `<path d="${path}" fill="none" stroke="${wireStyle.stripe}" stroke-width="${Math.max(1.8, fillWidth * 0.48)}" stroke-linecap="butt" stroke-linejoin="round" opacity="0.92" stroke-dasharray="14 10" />`
+        : "";
+      const twistMarkup = wireStyle.twisted
+        ? `<path d="${path}" fill="none" stroke="#f8faf5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" opacity="0.82" stroke-dasharray="2 9" />`
+        : "";
       return `
         <g class="wire-route" data-drag-kind="wire-route" data-wire-id="${escapeXml(item.id)}" aria-label="Wire ${escapeXml(item.name || "")}">
           <path class="wire-route-hit" d="${path}" />
-          <path d="${path}" fill="none" stroke="${outline}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${outlineOpacity}" />
-          <path d="${path}" fill="none" stroke="${color}" stroke-width="${fillWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${fillOpacity}" />
+          ${shieldMarkup}
+          <path d="${path}" fill="none" stroke="${wireStyle.outline}" stroke-width="${outlineWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${outlineOpacity}" />
+          <path d="${path}" fill="none" stroke="${wireStyle.base}" stroke-width="${fillWidth}" stroke-linecap="round" stroke-linejoin="round" opacity="${fillOpacity}" />
+          ${stripeMarkup}
+          ${twistMarkup}
         </g>
       `;
     })
@@ -1893,6 +1931,11 @@ function renderPreview() {
   const bendHandles = routedWires
     .map(({ item }) => renderWireBendHandles(item, previewHeight))
     .join("");
+  const sheetBackdrop = renderSheetBackdrop(previewHeight);
+  const formboardPins = renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
+  const connectorDetailPanels = renderConnectorDetailPanels(allConnectors, routedWires, previewHeight);
+  const bomCallouts = renderBomCallouts(allConnectors, splicePoints, previewRows, previewHeight);
+  const shopTitleBlock = renderShopTitleBlock(previewRows, previewHeight);
   const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
@@ -1933,7 +1976,10 @@ function renderPreview() {
       <style>
         .pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.68); stroke-width: 2.2; }
         .wire-pin-number { fill: #f6a623; font: 10px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(8, 12, 10, 0.82); stroke-width: 2.8; }
-        .tiny-label { fill: #aebeb3; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .tiny-label { fill: #38443d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .shop-grid-line { stroke: rgba(94, 105, 97, 0.16); stroke-width: 1; }
+        .shop-zone-line { stroke: rgba(82, 91, 85, 0.32); stroke-width: 1.1; }
+        .shop-zone-label { fill: #58635c; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
         .wire-route-hit:active { cursor: grabbing; }
         .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .heatshrink-label, .cable-name-tag { cursor: grab; }
@@ -1955,16 +2001,35 @@ function renderPreview() {
         .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .tool-note rect { fill: rgba(248, 250, 245, 0.62); stroke: rgba(217, 223, 215, 0.78); stroke-width: 1.4; }
         .tool-note text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .splice-role { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
-        .empty-preview { fill: #dbe8de; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .empty-preview-sub { fill: #90a197; font: 12px Segoe UI, Arial, sans-serif; font-weight: 700; }
+        .splice-label { fill: #27332d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .splice-role { fill: #526158; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
+        .empty-preview { fill: #344138; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .empty-preview-sub { fill: #637168; font: 12px Segoe UI, Arial, sans-serif; font-weight: 700; }
+        .connector-detail-bg { fill: rgba(248, 250, 247, 0.88); stroke: rgba(93, 104, 96, 0.62); stroke-width: 1.4; }
+        .connector-face-box { fill: #d7ddd8; stroke: #738078; stroke-width: 1.3; }
+        .connector-face-key { fill: #eff2ee; stroke: #738078; stroke-width: 1.2; }
+        .connector-face-pin { fill: #1d2821; font: 7.5px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .connector-detail-title { fill: #172019; font: 12px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .connector-detail-sub, .connector-detail-muted { fill: #526159; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .connector-table-head { fill: #2e3932; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .connector-table-pin { fill: #172019; font: 9px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .connector-table-text { fill: #2d3831; font: 9px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .bom-balloon circle { fill: #f8faf5; stroke: #1f2a23; stroke-width: 2; }
+        .bom-balloon text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .bom-callout-table rect, .shop-title-block rect { fill: rgba(248, 250, 247, 0.9); stroke: rgba(82, 91, 85, 0.72); stroke-width: 1.5; }
+        .bom-table-title, .shop-title-primary { fill: #141d17; font: 12px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .bom-table-head { fill: #536158; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .bom-table-number, .bom-table-text, .shop-title-block text { fill: #1f2a24; font: 9.5px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .bom-table-muted { fill: #617069; font: 9px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .shop-title-block line { stroke: rgba(82, 91, 85, 0.55); stroke-width: 1; }
+        .formboard-pin circle { fill: rgba(246, 248, 244, 0.9); stroke: rgba(64, 72, 67, 0.72); stroke-width: 1.4; }
+        .formboard-pin path { stroke: rgba(64, 72, 67, 0.58); stroke-width: 1.2; stroke-linecap: round; }
+        .formboard-pin text { fill: #536158; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 850; }
       </style>
     </defs>
 
-    <rect x="0" y="0" width="1000" height="${previewHeight}" fill="#15201b" opacity="0.58" />
-    <line x1="170" y1="34" x2="830" y2="34" stroke="url(#boardLine)" stroke-width="2" stroke-dasharray="8 8" />
-    <line x1="170" y1="${previewHeight - 34}" x2="830" y2="${previewHeight - 34}" stroke="url(#boardLine)" stroke-width="2" stroke-dasharray="8 8" />
+    ${sheetBackdrop}
+    ${formboardPins}
     ${connectors}
     ${heatshrinkSleeves}
     ${backgroundWires}
@@ -1973,6 +2038,9 @@ function renderPreview() {
     ${spliceNodes}
     ${wireNameTags}
     ${bendHandles}
+    ${connectorDetailPanels}
+    ${bomCallouts}
+    ${shopTitleBlock}
     ${toolNote}
     ${selectedInfoBoxMarkup}
   `;
@@ -2558,6 +2626,322 @@ function renderSpliceNodes(splicePoints, selected) {
       </g>
     `;
   }).join("");
+}
+
+function renderSheetBackdrop(previewHeight) {
+  const margin = 28;
+  const width = 1000;
+  const innerWidth = width - margin * 2;
+  const innerHeight = previewHeight - margin * 2;
+  const columnCount = 6;
+  const rowCount = Math.max(3, Math.ceil(innerHeight / 170));
+  const gridLines = [];
+
+  for (let x = margin; x <= width - margin + 0.1; x += 40) {
+    gridLines.push(`<line x1="${Math.round(x)}" y1="${margin}" x2="${Math.round(x)}" y2="${previewHeight - margin}" class="shop-grid-line" />`);
+  }
+  for (let y = margin; y <= previewHeight - margin + 0.1; y += 40) {
+    gridLines.push(`<line x1="${margin}" y1="${Math.round(y)}" x2="${width - margin}" y2="${Math.round(y)}" class="shop-grid-line" />`);
+  }
+
+  const zoneLines = [];
+  const columnLabels = Array.from({ length: columnCount }, (_, index) => String.fromCharCode(65 + index));
+  columnLabels.forEach((label, index) => {
+    const x = margin + index * innerWidth / columnCount;
+    const nextX = margin + (index + 1) * innerWidth / columnCount;
+    const centerX = (x + nextX) / 2;
+    zoneLines.push(`<line x1="${Math.round(x)}" y1="${margin}" x2="${Math.round(x)}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
+    zoneLines.push(`<text x="${Math.round(centerX)}" y="21" text-anchor="middle" class="shop-zone-label">${label}</text>`);
+    zoneLines.push(`<text x="${Math.round(centerX)}" y="${previewHeight - 10}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
+  });
+  zoneLines.push(`<line x1="${width - margin}" y1="${margin}" x2="${width - margin}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
+
+  Array.from({ length: rowCount }, (_, index) => index + 1).forEach((label, index) => {
+    const y = margin + index * innerHeight / rowCount;
+    const nextY = margin + (index + 1) * innerHeight / rowCount;
+    const centerY = (y + nextY) / 2 + 4;
+    zoneLines.push(`<line x1="${margin}" y1="${Math.round(y)}" x2="${width - margin}" y2="${Math.round(y)}" class="shop-zone-line" />`);
+    zoneLines.push(`<text x="14" y="${Math.round(centerY)}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
+    zoneLines.push(`<text x="${width - 14}" y="${Math.round(centerY)}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
+  });
+  zoneLines.push(`<line x1="${margin}" y1="${previewHeight - margin}" x2="${width - margin}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
+
+  return `
+    <rect x="0" y="0" width="${width}" height="${previewHeight}" fill="#d9ddda" />
+    <rect x="${margin}" y="${margin}" width="${innerWidth}" height="${innerHeight}" fill="#eef0ed" stroke="#6f7871" stroke-width="2.2" class="shop-sheet-border" />
+    ${gridLines.join("")}
+    ${zoneLines.join("")}
+  `;
+}
+
+function renderShopTitleBlock(rows, previewHeight) {
+  const total = rows.reduce((sum, row) => sum + parseFloat(row.length || 0), 0);
+  const totalText = Number.isFinite(total) && total > 0
+    ? `${Number.isInteger(total) ? total : total.toFixed(1)} in`
+    : "-";
+  const x = 704;
+  const y = Math.max(38, previewHeight - 132);
+  const date = new Date().toLocaleDateString();
+  return `
+    <g class="shop-title-block">
+      <rect x="${x}" y="${y}" width="260" height="86" rx="3" />
+      <line x1="${x}" y1="${y + 28}" x2="${x + 260}" y2="${y + 28}" />
+      <line x1="${x + 128}" y1="${y + 28}" x2="${x + 128}" y2="${y + 86}" />
+      <line x1="${x}" y1="${y + 57}" x2="${x + 260}" y2="${y + 57}" />
+      <text x="${x + 12}" y="${y + 19}" class="shop-title-primary">${escapeXml(shortLabel(state.harnessName || "UNTITLED HARNESS", 27))}</text>
+      <text x="${x + 10}" y="${y + 45}">WIRES: ${rows.length}</text>
+      <text x="${x + 138}" y="${y + 45}">TOTAL: ${escapeXml(totalText)}</text>
+      <text x="${x + 10}" y="${y + 74}">REV: ${APP_VERSION}</text>
+      <text x="${x + 138}" y="${y + 74}">DATE: ${escapeXml(date)}</text>
+    </g>
+  `;
+}
+
+function connectorRowsForSide(connector, rows) {
+  return rows
+    .filter(isActiveWireRow)
+    .filter((row) => rowUsesSide(row, connector.side))
+    .filter((row) => connector.side === "left"
+      ? legKey(row.leftLeg) === connector.key
+      : legKey(row.rightLeg) === connector.key);
+}
+
+function connectorPinoutRows(connector, routedWires) {
+  const rows = connectorRowsForSide(connector, routedWires.map((route) => route.item));
+  return rows.map((row) => ({
+    row,
+    pin: numberOrDefault(connector.side === "left" ? row.leftPin : row.rightPin, 0),
+    wire: value(row.name).trim() || "-",
+    color: wireColorNotation(row) || "UNSET",
+    awg: wireAwgLabel(row) || "-"
+  })).sort((left, right) => left.pin - right.pin || left.wire.localeCompare(right.wire));
+}
+
+function renderConnectorFacePins(connector, pinoutRows, x, y, width, height) {
+  const usedPins = new Set(pinoutRows.map((item) => item.pin).filter(Boolean));
+  const explicitPins = connector.positionData.map((item) => item.position).filter(Boolean);
+  const basePins = Array.from({ length: Math.min(16, Math.max(1, connector.pinCount || 1)) }, (_, index) => index + 1);
+  const pins = [...new Set([...explicitPins, ...usedPins, ...basePins])]
+    .filter(Boolean)
+    .sort((left, right) => left - right);
+  const visiblePins = pins.slice(0, 16);
+  const columns = visiblePins.length <= 2 ? Math.max(1, visiblePins.length) : visiblePins.length <= 6 ? 3 : 4;
+  const rows = Math.max(1, Math.ceil(visiblePins.length / columns));
+  const stepX = width / columns;
+  const stepY = height / rows;
+  const pinMarkup = visiblePins.map((pin, index) => {
+    const col = index % columns;
+    const row = Math.floor(index / columns);
+    const cx = x + stepX * col + stepX / 2;
+    const cy = y + stepY * row + stepY / 2;
+    const used = usedPins.has(pin);
+    return `
+      <circle cx="${cx}" cy="${cy}" r="${used ? 6.2 : 5.2}" fill="${used ? "#f7fbf5" : "#c9d1ca"}" stroke="${used ? "#2f8e6e" : "#7c8780"}" stroke-width="1.7" />
+      <text x="${cx}" y="${cy + 3.4}" text-anchor="middle" class="connector-face-pin">${pin}</text>
+    `;
+  }).join("");
+  const more = pins.length > visiblePins.length
+    ? `<text x="${x + width}" y="${y + height + 12}" text-anchor="end" class="connector-detail-muted">+${pins.length - visiblePins.length}</text>`
+    : "";
+
+  return `
+    <rect x="${x - 5}" y="${y - 7}" width="${width + 10}" height="${height + 13}" rx="6" class="connector-face-box" />
+    <path d="M ${x + width / 2 - 13} ${y - 7} L ${x + width / 2} ${y - 19} L ${x + width / 2 + 13} ${y - 7}" class="connector-face-key" />
+    ${pinMarkup}
+    ${more}
+  `;
+}
+
+function renderConnectorDetailPanel(connector, routedWires, previewHeight) {
+  const rows = connectorPinoutRows(connector, routedWires);
+  const visibleRows = rows.slice(0, 5);
+  const panelWidth = 174;
+  const panelHeight = 128 + visibleRows.length * 15 + (rows.length > visibleRows.length ? 14 : 0);
+  const desiredX = connector.side === "left"
+    ? connector.x + connector.width + 18
+    : connector.x - panelWidth - 18;
+  const x = clamp(desiredX, 36, 1000 - panelWidth - 36);
+  const y = clamp(connector.y - 8, 38, Math.max(38, previewHeight - panelHeight - 38));
+  const tableX = x + 78;
+  const tableY = y + 56;
+  const rowMarkup = visibleRows.map((item, index) => {
+    const rowY = tableY + 18 + index * 15;
+    return `
+      <g>
+        <text x="${tableX}" y="${rowY}" class="connector-table-pin">P${item.pin || "-"}</text>
+        <rect x="${tableX + 27}" y="${rowY - 9}" width="10" height="8" rx="2" fill="${wireBaseColor(item.row)}" stroke="#59645d" stroke-width="0.8" />
+        <text x="${tableX + 43}" y="${rowY}" class="connector-table-text">${escapeXml(shortLabel(item.wire, 9))}</text>
+      </g>
+    `;
+  }).join("");
+  const moreRows = rows.length > visibleRows.length
+    ? `<text x="${tableX}" y="${tableY + 18 + visibleRows.length * 15}" class="connector-detail-muted">+${rows.length - visibleRows.length} more pins</text>`
+    : "";
+
+  return `
+    <g class="connector-detail-panel connector-face-panel connector-pinout-table">
+      <rect class="connector-detail-bg" x="${x}" y="${y}" width="${panelWidth}" height="${panelHeight}" rx="5" />
+      <text x="${x + 10}" y="${y + 19}" class="connector-detail-title">${escapeXml(shortLabel(`CONN ${connector.key}`, 17))}</text>
+      <text x="${x + 10}" y="${y + 35}" class="connector-detail-sub">${escapeXml(shortLabel(connector.housing || "Housing", 23))}</text>
+      ${renderConnectorFacePins(connector, rows, x + 13, y + 61, 50, 46)}
+      <text x="${x + 10}" y="${y + 124}" class="connector-detail-muted">VIEWED FROM MATING FACE</text>
+      <text x="${tableX}" y="${tableY}" class="connector-table-head">PIN</text>
+      <text x="${tableX + 43}" y="${tableY}" class="connector-table-head">WIRE</text>
+      ${rowMarkup}
+      ${moreRows}
+    </g>
+  `;
+}
+
+function renderConnectorDetailPanels(connectors, routedWires, previewHeight) {
+  return connectors
+    .map((connector) => renderConnectorDetailPanel(connector, routedWires, previewHeight))
+    .join("");
+}
+
+function connectorBomDescription(connector, rows) {
+  const sideRows = connectorRowsForSide(connector, rows);
+  const part = sideRows
+    .map((row) => connector.side === "left" ? row.leftHousingPart : row.rightHousingPart)
+    .map(cleanCell)
+    .find(Boolean);
+  const housing = cleanCell(connector.housing) || "Connector housing";
+  return {
+    key: `CONN|${housing.toUpperCase()}|${value(part).toUpperCase()}`,
+    item: housing,
+    part: part || "-"
+  };
+}
+
+function drawingBomData(connectors, splicePoints, rows) {
+  const items = [];
+  const itemLookup = new Map();
+  const connectorNumbers = new Map();
+  const spliceNumbers = new Map();
+  const addItem = (key, type, item, part, ref) => {
+    if (!itemLookup.has(key)) {
+      itemLookup.set(key, {
+        number: items.length + 1,
+        type,
+        item,
+        part,
+        quantity: 0,
+        refs: []
+      });
+      items.push(itemLookup.get(key));
+    }
+    const entry = itemLookup.get(key);
+    entry.quantity += 1;
+    entry.refs.push(ref);
+    return entry.number;
+  };
+
+  connectors.forEach((connector) => {
+    const description = connectorBomDescription(connector, rows);
+    const number = addItem(description.key, "HOUSING", description.item, description.part, `${connector.side} ${connector.key}`);
+    connectorNumbers.set(`${connector.side}|${connector.key}`, number);
+  });
+
+  [...splicePoints.values()].forEach((point) => {
+    const key = `SPLICE|${point.spliceId}`;
+    const number = addItem(key, "SPLICE", `${point.spliceId} window splice`, "-", point.spliceId);
+    spliceNumbers.set(point.spliceId, number);
+  });
+
+  return { items, connectorNumbers, spliceNumbers };
+}
+
+function renderBomBalloon(x, y, number) {
+  return `
+    <g class="bom-balloon">
+      <circle cx="${x}" cy="${y}" r="12" />
+      <text x="${x}" y="${y + 4}" text-anchor="middle">${number}</text>
+    </g>
+  `;
+}
+
+function renderBomCallouts(connectors, splicePoints, rows, previewHeight) {
+  const bom = drawingBomData(connectors, splicePoints, rows);
+  const balloons = connectors.map((connector) => {
+    const number = bom.connectorNumbers.get(`${connector.side}|${connector.key}`);
+    const x = connector.side === "left" ? connector.x + connector.width + 14 : connector.x - 14;
+    const y = connector.y + 18;
+    return number ? renderBomBalloon(x, y, number) : "";
+  });
+  [...splicePoints.values()].forEach((point) => {
+    const number = bom.spliceNumbers.get(point.spliceId);
+    if (number) {
+      balloons.push(renderBomBalloon(point.x + 44, point.y - 22, number));
+    }
+  });
+
+  if (!bom.items.length) {
+    return balloons.join("");
+  }
+
+  const visibleItems = bom.items.slice(0, 6);
+  const legendWidth = 312;
+  const legendHeight = 36 + visibleItems.length * 18 + (bom.items.length > visibleItems.length ? 16 : 0);
+  const x = 42;
+  const y = Math.max(38, previewHeight - legendHeight - 40);
+  const rowsMarkup = visibleItems.map((item, index) => {
+    const rowY = y + 50 + index * 18;
+    return `
+      <text x="${x + 12}" y="${rowY}" class="bom-table-number">${item.number}</text>
+      <text x="${x + 38}" y="${rowY}" class="bom-table-text">${escapeXml(shortLabel(item.item, 23))}</text>
+      <text x="${x + 226}" y="${rowY}" class="bom-table-text">${item.quantity}x</text>
+    `;
+  }).join("");
+  const more = bom.items.length > visibleItems.length
+    ? `<text x="${x + 12}" y="${y + legendHeight - 9}" class="bom-table-muted">+${bom.items.length - visibleItems.length} more in BOM export</text>`
+    : "";
+
+  return `
+    ${balloons.join("")}
+    <g class="bom-callout-table">
+      <rect x="${x}" y="${y}" width="${legendWidth}" height="${legendHeight}" rx="4" />
+      <text x="${x + 12}" y="${y + 20}" class="bom-table-title">BOM CALLOUTS</text>
+      <text x="${x + 12}" y="${y + 37}" class="bom-table-head">ITEM</text>
+      <text x="${x + 38}" y="${y + 37}" class="bom-table-head">DESCRIPTION</text>
+      <text x="${x + 226}" y="${y + 37}" class="bom-table-head">QTY</text>
+      ${rowsMarkup}
+      ${more}
+    </g>
+  `;
+}
+
+function renderFormboardFixturePins(routedWires, connectors, splicePoints, routeBaseY, previewHeight) {
+  const points = [];
+  const addPoint = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+    const clamped = {
+      x: clamp(Math.round(x), 40, 960),
+      y: clamp(Math.round(y), 40, previewHeight - 40)
+    };
+    const nearExisting = points.some((point) => Math.hypot(point.x - clamped.x, point.y - clamped.y) < 34);
+    if (!nearExisting) {
+      points.push(clamped);
+    }
+  };
+
+  connectors.forEach((connector) => {
+    addPoint(connector.x + connector.width / 2, connector.y + connector.height + 16);
+  });
+  [...splicePoints.values()].forEach((point) => addPoint(point.x, point.y + 34));
+  routedWires.forEach(({ item, index, endpoints }) => {
+    const pathPoints = wireRoutePoints(endpoints.start, endpoints.end, index, routeBaseY, routedWires.length, item);
+    pathPoints.slice(1, -1).forEach((point) => addPoint(point.x, point.y));
+  });
+
+  return points.slice(0, 28).map((point, index) => `
+    <g class="formboard-pin">
+      <circle cx="${point.x}" cy="${point.y}" r="6" />
+      <path d="M ${point.x - 9} ${point.y} H ${point.x + 9} M ${point.x} ${point.y - 9} V ${point.y + 9}" />
+      <text x="${point.x + 10}" y="${point.y - 8}">FB${index + 1}</text>
+    </g>
+  `).join("");
 }
 
 function buildConnectors(keys, side, rows, selected) {
@@ -4135,9 +4519,121 @@ function wireLengthLabel(row) {
   return /\b(in|inch|inches|ft|feet|mm|cm|m)\b/i.test(length) ? length : `${length} in`;
 }
 
+function normalizeWireColorName(input) {
+  const text = cleanCell(input).toUpperCase();
+  return colorMap[text] ? text : colorAliases[text] || text;
+}
+
+function wireColorParts(input) {
+  const text = cleanCell(input).toUpperCase();
+  if (!text) {
+    return [];
+  }
+
+  const pieces = text
+    .replace(/\bWITH\b/g, "/")
+    .replace(/\bW\/\b/g, "/")
+    .split(/[/,+]|\s+-\s+|\s+STRIPE\s+|\s+TRACER\s+/)
+    .map(normalizeWireColorName)
+    .filter((part) => Boolean(part && colorMap[part]));
+
+  return pieces.filter((part, index) => pieces.indexOf(part) === index);
+}
+
+function wireBaseColor(row) {
+  const parts = wireColorParts(row?.color);
+  const color = parts[0] || normalizeWireColorName(row?.color);
+  return colorMap[color] || "#7e8a82";
+}
+
+function wireStripeColor(row) {
+  const parts = wireColorParts(row?.color);
+  return parts.length > 1 ? colorMap[parts[1]] : "";
+}
+
+function colorSwatchStyle(input) {
+  const parts = wireColorParts(input);
+  if (parts.length > 1) {
+    const base = colorMap[parts[0]];
+    const stripe = colorMap[parts[1]];
+    return `background: linear-gradient(135deg, ${base} 0 42%, ${stripe} 42% 58%, ${base} 58% 100%);`;
+  }
+
+  const color = colorMap[parts[0]] || colorMap[normalizeWireColorName(input)] || "#d9dfd7";
+  return `--swatch:${color};`;
+}
+
+function applyColorSwatch(element, input) {
+  if (!element) {
+    return;
+  }
+  element.style.removeProperty("background");
+  const style = colorSwatchStyle(input);
+  if (style.startsWith("background:")) {
+    element.style.removeProperty("--swatch");
+    element.style.background = style.replace(/^background:\s*/, "").replace(/;$/, "");
+  } else {
+    element.style.setProperty("--swatch", style.replace(/^--swatch:\s*/, "").replace(/;$/, ""));
+  }
+}
+
+function wireColorNotation(row) {
+  const text = cleanCell(row?.color).toUpperCase();
+  return text && text !== "UNSET" ? text : "";
+}
+
+function wireConstructionFlags(row) {
+  const text = [
+    row?.name,
+    row?.branch,
+    branchLabel(row || {}),
+    row?.toolUsed,
+    row?.comments
+  ].map((item) => cleanCell(item).toUpperCase()).join(" ");
+  return {
+    shielded: /\b(SHIELD|SHIELDED|SCREEN|DRAIN|FOIL|BRAID|STP|F\/UTP|S\/FTP|U\/FTP)\b/.test(text),
+    twisted: /\b(TWIST|TWISTED|TW\s?PAIR|TWP|TP|PAIR)\b/.test(text)
+  };
+}
+
+function wireConstructionLabel(row) {
+  const flags = wireConstructionFlags(row);
+  if (flags.shielded && flags.twisted) {
+    return "TWIST + SHIELD";
+  }
+  if (flags.shielded) {
+    return "SHIELD";
+  }
+  if (flags.twisted) {
+    return "TWIST";
+  }
+  return "";
+}
+
+function wireOutlineColor(row) {
+  const color = normalizeWireColorName(row?.color);
+  return color === "BLACK" || color === "BROWN" || color === "VIOLET" ? "#edf2ec" : "#172019";
+}
+
+function wireDrawingStyle(row) {
+  const flags = wireConstructionFlags(row);
+  return {
+    base: wireBaseColor(row),
+    stripe: wireStripeColor(row),
+    outline: wireOutlineColor(row),
+    shielded: flags.shielded,
+    twisted: flags.twisted
+  };
+}
+
 function wireDrawingLabel(row, wireCount = 0) {
   const name = value(row?.name).trim();
-  const detail = [wireAwgLabel(row), wireLengthLabel(row)].filter(Boolean).join(" | ");
+  const detail = [
+    wireAwgLabel(row),
+    wireColorNotation(row),
+    wireLengthLabel(row),
+    wireConstructionLabel(row)
+  ].filter(Boolean).join(" | ");
   const rawLines = [name, detail].filter(Boolean);
   if (!rawLines.length) {
     return null;
@@ -5008,8 +5504,8 @@ function renderTable() {
         <td>${selectField(row, "awg", options.gauges, "AW gauge")}</td>
         <td class="field-color">
           <div class="color-cell">
-            <span class="swatch" style="--swatch:${colorMap[row.color] || "#d9dfd7"}"></span>
-            ${selectField(row, "color", options.colors, "Color")}
+            <span class="swatch" style="${colorSwatchStyle(row.color)}"></span>
+            <input data-field="color" list="colorChoices" value="${escapeHtml(row.color)}" aria-label="Color" title="Use shop notation like RED, RED/BLK, WHT/ORG, or BLU/WHT">
           </div>
         </td>
         <td><input data-field="length" value="${escapeHtml(row.length)}" aria-label="Length inches"></td>
@@ -6718,15 +7214,26 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
 
   scene.routedWires.forEach(({ item, index, endpoints }) => {
     const { start, end } = endpoints;
-    const color = colorMap[item.color] || "#7e8a82";
-    const isBlack = item.color === "BLACK";
+    const wireStyle = wireDrawingStyle(item);
     const pathPoints = wireRoutePoints(start, end, index, scene.routeBaseY, scene.routedWires.length, item);
-    const outlineColor = isBlack ? "#edf4ef" : "#07100b";
+    const isDark = wireStyle.outline === "#edf2ec";
+
+    if (wireStyle.shielded) {
+      addCell(mxCellXml({
+        id: `wire_shield_${drawIoSafeId(item.id)}`,
+        value: "",
+        style: "edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=#6f7771;strokeWidth=11;strokeOpacity=36;dashed=1;dashPattern=18 12;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;",
+        edge: 1,
+        parent: "1",
+        [`data-type`]: "wire-shield",
+        [`data-row-id`]: item.id || ""
+      }, makeWireGeometry(pathPoints)));
+    }
 
     addCell(mxCellXml({
       id: `wire_outline_${drawIoSafeId(item.id)}`,
       value: "",
-      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${outlineColor};strokeWidth=${isBlack ? 7 : 6};strokeOpacity=82;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
+      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${wireStyle.outline};strokeWidth=${isDark ? 7 : 6};strokeOpacity=82;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
       edge: 1,
       parent: "1",
       [`data-type`]: "wire-outline",
@@ -6736,7 +7243,7 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     addCell(mxCellXml({
       id: `wire_${drawIoSafeId(item.id)}`,
       value: "",
-      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${color};strokeWidth=${isBlack ? 4 : 3};endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
+      style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${wireStyle.base};strokeWidth=${isDark ? 4 : 3};endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
       edge: 1,
       parent: "1",
       [`data-type`]: "wire",
@@ -6745,6 +7252,30 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
       [`data-color`]: item.color || "",
       [`data-length`]: item.length || ""
     }, makeWireGeometry(pathPoints)));
+
+    if (wireStyle.stripe) {
+      addCell(mxCellXml({
+        id: `wire_stripe_${drawIoSafeId(item.id)}`,
+        value: "",
+        style: `edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=${wireStyle.stripe};strokeWidth=2;dashed=1;dashPattern=14 10;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;`,
+        edge: 1,
+        parent: "1",
+        [`data-type`]: "wire-stripe",
+        [`data-row-id`]: item.id || ""
+      }, makeWireGeometry(pathPoints)));
+    }
+
+    if (wireStyle.twisted) {
+      addCell(mxCellXml({
+        id: `wire_twist_${drawIoSafeId(item.id)}`,
+        value: "",
+        style: "edgeStyle=orthogonalEdgeStyle;rounded=0;jettySize=auto;orthogonalLoop=1;html=1;strokeColor=#f8faf5;strokeWidth=1;strokeOpacity=82;dashed=1;dashPattern=2 9;endArrow=none;startArrow=none;movable=1;editable=0;resizable=0;",
+        edge: 1,
+        parent: "1",
+        [`data-type`]: "wire-twist",
+        [`data-row-id`]: item.id || ""
+      }, makeWireGeometry(pathPoints)));
+    }
 
     addCell(makeWireLabelCell(item, start, end, index));
   });
@@ -6768,7 +7299,7 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="Wiring Harness Designer" type="device">
   <diagram id="${drawIoSafeId(state.harnessName || "harness")}" name="${diagramName}">
-    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${pageWidth}" pageHeight="${pageHeight}" background="#15201b" math="0" shadow="0">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${pageWidth}" pageHeight="${pageHeight}" background="#d9ddda" math="0" shadow="0">
       <root>
         ${mxCellXml({ id: "0" })}
         ${mxCellXml({ id: "1", parent: "0" })}

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.75 - 2026-06-10
+
+- Added a light gray shop drawing sheet with border zones, fixture pin markers, and a compact title block.
+- Added connector face-view panels labeled as viewed from the mating face, with per-connector pinout tables.
+- Added circled BOM callouts tied to a drawing BOM table.
+- Added multi-color, shielded, and twisted-pair wire drawing support, including richer wire labels with color, AWG, length, and construction notes.
+- Updated draw.io export styling for light backgrounds and multi-color/shield/twisted wire routes.
+
 ## v1.2.74 - 2026-06-10
 
 - Added the wire route drag shortcuts to the top header so `9` add bend, `8` remove bend, and `7` straighten are visible while working.
