@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.71 - 2026-06-10
+
+- Removed the duplicate Cable Name, Left leg names, and Right leg names fields above the editor.
+- Made the editable table match the spreadsheet header order, starting with Cable Name, Left Leg, Left Leg Name, and Wire Name.
+- Drove the drawing title from the first non-empty Cable Name cell so imports, exports, print, and draw.io use the sheet data.
+
 ## v1.2.70 - 2026-06-10
 
 - Added a built-in VESC housing type as a board-style motor controller.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.70";
+const APP_VERSION = "1.2.71";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -353,6 +353,7 @@ const DEFAULT_COLUMN_WIDTHS = [
   190,
   115,
   180,
+  190,
   100,
   260,
   170,
@@ -376,7 +377,6 @@ const dom = {
   appShell: document.querySelector(".app-shell"),
   topbar: document.querySelector(".topbar"),
   layoutSplitter: document.querySelector("#layoutSplitter"),
-  harnessName: document.querySelector("#harnessName"),
   selectedTitle: document.querySelector("#selectedTitle"),
   summaryStatus: document.querySelector("#summaryStatus"),
   summaryGauge: document.querySelector("#summaryGauge"),
@@ -395,8 +395,6 @@ const dom = {
   harnessTable: document.querySelector("#harnessTable"),
   tableColumnGroup: document.querySelector("#tableColumnGroup"),
   wireRows: document.querySelector("#wireRows"),
-  leftLegNames: document.querySelector("#leftLegNames"),
-  rightLegNames: document.querySelector("#rightLegNames"),
   searchRows: document.querySelector("#searchRows"),
   activeOnly: document.querySelector("#activeOnly"),
   toast: document.querySelector("#toast"),
@@ -1057,6 +1055,7 @@ function makeId() {
 
 function blankWireFields() {
   return {
+    cableName: "",
     leftLeg: "",
     name: "",
     leftPin: "",
@@ -1129,10 +1128,12 @@ function loadState() {
 }
 
 function normalizeState(incoming) {
-  const rows = incoming.rows.map((row) => {
+  const incomingHarnessName = value(incoming.harnessName);
+  const rows = incoming.rows.map((row, index) => {
     const routeBend = normalizedRouteBend(row);
     return {
       id: row.id || makeId(),
+      cableName: value(row.cableName || row.harnessName || (index === 0 ? incomingHarnessName : "")),
       leftLeg: value(row.leftLeg),
       name: value(row.name),
       leftPin: value(row.leftPin),
@@ -1162,10 +1163,11 @@ function normalizeState(incoming) {
     };
   });
   const learnedCatalog = learnCatalogFromRows(rows, incoming.catalog);
+  const harnessName = cableNameFromRows(rows) || incomingHarnessName;
 
   const incomingAllowance = Number(incoming.bomAllowance);
   return {
-    harnessName: value(incoming.harnessName),
+    harnessName,
     selectedId: rows.some((row) => row.id === incoming.selectedId) ? incoming.selectedId : rows[0]?.id || "",
     rows,
     catalog: normalizeCatalog(learnedCatalog.catalog),
@@ -1176,6 +1178,16 @@ function normalizeState(incoming) {
     drawioXml: value(incoming.drawioXml || incoming.drawIoXml),
     legNames: normalizeLegNames(incoming.legNames)
   };
+}
+
+function cableNameFromRows(rows) {
+  const namedRow = rows.find((row) => cleanCell(row.cableName));
+  return namedRow ? cleanCell(namedRow.cableName) : "";
+}
+
+function syncHarnessNameFromRows() {
+  state.harnessName = cableNameFromRows(state.rows);
+  return state.harnessName;
 }
 
 function normalizeLegNames(input = {}) {
@@ -1318,13 +1330,23 @@ function normalizeColumnWidths(widths) {
       incoming[19],
       ...incoming.slice(21)
     ];
-  } else if (incoming.length === DEFAULT_COLUMN_WIDTHS.length - 2) {
+  } else if (incoming.length === 19) {
     incoming = [
       ...incoming.slice(0, 3),
-      DEFAULT_COLUMN_WIDTHS[3],
+      180,
       ...incoming.slice(3, 14),
-      DEFAULT_COLUMN_WIDTHS[15],
+      180,
       ...incoming.slice(14)
+    ];
+  }
+  if (incoming.length === 21) {
+    incoming = [
+      incoming[0],
+      DEFAULT_COLUMN_WIDTHS[1],
+      incoming[2],
+      incoming[3],
+      incoming[1],
+      ...incoming.slice(4)
     ];
   }
   return DEFAULT_COLUMN_WIDTHS.map((defaultWidth, index) => {
@@ -1340,7 +1362,7 @@ function minColumnWidth(index) {
   if (index === 0) {
     return 42;
   }
-  if (index === 12) {
+  if (index === 13) {
     return 24;
   }
   return MIN_COLUMN_WIDTH;
@@ -1485,6 +1507,7 @@ function nextSpliceId() {
 
 function saveState() {
   try {
+    syncHarnessNameFromRows();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     updateUndoButtonState();
     return true;
@@ -1543,9 +1566,6 @@ function activeRows() {
 }
 
 function render() {
-  dom.harnessName.value = state.harnessName;
-  dom.leftLegNames.value = legNameInputValue("left");
-  dom.rightLegNames.value = legNameInputValue("right");
   applyPreviewPaneHeight();
   applyColumnWidths();
   renderSummary();
@@ -4823,9 +4843,10 @@ function renderTable() {
           <button class="clear-row-button" type="button" data-action="clear-row" title="Clear row ${index + 1} and remove its wire" aria-label="Clear row ${index + 1}">${index + 1}</button>
           ${issueCount}
         </td>
-        <td class="field-name"><input data-field="name" list="nameChoices" value="${escapeHtml(row.name)}" aria-label="Wire name"></td>
+        <td><input data-field="cableName" value="${escapeHtml(row.cableName)}" aria-label="Cable name"></td>
         <td>${selectField(row, "leftLeg", options.legs, "Left leg")}</td>
         <td><input data-field="leftLegName" value="${escapeHtml(legNameFor("left", row.leftLeg))}" aria-label="Left leg name"></td>
+        <td class="field-name"><input data-field="name" list="nameChoices" value="${escapeHtml(row.name)}" aria-label="Wire name"></td>
         <td>${selectField(row, "leftPin", options.pins, "Left pin")}</td>
         <td class="field-housing">${selectField(row, "housing", housingChoices(), "Housing type")}</td>
         <td><input data-field="leftHousingPart" value="${escapeHtml(row.leftHousingPart)}" aria-label="Left housing part number"></td>
@@ -4960,10 +4981,8 @@ function handleCellChange(target, shouldRenderTable) {
     applyCatalogParts(row, "right");
   } else if (field === "leftLegName") {
     setLegNameFor("left", row.leftLeg, target.value);
-    dom.leftLegNames.value = legNameInputValue("left");
   } else if (field === "rightLegName") {
     setLegNameFor("right", row.rightLeg, target.value);
-    dom.rightLegNames.value = legNameInputValue("right");
   } else if (field === "spliceRole") {
     row.spliceRole = target.value.toUpperCase();
     if (row.spliceRole && !normalizedSpliceId(row)) {
@@ -4978,6 +4997,7 @@ function handleCellChange(target, shouldRenderTable) {
   if (["housing", "leftHousingPart", "leftTerminalPart", "rightHousing", "rightHousingPart", "rightTerminalPart"].includes(field)) {
     state.catalog = normalizeCatalog(learnCatalogFromRows([row], state.catalog).catalog);
   }
+  syncHarnessNameFromRows();
   saveState();
   if (shouldRenderTable) {
     render();
@@ -5275,10 +5295,11 @@ function exportBomCsv() {
 }
 
 function exportCsv() {
+  syncHarnessNameFromRows();
   const lines = [
     EXPORT_HEADERS,
     ...state.rows.map((row, index) => [
-      index === 0 ? state.harnessName : "",
+      row.cableName || (index === 0 ? state.harnessName : ""),
       row.leftLeg,
       legNameFor("left", row.leftLeg),
       row.name,
@@ -5365,7 +5386,7 @@ function applyImportedRows(options = {}) {
     || Object.keys(importLegNames.right || {}).length
   );
   state = normalizeState({
-    harnessName: pendingImportContext.harnessName || state.harnessName || "Imported Harness",
+    harnessName: pendingImportContext.harnessName || state.harnessName,
     selectedId: pendingImportRows[0].id,
     rows: pendingImportRows,
     catalog: state.catalog,
@@ -6030,6 +6051,7 @@ function isPartNumberToken(input) {
 
 function isUsefulRow(row) {
   return Boolean(
+    row.cableName ||
     row.leftLeg ||
     row.leftPin ||
     row.name ||
@@ -6207,16 +6229,17 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Wire Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
+        <th>#</th><th>Cable Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Wire Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
       ${rows.map((row, index) => `
         <tr>
           <td>${index + 1}</td>
-          <td>${escapeHtml(row.name)}</td>
+          <td>${escapeHtml(row.cableName)}</td>
           <td>${escapeHtml(row.leftLeg)}</td>
           <td>${escapeHtml(legNameFor("left", row.leftLeg))}</td>
+          <td>${escapeHtml(row.name)}</td>
           <td>${escapeHtml(row.leftPin)}</td>
           <td>${escapeHtml(row.housing)}</td>
           <td>${escapeHtml(row.leftHousingPart)}</td>
@@ -6770,13 +6793,6 @@ function showToast(message) {
   }, 2200);
 }
 
-dom.harnessName.addEventListener("input", () => {
-  rememberUndo();
-  state.harnessName = dom.harnessName.value;
-  saveState();
-  renderPreview();
-});
-
 dom.wireRows.addEventListener("click", (event) => {
   const clearButton = event.target.closest("button[data-action='clear-row']");
   if (clearButton) {
@@ -6819,8 +6835,6 @@ dom.wireRows.addEventListener("change", (event) => {
 
 dom.searchRows?.addEventListener("input", renderTable);
 dom.activeOnly?.addEventListener("change", renderTable);
-dom.leftLegNames.addEventListener("change", () => updateLegNames("left", dom.leftLegNames.value));
-dom.rightLegNames.addEventListener("change", () => updateLegNames("right", dom.rightLegNames.value));
 dom.undoButton.addEventListener("click", undoLastChange);
 dom.addRow.addEventListener("click", addRow);
 dom.duplicateRow.addEventListener("click", duplicateRow);

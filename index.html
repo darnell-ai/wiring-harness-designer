@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.70</title>
+    <title>Wiring Harness Designer v1.2.71</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.70</span>
+              <span class="version-badge">v1.2.71</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -126,20 +126,6 @@
             <span class="section-label">Editable table</span>
             <strong>Excel-style wiring rows</strong>
           </div>
-          <div class="leg-name-tools" aria-label="Leg name settings">
-            <label>
-              <span>Left leg names</span>
-              <input id="leftLegNames" type="text" placeholder="1=Name, 2=Name, 3=Name, 4=Name">
-            </label>
-            <label>
-              <span>Cable name</span>
-              <input id="harnessName" type="text" autocomplete="off" placeholder="W101">
-            </label>
-            <label>
-              <span>Right leg names</span>
-              <input id="rightLegNames" type="text" placeholder="1=Name, 2=Name, 3=Name, 4=Name">
-            </label>
-          </div>
         </div>
 
         <div class="table-wrap">
@@ -148,9 +134,10 @@
             <thead>
               <tr>
                 <th class="row-number" title="Click a row number to clear that row">#</th>
-                <th>Wire Name</th>
+                <th>Cable Name</th>
                 <th>Left Leg</th>
                 <th>Left Leg Name</th>
+                <th>Wire Name</th>
                 <th>Pin Pos #</th>
                 <th>Housing Type</th>
                 <th>Housing Part #</th>
@@ -385,6 +372,6 @@
       <option value="SPARE"></option>
     </datalist>
 
-    <script src="app.js?v=1.2.70" defer></script>
+    <script src="app.js?v=1.2.71" defer></script>
   </body>
 </html>

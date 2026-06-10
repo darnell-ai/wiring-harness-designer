@@ -144,7 +144,6 @@ button:disabled {
   font-size: 12px;
 }
 
-.leg-name-tools input:focus,
 .harness-table select:focus,
 .harness-table input:focus {
   border-color: var(--green);
@@ -413,37 +412,6 @@ body.is-resizing-layout * {
   flex-wrap: wrap;
 }
 
-.leg-name-tools {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(145px, 1fr));
-  gap: 10px;
-  flex: 1 1 720px;
-  min-width: 520px;
-}
-
-.leg-name-tools label {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 5px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 850;
-  text-transform: uppercase;
-}
-
-.leg-name-tools input {
-  width: 100%;
-  min-width: 0;
-  height: 34px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  outline: none;
-  background: var(--field);
-  color: var(--ink);
-  padding: 8px 10px;
-  text-transform: none;
-}
-
 .table-wrap {
   min-height: 0;
   overflow: auto;
@@ -451,8 +419,8 @@ body.is-resizing-layout * {
 }
 
 .harness-table {
-  width: 3285px;
-  min-width: 3285px;
+  width: 3475px;
+  min-width: 3475px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -1335,15 +1303,6 @@ body.is-resizing-column {
 
   .editor-shell {
     min-height: 480px;
-  }
-
-  .leg-name-tools {
-    min-width: 0;
-    grid-template-columns: repeat(3, minmax(140px, 1fr));
-  }
-
-  .leg-name-tools label {
-    grid-template-columns: 1fr;
   }
 
   .catalog-workspace,
