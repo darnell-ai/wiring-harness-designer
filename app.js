@@ -1,9 +1,10 @@
 "use strict";
 
-const APP_VERSION = "1.2.68";
+const APP_VERSION = "1.2.69";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
+const BLANK_ROW_COUNT = 24;
 const WIRE_LANE_GAP = 32;
 const WIRE_EXIT_GAP = 14;
 const WIRE_BUS_GAP = 18;
@@ -1049,47 +1050,27 @@ function makeId() {
   return `wire-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createStarterRows() {
-  const starterRows = [
-    ["TO SH A", "1", "WHITE", "4", "1", "TO SH", "1", "2243-1327G7-BK-ND"],
-    ["TO SH B", "2", "BLUE", "4", "1", "TO SH", "2", "2243-1327G8-ND"],
-    ["TO SH C", "3", "GREEN", "4", "1", "TO SH", "3", "2243-1327G5-ND"],
-    ["TO SV A", "4", "WHITE", "5", "2", "TO SV", "4", "2243-1327G7-BK-ND"],
-    ["TO SV B", "5", "BLUE", "5", "2", "TO SV", "5", "2243-1327G8-ND"],
-    ["TO SVC", "6", "GREEN", "5", "2", "TO SV", "6", "2243-1327G5-ND"],
-    ["TO PV A", "7", "WHITE", "5", "3", "TO PV", "7", "2243-1327G7-BK-ND"],
-    ["TO PV B", "8", "BLUE", "5", "3", "TO PV", "8", "2243-1327G8-ND"],
-    ["TO PV C", "9", "GREEN", "5", "3", "TO PV", "9", "2243-1327G5-ND"],
-    ["TO PH A", "10", "WHITE", "6", "4", "TO PH", "10", "2243-1327G7-BK-ND"],
-    ["TO PH B", "11", "BLUE", "6", "4", "TO PH", "11", "2243-1327G8-ND"],
-    ["TO PH C", "12", "GREEN", "6", "4", "TO PH", "12", "2243-1327G5-ND"],
-    ["LED POWER", "13", "RED", "7", "5", "PCB", "13", "2243-1327-ND"],
-    ["BWD", "14", "RED", "7", "5", "PCB", "14", "2243-1327-ND"],
-    ["BWA", "15", "RED", "7", "5", "PCB", "15", "2243-1327-ND"],
-    ["BW GND", "16", "BLACK", "7", "5", "PCB", "16", "242-1327G6-ND"]
-  ];
-
-  return starterRows.map(([name, leftPin, color, length, rightLeg, , rightPin, rightHousingPart]) => ({
-    id: makeId(),
-    leftLeg: "1",
-    name,
-    leftPin,
+function blankWireFields() {
+  return {
+    leftLeg: "",
+    name: "",
+    leftPin: "",
     dnp: false,
-    housing: "16 Pin CPC",
-    leftHousingPart: "A1305-ND",
-    leftTerminalPart: "1003-T2P20MC1SZCT-ND",
-    awg: "16",
-    color,
-    length,
+    housing: "",
+    leftHousingPart: "",
+    leftTerminalPart: "",
+    awg: "",
+    color: "",
+    length: "",
     spliceId: "",
     spliceRole: "",
-    rightLeg,
-    rightPin,
+    rightLeg: "",
+    rightPin: "",
     rightDnp: false,
-    rightHousing: "A POWER POLE",
-    rightHousingPart,
-    rightTerminalPart: "2243-1332-BK-ND",
-    toolUsed: "APIOLO",
+    rightHousing: "",
+    rightHousingPart: "",
+    rightTerminalPart: "",
+    toolUsed: "",
     comments: "",
     routeOffsetX: 0,
     routeOffsetY: 0,
@@ -1097,26 +1078,30 @@ function createStarterRows() {
     routeBendY: null,
     wireLabelOffsetX: 0,
     wireLabelOffsetY: 0
-  }));
+  };
 }
 
-function starterState() {
-  const rows = createStarterRows();
-  const learnedCatalog = learnCatalogFromRows(rows, defaultCatalog());
+function createBlankRow(overrides = {}) {
   return {
-    harnessName: "W104",
+    id: makeId(),
+    ...blankWireFields(),
+    ...overrides
+  };
+}
+
+function blankState(rowCount = BLANK_ROW_COUNT) {
+  const rows = Array.from({ length: rowCount }, () => createBlankRow());
+  return {
+    harnessName: "",
     selectedId: rows[0]?.id || "",
     rows,
-    catalog: normalizeCatalog(learnedCatalog.catalog),
+    catalog: defaultCatalog(),
     bomAllowance: 10,
     tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
     previewPaneHeight: defaultPreviewPaneHeight(),
     previewLayout: defaultPreviewLayout(),
     drawioXml: "",
-    legNames: {
-      left: { "1": "CPC 1" },
-      right: { "1": "TO SH", "2": "TO SV", "3": "TO PV", "4": "TO PH", "5": "PCB" }
-    }
+    legNames: { left: {}, right: {} }
   };
 }
 
@@ -1124,17 +1109,17 @@ function loadState() {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) {
-      return starterState();
+      return blankState();
     }
 
     const parsed = JSON.parse(stored);
     if (!parsed || !Array.isArray(parsed.rows)) {
-      return starterState();
+      return blankState();
     }
 
     return normalizeState(parsed);
   } catch (error) {
-    return starterState();
+    return blankState();
   }
 }
 
@@ -1175,7 +1160,7 @@ function normalizeState(incoming) {
 
   const incomingAllowance = Number(incoming.bomAllowance);
   return {
-    harnessName: value(incoming.harnessName) || "Untitled Harness",
+    harnessName: value(incoming.harnessName),
     selectedId: rows.some((row) => row.id === incoming.selectedId) ? incoming.selectedId : rows[0]?.id || "",
     rows,
     catalog: normalizeCatalog(learnedCatalog.catalog),
@@ -1789,10 +1774,9 @@ function renderPreview() {
   const dnp = state.rows.length - active.length;
   const total = active.reduce((sum, item) => sum + parseFloat(item.length || 0), 0);
   const selected = row && isActiveWireRow(row) ? row : {};
-  const hasSelectedWire = Boolean(selected.id);
 
   dom.previewName.textContent = active.length ? "" : "No active wires";
-  dom.printHarnessTitle.textContent = state.harnessName || "Untitled Harness";
+  dom.printHarnessTitle.textContent = state.harnessName;
   dom.activeCount.textContent = String(active.length);
   dom.dnpCount.textContent = String(dnp);
   dom.totalLength.textContent = Number.isInteger(total) ? String(total) : total.toFixed(1);
@@ -1880,6 +1864,7 @@ function renderPreview() {
   const bendHandles = routedWires
     .map(({ item }) => renderWireBendHandle(item, previewHeight))
     .join("");
+  const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
@@ -1897,7 +1882,7 @@ function renderPreview() {
     </g>
   ` : "";
 
-  const selectedInfoBoxMarkup = hasSelectedWire && state.harnessName ? cableNameMarkup : "";
+  const selectedInfoBoxMarkup = state.harnessName ? cableNameMarkup : "";
 
   dom.wirePreview.setAttribute("viewBox", `0 0 1000 ${previewHeight}`);
   dom.wirePreview.style.height = `${previewHeight}px`;
@@ -1923,7 +1908,8 @@ function renderPreview() {
         .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
         .wire-route-hit:active { cursor: grabbing; }
         .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .heatshrink-label, .cable-name-tag { cursor: grab; }
-        .wire-name-tag text { fill: #101814; font: 14px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .wire-name-tag text { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .wire-name-tag .wire-name-detail { fill: #334039; font-weight: 800; }
         .connector-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .connector-group:active .connector-hit { cursor: grabbing; }
         .heatshrink-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
@@ -1937,6 +1923,8 @@ function renderPreview() {
         .heatshrink-name { fill: #f2c84b; font: 11px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .cable-name-tag rect { fill: #6d128c; stroke: #a83ad1; stroke-width: 2; opacity: 0.96; }
         .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
+        .tool-note rect { fill: rgba(248, 250, 245, 0.62); stroke: rgba(217, 223, 215, 0.78); stroke-width: 1.4; }
+        .tool-note text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-label { fill: #f7edd0; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-role { fill: #aebeb3; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
         .empty-preview { fill: #dbe8de; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
@@ -1955,6 +1943,7 @@ function renderPreview() {
     ${spliceNodes}
     ${wireNameTags}
     ${bendHandles}
+    ${toolNote}
     ${selectedInfoBoxMarkup}
   `;
 }
@@ -1965,7 +1954,6 @@ function buildPreviewScene() {
   const dnp = state.rows.length - active.length;
   const total = active.reduce((sum, item) => sum + parseFloat(item.length || 0), 0);
   const selected = row && isActiveWireRow(row) ? row : {};
-  const hasSelectedWire = Boolean(selected.id);
   const previewRows = active;
   const leftConnectors = buildConnectors(legKeys(previewRows, "left", selected), "left", previewRows, selected);
   const rightConnectors = buildConnectors(legKeys(previewRows, "right", selected), "right", previewRows, selected);
@@ -2008,7 +1996,6 @@ function buildPreviewScene() {
     dnp,
     total,
     selected,
-    hasSelectedWire,
     previewRows,
     leftConnectors,
     rightConnectors,
@@ -3905,6 +3892,70 @@ function bottomExitWirePath(bottom, other, index, routeBaseY, wireCount = 0, row
     V ${other.y}`;
 }
 
+function wireAwgLabel(row) {
+  const awg = value(row?.awg).trim();
+  if (!awg) {
+    return "";
+  }
+  return /\bAWG\b/i.test(awg) ? awg.toUpperCase() : `${awg} AWG`;
+}
+
+function wireLengthLabel(row) {
+  const length = value(row?.length).trim();
+  if (!length) {
+    return "";
+  }
+  return /\b(in|inch|inches|ft|feet|mm|cm|m)\b/i.test(length) ? length : `${length} in`;
+}
+
+function wireDrawingLabel(row, wireCount = 0) {
+  const name = value(row?.name).trim();
+  const detail = [wireAwgLabel(row), wireLengthLabel(row)].filter(Boolean).join(" | ");
+  const rawLines = [name, detail].filter(Boolean);
+  if (!rawLines.length) {
+    return null;
+  }
+
+  const compact = crowdingFactor(wireCount, 8, 8) > 0.36;
+  const maxNameChars = compact ? 18 : 26;
+  const maxDetailChars = compact ? 22 : 30;
+  const lines = rawLines.map((line, index) => shortLabel(line, index === 0 && name ? maxNameChars : maxDetailChars));
+  const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  const tagWidth = clamp(
+    longestLine * (compact ? 7.4 : 8.1) + (compact ? 34 : 40),
+    compact ? 108 : 118,
+    compact ? 250 : 300
+  );
+  return {
+    rawLines,
+    lines,
+    fullText: rawLines.join("\n"),
+    tagWidth,
+    tagHeight: lines.length > 1 ? 42 : 28,
+    compact
+  };
+}
+
+function drawingToolNames(rows = activeRows()) {
+  const names = [];
+  rows.forEach((row) => {
+    const tool = cleanCell(row.toolUsed);
+    if (tool && !names.some((name) => name.toUpperCase() === tool.toUpperCase())) {
+      names.push(tool);
+    }
+  });
+  return names;
+}
+
+function drawingToolSummary(rows = activeRows()) {
+  const names = drawingToolNames(rows);
+  if (!names.length) {
+    return "";
+  }
+
+  return `${names.length === 1 ? "TOOL" : "TOOLS"}: ${names.join(", ")}`;
+}
+
 function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth, wireCount = 0, row = null) {
   const routeIndex = Math.max(0, index);
   const sideMargin = tagWidth / 2 + 16;
@@ -3944,31 +3995,43 @@ function wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWi
 }
 
 function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, wireCount = 0) {
-  const rawLabel = value(row?.name).trim();
-  if (!rawLabel) {
+  const label = wireDrawingLabel(row, wireCount);
+  if (!label) {
     return "";
   }
 
-  const crowd = crowdingFactor(wireCount, 8, 8);
-  const compact = crowd > 0.36;
-  const tagWidth = clamp(
-    rawLabel.length * (compact ? 7.2 : 8.5) + (compact ? 28 : 34),
-    compact ? 84 : 92,
-    compact ? 240 : 280
-  );
-  const maxChars = Math.max(8, Math.floor((tagWidth - (compact ? 28 : 34)) / (compact ? 6.9 : 7.5)));
-  const labelText = compact ? shortLabel(rawLabel, maxChars) : rawLabel;
-  const label = escapeXml(labelText);
-  const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, tagWidth, wireCount, row);
-  const textLength = compact || labelText !== rawLabel ? ` textLength="${Math.max(40, tagWidth - 28)}" lengthAdjust="spacingAndGlyphs"` : "";
-  const fontSize = compact ? 12 : 14;
-  const boxOpacity = compact ? 0.56 : 0.5;
+  const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, label.tagWidth, wireCount, row);
+  const boxOpacity = label.compact ? 0.6 : 0.54;
+  const primaryFontSize = label.compact ? 12 : 13;
+  const detailFontSize = label.compact ? 10.5 : 11;
+  const primaryY = label.lines.length > 1 ? tag.y - 4 : tag.y + (primaryFontSize >= 13 ? 5 : 4);
+  const detailY = tag.y + 13;
+  const primary = escapeXml(label.lines[0]);
+  const detail = label.lines[1] ? escapeXml(label.lines[1]) : "";
 
   return `
-    <g class="wire-name-tag" data-drag-kind="wire-label" data-wire-id="${escapeXml(row?.id || "")}" aria-label="Wire name ${escapeXml(rawLabel)}">
-      <title>${escapeXml(rawLabel)}</title>
-      <rect x="${tag.x - tagWidth / 2}" y="${tag.y - 14}" width="${tagWidth}" height="28" rx="14" fill="#f8faf5" fill-opacity="${boxOpacity}" stroke="#d9dfd7" stroke-opacity="${compact ? 0.72 : 0.65}" stroke-width="1.5" />
-      <text x="${tag.x}" y="${tag.y + (fontSize >= 14 ? 5 : 4)}" text-anchor="middle" font-size="${fontSize}"${textLength}>${label}</text>
+    <g class="wire-name-tag" data-drag-kind="wire-label" data-wire-id="${escapeXml(row?.id || "")}" aria-label="Wire label ${escapeXml(label.fullText)}">
+      <title>${escapeXml(label.fullText)}</title>
+      <rect x="${tag.x - label.tagWidth / 2}" y="${tag.y - label.tagHeight / 2}" width="${label.tagWidth}" height="${label.tagHeight}" rx="8" fill="#f8faf5" fill-opacity="${boxOpacity}" stroke="#d9dfd7" stroke-opacity="${label.compact ? 0.76 : 0.7}" stroke-width="1.5" />
+      <text x="${tag.x}" y="${primaryY}" text-anchor="middle" font-size="${primaryFontSize}">${primary}</text>
+      ${detail ? `<text class="wire-name-detail" x="${tag.x}" y="${detailY}" text-anchor="middle" font-size="${detailFontSize}">${detail}</text>` : ""}
+    </g>
+  `;
+}
+
+function renderDrawingToolNote(rows, previewHeight) {
+  const label = drawingToolSummary(rows);
+  if (!label) {
+    return "";
+  }
+
+  const width = clamp(label.length * 7.2 + 26, 120, 360);
+  const x = 982 - width;
+  const y = Math.max(12, previewHeight - 42);
+  return `
+    <g class="tool-note" aria-label="${escapeXml(label)}">
+      <rect x="${x}" y="${y}" width="${width}" height="26" rx="4" />
+      <text x="${x + width - 13}" y="${y + 18}" text-anchor="end">${escapeXml(label)}</text>
     </g>
   `;
 }
@@ -4896,43 +4959,14 @@ function updateLegNames(side, inputValue) {
 function addRow() {
   const current = selectedRow();
   const index = current ? state.rows.findIndex((row) => row.id === current.id) + 1 : state.rows.length;
-  const nextPin = current ? String(Math.min(numberOrDefault(current.leftPin, 0) + 1, 32)) : "1";
-  const row = {
-    id: makeId(),
-    leftLeg: current?.leftLeg || "1",
-    name: current?.name || "",
-    leftPin: nextPin,
-    dnp: false,
-    housing: current?.housing || "A POWER POLE",
-    leftHousingPart: current?.leftHousingPart || "",
-    leftTerminalPart: current?.leftTerminalPart || "",
-    awg: current?.awg || "16",
-    color: current?.color || "RED",
-    length: current?.length || "8",
-    spliceId: "",
-    spliceRole: "",
-    rightLeg: current?.rightLeg || "",
-    rightPin: "",
-    rightDnp: false,
-    rightHousing: current?.rightHousing || "",
-    rightHousingPart: current?.rightHousingPart || "",
-    rightTerminalPart: current?.rightTerminalPart || "",
-    toolUsed: current?.toolUsed || "",
-    comments: "",
-    routeOffsetX: 0,
-    routeOffsetY: 0,
-    routeBendX: null,
-    routeBendY: null,
-    wireLabelOffsetX: 0,
-    wireLabelOffsetY: 0
-  };
+  const row = createBlankRow();
 
   rememberUndo();
   state.rows.splice(index, 0, row);
   state.selectedId = row.id;
   saveState();
   render();
-  showToast("Added a new wire row.");
+  showToast("Added a blank wire row.");
 }
 
 function duplicateRow() {
@@ -5000,32 +5034,7 @@ function clearRow(rowId) {
 
   const rowNumber = state.rows.findIndex((item) => item.id === rowId) + 1;
   rememberUndo();
-  Object.assign(row, {
-    name: "",
-    dnp: true,
-    housing: "",
-    leftHousingPart: "",
-    leftTerminalPart: "",
-    awg: "",
-    color: "",
-    length: "",
-    spliceId: "",
-    spliceRole: "",
-    rightLeg: "",
-    rightPin: "",
-    rightDnp: true,
-    rightHousing: "",
-    rightHousingPart: "",
-    rightTerminalPart: "",
-    toolUsed: "",
-    comments: "",
-    routeOffsetX: 0,
-    routeOffsetY: 0,
-    routeBendX: null,
-    routeBendY: null,
-    wireLabelOffsetX: 0,
-    wireLabelOffsetY: 0
-  });
+  Object.assign(row, blankWireFields());
 
   state.selectedId = state.rows.find(isActiveWireRow)?.id || row.id;
   saveState();
@@ -5034,7 +5043,7 @@ function clearRow(rowId) {
 }
 
 function resetSample() {
-  if (!window.confirm("Reset this harness to the starter layout?")) {
+  if (!window.confirm("Reset this harness to a blank wiring sheet?")) {
     return;
   }
 
@@ -5043,8 +5052,8 @@ function resetSample() {
   const tableColumnWidths = state.tableColumnWidths;
   const previewPaneHeight = state.previewPaneHeight;
   rememberUndo();
-  state = starterState();
-  state.catalog = normalizeCatalog(learnCatalogFromRows(state.rows, previousCatalog).catalog);
+  state = blankState();
+  state.catalog = normalizeCatalog(previousCatalog);
   state.bomAllowance = bomAllowance;
   state.tableColumnWidths = tableColumnWidths;
   state.previewPaneHeight = previewPaneHeight;
@@ -5056,7 +5065,7 @@ function resetSample() {
     dom.activeOnly.checked = false;
   }
   render();
-  showToast("Starter layout restored.");
+  showToast("Blank wiring sheet ready.");
 }
 
 function calculateBom() {
@@ -5971,6 +5980,9 @@ function isUsefulRow(row) {
     row.housing ||
     row.leftHousingPart ||
     row.leftTerminalPart ||
+    row.awg ||
+    row.color ||
+    row.length ||
     row.spliceId ||
     row.spliceRole ||
     row.rightLeg ||
@@ -6374,35 +6386,28 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
   };
 
   const makeWireLabelCell = (row, start, end, index) => {
-    const rawLabel = value(row?.name).trim();
-    if (!rawLabel) {
+    const label = wireDrawingLabel(row, scene.routedWires.length);
+    if (!label) {
       return "";
     }
 
-    const crowd = crowdingFactor(scene.routedWires.length, 8, 8);
-    const compact = crowd > 0.36;
-    const tagWidth = clamp(
-      rawLabel.length * (compact ? 7.2 : 8.5) + (compact ? 28 : 34),
-      compact ? 84 : 92,
-      compact ? 240 : 280
-    );
-    const maxChars = Math.max(8, Math.floor((tagWidth - (compact ? 28 : 34)) / (compact ? 6.9 : 7.5)));
-    const labelText = compact ? shortLabel(rawLabel, maxChars) : rawLabel;
-    const tag = wireNameTagPosition(start, end, index, scene.routeBaseY, scene.previewHeight, tagWidth, scene.routedWires.length, row);
+    const tag = wireNameTagPosition(start, end, index, scene.routeBaseY, scene.previewHeight, label.tagWidth, scene.routedWires.length, row);
     return mxCellXml({
       id: `wire_label_${drawIoSafeId(row.id)}`,
-      value: mxTextValue(labelText),
-      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=${compact ? 56 : 50};strokeColor=#d9dfd7;strokeOpacity=${compact ? 72 : 65};strokeWidth=1.5;fontColor=#101814;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
+      value: mxTextValue(label.lines.join("\n")),
+      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=${label.compact ? 60 : 54};strokeColor=#d9dfd7;strokeOpacity=${label.compact ? 76 : 70};strokeWidth=1.5;fontColor=#101814;fontSize=${label.lines.length > 1 ? 11 : 13};fontStyle=1;align=center;verticalAlign=middle;spacing=3;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
       vertex: 1,
       parent: "1",
       [`data-type`]: "wire-label",
       [`data-row-id`]: row.id || "",
-      [`data-wire-name`]: rawLabel
+      [`data-wire-name`]: value(row?.name).trim(),
+      [`data-awg`]: row.awg || "",
+      [`data-length`]: row.length || ""
     }, mxGeometryXml({
-      x: Math.round(tag.x - tagWidth / 2),
-      y: Math.round(tag.y - 14),
-      width: Math.round(tagWidth),
-      height: 28,
+      x: Math.round(tag.x - label.tagWidth / 2),
+      y: Math.round(tag.y - label.tagHeight / 2),
+      width: Math.round(label.tagWidth),
+      height: Math.round(label.tagHeight),
       as: "geometry"
     }));
   };
@@ -6448,6 +6453,30 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     }, mxGeometryXml({
       x: Math.round(scene.cableNameCenterX - width / 2),
       y: Math.round(scene.cableNameY),
+      width: Math.round(width),
+      height,
+      as: "geometry"
+    }));
+  };
+
+  const makeToolNoteCell = () => {
+    const label = drawingToolSummary(scene.routedWires.map((route) => route.item));
+    if (!label) {
+      return "";
+    }
+
+    const width = clamp(label.length * 7.2 + 26, 120, 360);
+    const height = 26;
+    return mxCellXml({
+      id: "tool_note",
+      value: mxTextValue(label),
+      style: "rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=62;strokeColor=#d9dfd7;strokeOpacity=78;strokeWidth=1.4;fontColor=#101814;fontSize=11;fontStyle=1;align=right;verticalAlign=middle;spacingRight=10;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      vertex: 1,
+      parent: "1",
+      [`data-type`]: "tool-note"
+    }, mxGeometryXml({
+      x: Math.round(pageWidth - width - 18),
+      y: Math.round(pageHeight - height - 16),
       width: Math.round(width),
       height,
       as: "geometry"
@@ -6500,6 +6529,7 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
   });
 
   addCell(makeTitleCell());
+  addCell(makeToolNoteCell());
 
   const diagramName = escapeXml(state.harnessName || "Harness");
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -6543,7 +6573,7 @@ function openDrawIoEditor() {
       postDrawIoMessage({
         action: "load",
         xml,
-        title: state.harnessName || "Untitled Harness"
+        title: state.harnessName || "Harness"
       });
     } else {
       drawIoWindow.focus();
@@ -6585,7 +6615,7 @@ function handleDrawIoMessage(event) {
     postDrawIoMessage({
       action: "load",
       xml,
-      title: state.harnessName || "Untitled Harness"
+      title: state.harnessName || "Harness"
     });
     return;
   }

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.2.69 - 2026-06-10
+
+- Made Reset create a blank wiring sheet instead of restoring the W104 starter harness.
+- Treated Cable Name as the drawing title without inventing a placeholder title when it is blank.
+- Added AWG and length to wire labels in the live preview and draw.io export.
+- Added a single bottom-right tool note to the drawing based on unique Tool used values.
+- Kept imported rows that carry AWG, color, or length even when other identifying cells are sparse.
+
 ## v1.2.68 - 2026-06-09
 
 - Fixed saved blank wire bend data being interpreted as a bend at the canvas origin, which sent routes through the upper-left corner.
