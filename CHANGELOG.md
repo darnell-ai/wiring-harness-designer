@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.73 - 2026-06-10
+
+- Added route-drag shortcuts: `8` removes the active or most recent wire bend, and `7` clears route bends and offset for the straightest automatic path.
+- Kept `9` as the bend-add shortcut so wire routing now has an add, remove, and straighten key set while dragging.
+
 ## v1.2.72 - 2026-06-10
 
 - Opened up the default drawing layout with wider wire lanes, larger connector spacing, a centered cable title, and right-side connectors kept farther out of the wire field.

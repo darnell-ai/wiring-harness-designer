@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.72";
+const APP_VERSION = "1.2.73";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2344,9 +2344,27 @@ function resetWireDrag(event) {
   resetDragForTarget(target);
 }
 
-function addWireBendFromShortcut(event) {
-  const isDigitNine = event.code === "Digit9" || event.code === "Numpad9" || event.key === "9";
-  if (!isDigitNine || event.repeat) {
+function routeShortcutDigit(event) {
+  if (event.repeat) {
+    return "";
+  }
+
+  if (event.code === "Digit9" || event.code === "Numpad9" || event.key === "9") {
+    return "9";
+  }
+  if (event.code === "Digit8" || event.code === "Numpad8" || event.key === "8") {
+    return "8";
+  }
+  if (event.code === "Digit7" || event.code === "Numpad7" || event.key === "7") {
+    return "7";
+  }
+
+  return "";
+}
+
+function handleWireRouteShortcut(event) {
+  const digit = routeShortcutDigit(event);
+  if (!digit) {
     return;
   }
 
@@ -2365,15 +2383,56 @@ function addWireBendFromShortcut(event) {
     return;
   }
 
-  const point = wireDragState.lastPoint || wireDragState.startPoint;
-  if (!point) {
-    return;
-  }
-
   event.preventDefault();
   if (!wireDragState.savedUndo) {
     rememberUndo();
     wireDragState.savedUndo = true;
+  }
+
+  if (digit === "7") {
+    resetWireRouteOffset(row);
+    resetWireRouteBend(row);
+    wireDragState.mode = "route";
+    wireDragState.bendIndex = 0;
+    wireDragState.startPoint = wireDragState.lastPoint || wireDragState.startPoint;
+    wireDragState.startOffsetX = 0;
+    wireDragState.startOffsetY = 0;
+    wireDragState.startBendX = 0;
+    wireDragState.startBendY = 0;
+    saveState();
+    renderPreview();
+    showToast("Cable route straightened.");
+    return;
+  }
+
+  if (digit === "8") {
+    const bends = wireRouteBends(row);
+    if (!bends.length) {
+      showToast("This wire has no bend points to remove.");
+      return;
+    }
+
+    const removeIndex = wireDragState.kind === "wire-bend"
+      ? wireDragState.bendIndex
+      : bends.length - 1;
+    const nextIndex = removeWireRouteBend(row, removeIndex);
+    const nextBend = nextIndex >= 0 ? wireRouteBends(row)[nextIndex] : null;
+    wireDragState.mode = nextBend ? "bend" : "route";
+    wireDragState.bendIndex = Math.max(0, nextIndex);
+    wireDragState.startPoint = wireDragState.lastPoint || wireDragState.startPoint;
+    wireDragState.startOffsetX = numberOrZero(row.routeOffsetX);
+    wireDragState.startOffsetY = numberOrZero(row.routeOffsetY);
+    wireDragState.startBendX = nextBend ? nextBend.x : 0;
+    wireDragState.startBendY = nextBend ? nextBend.y : 0;
+    saveState();
+    renderPreview();
+    showToast("Removed a bend point.");
+    return;
+  }
+
+  const point = wireDragState.lastPoint || wireDragState.startPoint;
+  if (!point) {
+    return;
   }
 
   const bendIndex = addWireRouteBend(row, point.x, point.y);
@@ -3788,14 +3847,19 @@ function addWireRouteBend(row, x, y) {
 
 function removeWireRouteBend(row, index) {
   if (!row) {
-    return;
+    return -1;
   }
 
   const bends = normalizedRouteBends(row);
+  if (!bends.length) {
+    return -1;
+  }
+
   const bendIndex = clamp(Math.round(Number(index) || 0), 0, Math.max(0, bends.length - 1));
   bends.splice(bendIndex, 1);
   row.routeBends = bends;
   syncLegacyWireRouteBend(row);
+  return Math.min(bendIndex, bends.length - 1);
 }
 
 function resetWireRouteBend(row) {
@@ -7007,7 +7071,7 @@ dom.importText.addEventListener("input", () => {
 });
 dom.wirePreview.addEventListener("pointerdown", startWireDrag);
 dom.wirePreview.addEventListener("dblclick", resetWireDrag);
-document.addEventListener("keydown", addWireBendFromShortcut);
+document.addEventListener("keydown", handleWireRouteShortcut);
 drawIoMessageHandler = handleDrawIoMessage;
 window.addEventListener("message", drawIoMessageHandler);
 
