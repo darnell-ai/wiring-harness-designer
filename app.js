@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.75";
+const APP_VERSION = "1.2.77";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -15,9 +15,10 @@ const MAX_WIRE_ROUTE_BENDS = 10;
 const MIN_COLUMN_WIDTH = 42;
 const MAX_COLUMN_WIDTH = 620;
 const UNDO_LIMIT = 50;
-const MIN_PREVIEW_PANE_HEIGHT = 220;
-const MIN_EDITOR_PANE_HEIGHT = 260;
-const LAYOUT_SPLITTER_HEIGHT = 16;
+const MIN_PREVIEW_PANE_WIDTH = 420;
+const MIN_EDITOR_PANE_WIDTH = 420;
+const WORKSPACE_HORIZONTAL_PADDING = 36;
+const LAYOUT_SPLITTER_WIDTH = 16;
 const SELECTED_START_COLOR = "#d6e8fb";
 const SELECTED_END_COLOR = "#f6bd75";
 
@@ -403,7 +404,10 @@ const DEFAULT_COLUMN_WIDTHS = [
 const dom = {
   appShell: document.querySelector(".app-shell"),
   topbar: document.querySelector(".topbar"),
+  editorShell: document.querySelector(".editor-shell"),
   layoutSplitter: document.querySelector("#layoutSplitter"),
+  toggleTableButton: document.querySelector("#toggleTableButton"),
+  toggleTableLabel: document.querySelector("#toggleTableLabel"),
   selectedTitle: document.querySelector("#selectedTitle"),
   summaryStatus: document.querySelector("#summaryStatus"),
   summaryGauge: document.querySelector("#summaryGauge"),
@@ -526,15 +530,35 @@ function catalogEntry(name, category, family, positions, details = {}) {
   };
 }
 
+function isMotorEscHousingText(input) {
+  const text = cleanCell(input).toUpperCase();
+  if (!text) {
+    return false;
+  }
+  return /\b(?:VESC|FSESC|ESC)\b/.test(text)
+    || text.includes("MOTOR CONTROLLER")
+    || text.includes("SPEED CONTROLLER");
+}
+
+function isResistorHousingText(input) {
+  const text = cleanCell(input).toUpperCase();
+  return /\b(?:RESISTOR|RESISTANCE|SHUNT)\b/.test(text);
+}
+
 function defaultCatalog() {
   return [
     catalogEntry("A POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("B POWER POLE", "Connector", "powerpole", 16, { manufacturer: "Anderson Power Products", terminalType: "Powerpole crimp contact" }),
     catalogEntry("PCB", "Board", "pcb", 32, { terminalType: "PCB connection" }),
-    catalogEntry("VESC", "Board", "pcb", 12, {
+    catalogEntry("VESC", "Motor ESC", "pcb", 12, {
       manufacturer: "VESC",
       terminalType: "Motor controller terminal",
       notes: "Generic VESC-style electronic speed controller board for battery, phase, sensor, and control wiring."
+    }),
+    catalogEntry("MOTOR ESC", "Motor ESC", "pcb", 12, {
+      manufacturer: "Generic",
+      terminalType: "Motor controller terminal",
+      notes: "Generic motor electronic speed controller. Drawn as a VESC-style controller with battery +/-, three motor phase terminals, signal pads, capacitors, MOSFETs, and heatsink details."
     }),
     catalogEntry("RJ45 PLUG", "Connector", "rj45", 8, {
       manufacturer: "Generic",
@@ -599,6 +623,7 @@ function defaultCatalog() {
     catalogEntry("MOLEX MINI-FIT", "Connector", "minifit", 20, { manufacturer: "Molex", terminalType: "Mini-Fit Jr crimp terminal", notes: "Mini-Fit Jr dual-row family; the preview scales with circuit count.", imageUrl: MINI_FIT_PINOUT_IMAGE }),
     catalogEntry("BARREL CONNECTION", "Connector", "barrel", 2, { terminalType: "Barrel connector lead", notes: "DC barrel plug or jack pigtail connection" }),
     catalogEntry("RING TERMINAL", "Terminal", "ring", 1, { terminalType: "Ring terminal" }),
+    catalogEntry("RESISTOR", "Component", "resistor", 2, { manufacturer: "Generic", notes: "Two-terminal resistor component. Use on a branch row for shunt, pull-up, pull-down, precharge, or other parallel branch loads." }),
     catalogEntry("SPLICE", "Splice", "splice", 1, { terminalType: "Window splice" })
   ];
 }
@@ -699,7 +724,7 @@ function learnCatalogFromRows(rows, catalog) {
   statsByName.forEach((stats, name) => {
     const family = inferCatalogFamily(name);
     const gender = inferCatalogGender(name, family);
-    const category = inferCatalogCategory(family);
+    const category = inferCatalogCategory(family, name);
     const positions = inferCatalogPositions(name, family, stats.maxPin);
     const manufacturer = inferCatalogManufacturer(family);
     const terminalType = inferCatalogTerminalType(name, family, gender);
@@ -823,7 +848,7 @@ function inferCatalogFamily(housing) {
   if (text.includes("POWER POLE")) {
     return "powerpole";
   }
-  if (text === "PCB" || text.includes("VESC")) {
+  if (isMotorEscHousingText(text) || text === "PCB") {
     return "pcb";
   }
   if (text.includes("RJ45") || text.includes("8P8C")) {
@@ -838,10 +863,19 @@ function inferCatalogFamily(housing) {
   if (text === "SPLICE") {
     return "splice";
   }
+  if (isResistorHousingText(text)) {
+    return "resistor";
+  }
   return "generic";
 }
 
-function inferCatalogCategory(family) {
+function inferCatalogCategory(family, housing = "") {
+  if (family === "resistor") {
+    return "Component";
+  }
+  if (family === "pcb" && isMotorEscHousingText(housing)) {
+    return "Motor ESC";
+  }
   if (family === "pcb") {
     return "Board";
   }
@@ -868,6 +902,9 @@ function inferCatalogManufacturer(family) {
     return "Molex";
   }
   if (family === "rj45" || family === "dupont") {
+    return "Generic";
+  }
+  if (family === "resistor") {
     return "Generic";
   }
   return "";
@@ -916,8 +953,14 @@ function inferCatalogPositions(housing, family, pinsFromRows = 0) {
   if (family === "ring") {
     return 1;
   }
+  if (family === "resistor") {
+    return 2;
+  }
   if (family === "splice") {
     return 1;
+  }
+  if (family === "pcb" && isMotorEscHousingText(text)) {
+    return Math.max(12, explicit || pinsFromRows || 12);
   }
   if (family === "minifit") {
     return 20;
@@ -957,18 +1000,33 @@ function inferCatalogTerminalType(housing, family, gender) {
   if (family === "ring") {
     return "Ring terminal";
   }
+  if (family === "resistor") {
+    return "";
+  }
   if (family === "splice") {
     return "Window splice";
   }
   if (family === "pcb") {
-    return "PCB connection";
+    return isMotorEscHousingText(text) ? "Motor controller terminal" : "PCB connection";
   }
   return "";
 }
 
 function canonicalHousingName(input) {
   const text = cleanCell(input).toUpperCase();
-  if (!text || text.includes("MINI-FIT")) {
+  if (!text) {
+    return "";
+  }
+
+  if (isResistorHousingText(text)) {
+    return "RESISTOR";
+  }
+
+  if (isMotorEscHousingText(text)) {
+    return text.includes("VESC") ? "VESC" : "MOTOR ESC";
+  }
+
+  if (text.includes("MINI-FIT")) {
     return "";
   }
 
@@ -1018,11 +1076,13 @@ function mergeDefaultCatalogDetails(entry, defaultEntry) {
 
   const defaultPositionUpdate = entry.name === "BARREL CONNECTION" && defaultEntry.positions === 2;
   const miniFitUpdate = entry.name === "MOLEX MINI-FIT";
+  const motorEscUpdate = entry.name === "VESC" || entry.name === "MOTOR ESC";
+  const resistorUpdate = entry.name === "RESISTOR";
   return {
     ...entry,
-    category: entry.category || defaultEntry.category,
+    category: motorEscUpdate || resistorUpdate ? defaultEntry.category : entry.category || defaultEntry.category,
     family: miniFitUpdate ? defaultEntry.family : entry.family || defaultEntry.family,
-    positions: defaultPositionUpdate || miniFitUpdate ? defaultEntry.positions : entry.positions || defaultEntry.positions,
+    positions: defaultPositionUpdate || miniFitUpdate || resistorUpdate ? defaultEntry.positions : entry.positions || defaultEntry.positions,
     manufacturer: entry.manufacturer || defaultEntry.manufacturer,
     partNumber: entry.partNumber || defaultEntry.partNumber,
     gender: entry.gender || defaultEntry.gender,
@@ -1030,7 +1090,7 @@ function mergeDefaultCatalogDetails(entry, defaultEntry) {
     terminalPart: entry.terminalPart || defaultEntry.terminalPart,
     sealPart: entry.sealPart || defaultEntry.sealPart,
     imageUrl: miniFitUpdate ? defaultEntry.imageUrl : entry.imageUrl || defaultEntry.imageUrl,
-    notes: miniFitUpdate ? defaultEntry.notes : entry.notes || defaultEntry.notes
+    notes: miniFitUpdate || motorEscUpdate || resistorUpdate ? defaultEntry.notes : entry.notes || defaultEntry.notes
   };
 }
 
@@ -1130,7 +1190,8 @@ function blankState(rowCount = BLANK_ROW_COUNT) {
     catalog: defaultCatalog(),
     bomAllowance: 10,
     tableColumnWidths: [...DEFAULT_COLUMN_WIDTHS],
-    previewPaneHeight: defaultPreviewPaneHeight(),
+    previewPaneWidth: defaultPreviewPaneWidth(),
+    tableHidden: false,
     previewLayout: defaultPreviewLayout(),
     drawioXml: "",
     legNames: { left: {}, right: {} }
@@ -1203,7 +1264,10 @@ function normalizeState(incoming) {
     catalog: normalizeCatalog(learnedCatalog.catalog),
     bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
     tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
-    previewPaneHeight: normalizePreviewPaneHeight(incoming.previewPaneHeight),
+    previewPaneWidth: normalizePreviewPaneWidth(
+      incoming.previewPaneWidth ?? incoming.previewPaneHeight
+    ),
+    tableHidden: Boolean(incoming.tableHidden),
     previewLayout: normalizePreviewLayout(incoming.previewLayout),
     drawioXml: value(incoming.drawioXml || incoming.drawIoXml),
     legNames: normalizeLegNames(incoming.legNames)
@@ -1330,23 +1394,22 @@ function legDisplay(side, leg) {
   return name ? `Leg ${key} (${name})` : `Leg ${key}`;
 }
 
-function defaultPreviewPaneHeight() {
-  const viewportHeight = window.innerHeight || 900;
-  return normalizePreviewPaneHeight(Math.round(viewportHeight * 0.46));
+function defaultPreviewPaneWidth() {
+  const viewportWidth = window.innerWidth || 1440;
+  return normalizePreviewPaneWidth(Math.round(viewportWidth * 0.58));
 }
 
-function previewPaneMaxHeight() {
-  const viewportHeight = window.innerHeight || 900;
-  const topbarHeight = dom.topbar?.getBoundingClientRect().height || 96;
-  const reserved = topbarHeight + LAYOUT_SPLITTER_HEIGHT + MIN_EDITOR_PANE_HEIGHT + 18;
-  return Math.max(MIN_PREVIEW_PANE_HEIGHT, Math.floor(viewportHeight - reserved));
+function previewPaneMaxWidth() {
+  const viewportWidth = window.innerWidth || 1440;
+  const reserved = WORKSPACE_HORIZONTAL_PADDING + LAYOUT_SPLITTER_WIDTH + MIN_EDITOR_PANE_WIDTH;
+  return Math.max(MIN_PREVIEW_PANE_WIDTH, Math.floor(viewportWidth - reserved));
 }
 
-function normalizePreviewPaneHeight(height) {
-  const parsed = Number(height);
-  const fallback = Math.round((window.innerHeight || 900) * 0.46);
-  const nextHeight = Number.isFinite(parsed) ? parsed : fallback;
-  return clamp(Math.round(nextHeight), MIN_PREVIEW_PANE_HEIGHT, previewPaneMaxHeight());
+function normalizePreviewPaneWidth(width) {
+  const parsed = Number(width);
+  const fallback = Math.round((window.innerWidth || 1440) * 0.58);
+  const nextWidth = Number.isFinite(parsed) ? parsed : fallback;
+  return clamp(Math.round(nextWidth), MIN_PREVIEW_PANE_WIDTH, previewPaneMaxWidth());
 }
 
 function normalizeColumnWidths(widths) {
@@ -1596,7 +1659,7 @@ function activeRows() {
 }
 
 function render() {
-  applyPreviewPaneHeight();
+  applyWorkspaceLayout();
   applyColumnWidths();
   renderSummary();
   renderPreview();
@@ -1614,18 +1677,42 @@ function render() {
   }
 }
 
-function applyPreviewPaneHeight() {
-  if (!dom.appShell || !dom.layoutSplitter) {
+function applyWorkspaceLayout() {
+  if (!dom.appShell) {
     return;
   }
 
-  const height = normalizePreviewPaneHeight(state.previewPaneHeight);
-  state.previewPaneHeight = height;
-  dom.appShell.style.setProperty("--preview-pane-height", `${height}px`);
-  dom.layoutSplitter.setAttribute("aria-valuemin", String(MIN_PREVIEW_PANE_HEIGHT));
-  dom.layoutSplitter.setAttribute("aria-valuemax", String(previewPaneMaxHeight()));
-  dom.layoutSplitter.setAttribute("aria-valuenow", String(height));
-  dom.layoutSplitter.setAttribute("aria-valuetext", `Preview height ${height} pixels`);
+  const tableHidden = Boolean(state.tableHidden);
+  dom.appShell.classList.toggle("table-hidden", tableHidden);
+  if (dom.editorShell) {
+    dom.editorShell.hidden = tableHidden;
+  }
+  if (dom.layoutSplitter) {
+    dom.layoutSplitter.hidden = tableHidden;
+  }
+
+  if (dom.toggleTableButton) {
+    dom.toggleTableButton.setAttribute("aria-pressed", tableHidden ? "true" : "false");
+    dom.toggleTableButton.title = tableHidden ? "Show the editable table" : "Hide the editable table";
+  }
+  if (dom.toggleTableLabel) {
+    dom.toggleTableLabel.textContent = tableHidden ? "Show table" : "Hide table";
+  }
+
+  if (tableHidden) {
+    dom.appShell.style.removeProperty("--preview-pane-width");
+    return;
+  }
+
+  const width = normalizePreviewPaneWidth(state.previewPaneWidth);
+  state.previewPaneWidth = width;
+  dom.appShell.style.setProperty("--preview-pane-width", `${width}px`);
+  if (dom.layoutSplitter) {
+    dom.layoutSplitter.setAttribute("aria-valuemin", String(MIN_PREVIEW_PANE_WIDTH));
+    dom.layoutSplitter.setAttribute("aria-valuemax", String(previewPaneMaxWidth()));
+    dom.layoutSplitter.setAttribute("aria-valuenow", String(width));
+    dom.layoutSplitter.setAttribute("aria-valuetext", `Preview width ${width} pixels`);
+  }
 }
 
 function setupLayoutSplitter() {
@@ -1636,11 +1723,10 @@ function setupLayoutSplitter() {
   dom.layoutSplitter.addEventListener("pointerdown", startLayoutResize);
   dom.layoutSplitter.addEventListener("keydown", handleLayoutSplitterKeydown);
   window.addEventListener("resize", () => {
-    const previousHeight = state.previewPaneHeight;
-    applyPreviewPaneHeight();
-    if (state.previewPaneHeight !== previousHeight) {
+    const previousWidth = state.previewPaneWidth;
+    applyWorkspaceLayout();
+    if (!state.tableHidden && state.previewPaneWidth !== previousWidth) {
       saveState();
-      renderPreview();
     }
   });
 }
@@ -1652,15 +1738,19 @@ function startLayoutResize(event) {
 
   event.preventDefault();
   event.stopPropagation();
-  const startY = event.clientY;
-  const startHeight = normalizePreviewPaneHeight(state.previewPaneHeight);
+  if (state.tableHidden) {
+    return;
+  }
+
+  const startX = event.clientX;
+  const startWidth = normalizePreviewPaneWidth(state.previewPaneWidth);
   dom.layoutSplitter.setPointerCapture?.(event.pointerId);
   document.body.classList.add("is-resizing-layout");
   rememberUndo();
 
   const resize = (moveEvent) => {
-    state.previewPaneHeight = normalizePreviewPaneHeight(startHeight + moveEvent.clientY - startY);
-    applyPreviewPaneHeight();
+    state.previewPaneWidth = normalizePreviewPaneWidth(startWidth + moveEvent.clientX - startX);
+    applyWorkspaceLayout();
   };
 
   const stop = () => {
@@ -1669,7 +1759,6 @@ function startLayoutResize(event) {
     document.removeEventListener("pointercancel", stop);
     document.body.classList.remove("is-resizing-layout");
     saveState();
-    renderPreview();
   };
 
   document.addEventListener("pointermove", resize);
@@ -1679,25 +1768,31 @@ function startLayoutResize(event) {
 
 function handleLayoutSplitterKeydown(event) {
   const step = event.shiftKey ? 50 : 20;
-  let nextHeight = state.previewPaneHeight;
-  if (event.key === "ArrowUp") {
-    nextHeight -= step;
-  } else if (event.key === "ArrowDown") {
-    nextHeight += step;
+  let nextWidth = state.previewPaneWidth;
+  if (event.key === "ArrowLeft") {
+    nextWidth -= step;
+  } else if (event.key === "ArrowRight") {
+    nextWidth += step;
   } else if (event.key === "Home") {
-    nextHeight = MIN_PREVIEW_PANE_HEIGHT;
+    nextWidth = MIN_PREVIEW_PANE_WIDTH;
   } else if (event.key === "End") {
-    nextHeight = previewPaneMaxHeight();
+    nextWidth = previewPaneMaxWidth();
   } else {
     return;
   }
 
   event.preventDefault();
   rememberUndo();
-  state.previewPaneHeight = normalizePreviewPaneHeight(nextHeight);
-  applyPreviewPaneHeight();
+  state.previewPaneWidth = normalizePreviewPaneWidth(nextWidth);
+  applyWorkspaceLayout();
   saveState();
-  renderPreview();
+}
+
+function toggleTableVisibility() {
+  rememberUndo();
+  state.tableHidden = !state.tableHidden;
+  applyWorkspaceLayout();
+  saveState();
 }
 
 function applyColumnWidths() {
@@ -3101,7 +3196,7 @@ function housingFamily(housing) {
   if (text.includes("POWER POLE")) {
     return "powerpole";
   }
-  if (text === "PCB") {
+  if (isMotorEscHousingText(text) || text === "PCB") {
     return "pcb";
   }
   if (text.includes("RJ45") || text.includes("8P8C")) {
@@ -3115,6 +3210,9 @@ function housingFamily(housing) {
   }
   if (text === "SPLICE") {
     return "splice";
+  }
+  if (isResistorHousingText(text)) {
+    return "resistor";
   }
   return "generic";
 }
@@ -3196,6 +3294,9 @@ function connectorDimensions(family, pinCount, positionCount, rowMode = "") {
   }
   if (family === "splice") {
     return { width: 164, height: 88 };
+  }
+  if (family === "resistor") {
+    return { width: 150, height: 72 };
   }
   if (family === "molex") {
     const count = Math.max(1, Math.min(20, pinCount || 1));
@@ -3387,6 +3488,14 @@ function barrelTerminalPoint(connector, pin, side) {
   const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
   const barrel = barrelGeometry(connector);
   return safePin === 1 ? barrel.positive : barrel.negative;
+}
+
+function resistorTerminalPoint(connector, pin) {
+  const safePin = Math.max(1, Math.min(2, numberOrDefault(pin, 1)));
+  return {
+    x: safePin === 1 ? connector.x + 30 : connector.x + connector.width - 30,
+    y: connector.y + connector.height - 14
+  };
 }
 
 function barrelGeometry(connector) {
@@ -3581,7 +3690,7 @@ function renderConnectorBody(connector) {
   }
 
   if (family === "pcb") {
-    if (value(connector.housing).toUpperCase().includes("VESC")) {
+    if (isMotorEscHousingText(connector.housing)) {
       return renderVescBoard(connector);
     }
 
@@ -3596,6 +3705,10 @@ function renderConnectorBody(connector) {
 
   if (family === "powerpole") {
     return connector.positionData.map((item) => renderPowerpoleModule(connector, item)).join("");
+  }
+
+  if (family === "resistor") {
+    return renderResistorBody(connector);
   }
 
   if (family === "ring") {
@@ -3648,13 +3761,14 @@ function renderConnectorBody(connector) {
 function renderVescBoard(connector) {
   const { x, y, width, height } = connector;
   const centerX = x + width / 2;
+  const title = value(connector.housing).toUpperCase().includes("VESC") ? "VESC" : "ESC";
   const innerX = x + 11;
   const innerY = y + 11;
   const innerWidth = width - 22;
   const innerHeight = height - 22;
   const phaseY = y + height - 31;
   const phaseXs = [centerX - 38, centerX, centerX + 38];
-  const mosfetY = y + 38;
+  const mosfetY = y + 112;
   const mosfets = Array.from({ length: 6 }, (_, index) => {
     const col = index % 3;
     const row = Math.floor(index / 3);
@@ -3670,25 +3784,64 @@ function renderVescBoard(connector) {
     const padX = x + 21 + index * Math.max(12, (width - 42) / 5);
     return `<circle cx="${padX}" cy="${y + 24}" r="3.4" fill="#d7aa42" stroke="#f5e4a7" stroke-width="1.2" />`;
   }).join("");
+  const caps = [centerX - 32, centerX, centerX + 32].map((capX) => `
+    <g>
+      <ellipse cx="${capX}" cy="${y + 42}" rx="10" ry="4" fill="#6f7e1d" stroke="#d6df6b" stroke-width="1.3" />
+      <rect x="${capX - 10}" y="${y + 42}" width="20" height="28" rx="4" fill="#9ca528" stroke="#dce37c" stroke-width="1.2" />
+      <ellipse cx="${capX}" cy="${y + 70}" rx="10" ry="4" fill="#6f7e1d" stroke="#d6df6b" stroke-width="1.3" />
+    </g>
+  `).join("");
+  const heatFins = Array.from({ length: 5 }, (_, index) => {
+    const finY = y + 24 + index * 6;
+    return `<line x1="${x + 18}" y1="${finY}" x2="${x + width - 18}" y2="${finY}" stroke="#54615a" stroke-width="2" opacity="0.48" />`;
+  }).join("");
 
   return `
-    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="9" fill="#153f32" stroke="#7bc9a2" stroke-width="3" />
-    <rect x="${innerX}" y="${innerY}" width="${innerWidth}" height="${innerHeight}" rx="5" fill="#123226" stroke="#082117" stroke-width="2.2" />
-    <text x="${centerX}" y="${y + 22}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="900" fill="#f3f7ef" paint-order="stroke fill" stroke="#07110d" stroke-width="2">VESC</text>
+    <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="9" fill="#2b1745" stroke="#a878d5" stroke-width="3" />
+    <rect x="${innerX}" y="${innerY}" width="${innerWidth}" height="${innerHeight}" rx="5" fill="#1b2530" stroke="#0a1017" stroke-width="2.2" />
+    ${heatFins}
+    <text x="${centerX}" y="${y + 22}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="900" fill="#f3f7ef" paint-order="stroke fill" stroke="#07110d" stroke-width="2">${title}</text>
+    ${caps}
     <rect x="${x + 18}" y="${y + height - 48}" width="${width - 36}" height="30" rx="5" fill="#101713" stroke="#617268" stroke-width="1.7" />
     ${phaseXs.map((phaseX, index) => `
       <circle cx="${phaseX}" cy="${phaseY}" r="8.5" fill="#c9a24a" stroke="#f6e1a0" stroke-width="2" />
       <text x="${phaseX}" y="${phaseY + 4}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#18211d">${["U", "V", "W"][index]}</text>
     `).join("")}
-    <rect x="${x + 21}" y="${y + 42}" width="28" height="38" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
-    <rect x="${x + width - 49}" y="${y + 42}" width="28" height="38" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
-    <text x="${x + 35}" y="${y + 64}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B+</text>
-    <text x="${x + width - 35}" y="${y + 64}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B-</text>
+    <rect x="${x + 18}" y="${y + 76}" width="26" height="24" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
+    <rect x="${x + width - 44}" y="${y + 76}" width="26" height="24" rx="4" fill="#2b2f2b" stroke="#d7d4c4" stroke-width="1.5" />
+    <text x="${x + 31}" y="${y + 91}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B+</text>
+    <text x="${x + width - 31}" y="${y + 91}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="9" font-weight="900" fill="#f5f4eb">B-</text>
     ${mosfets}
     ${signalPads}
     <path d="M ${x + 24} ${phaseY - 18} H ${phaseXs[0]} V ${phaseY - 9} M ${centerX} ${y + 84} V ${phaseY - 9} M ${x + width - 24} ${phaseY - 18} H ${phaseXs[2]} V ${phaseY - 9}" fill="none" stroke="#d7aa42" stroke-width="2.2" opacity="0.82" />
     <circle cx="${x + 22}" cy="${y + height - 20}" r="4" fill="#0b1510" stroke="#d9e3dc" stroke-width="1.5" />
     <circle cx="${x + width - 22}" cy="${y + height - 20}" r="4" fill="#0b1510" stroke="#d9e3dc" stroke-width="1.5" />
+  `;
+}
+
+function renderResistorBody(connector) {
+  const { x, y, width, height } = connector;
+  const centerY = y + height / 2;
+  const leadY = y + height - 14;
+  const bodyX = x + 42;
+  const bodyWidth = width - 84;
+  const zigzagStart = bodyX + 7;
+  const zigzagEnd = bodyX + bodyWidth - 7;
+  const step = (zigzagEnd - zigzagStart) / 6;
+  const zigzag = Array.from({ length: 7 }, (_, index) => {
+    const px = zigzagStart + index * step;
+    const py = centerY + (index % 2 === 0 ? -10 : 10);
+    return `${index === 0 ? "M" : "L"} ${px} ${py}`;
+  }).join(" ");
+
+  return `
+    <line x1="${x + 18}" y1="${leadY}" x2="${bodyX}" y2="${centerY}" stroke="#cfd6d0" stroke-width="5" stroke-linecap="round" />
+    <line x1="${x + width - 18}" y1="${leadY}" x2="${bodyX + bodyWidth}" y2="${centerY}" stroke="#cfd6d0" stroke-width="5" stroke-linecap="round" />
+    <rect x="${bodyX}" y="${centerY - 18}" width="${bodyWidth}" height="36" rx="8" fill="#d7c58d" stroke="#7f7050" stroke-width="2.4" />
+    <path d="${zigzag}" fill="none" stroke="#2d2518" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+    <text x="${x + width / 2}" y="${y + 18}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" font-weight="900" fill="#1d261f" paint-order="stroke fill" stroke="#eef0ed" stroke-width="2">RESISTOR</text>
+    <circle cx="${x + 30}" cy="${leadY}" r="5" fill="#f5f7f2" stroke="#6f7b73" stroke-width="2" />
+    <circle cx="${x + width - 30}" cy="${leadY}" r="5" fill="#f5f7f2" stroke="#6f7b73" stroke-width="2" />
   `;
 }
 
@@ -3761,6 +3914,8 @@ function renderConnectorPin(connector, point, port, pin, isSelected, isUsed, sid
     contact = isPositive
       ? `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#f6fbf4" stroke="#d93a36" stroke-width="2.5" />`
       : `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#101613" stroke="#f6fbf4" stroke-width="2.5" />`;
+  } else if (connector.family === "resistor") {
+    contact = `<circle cx="${point.x}" cy="${point.y}" r="5.5" fill="${isUsed ? "#f8faf5" : "#d9dfd7"}" stroke="${isUsed ? "#7f7050" : "#8d9890"}" stroke-width="2.2" />`;
   } else {
     const fill = isUsed ? "#d8efe2" : "#f6fbf4";
     const stroke = isUsed ? "#41b883" : "#9fac9f";
@@ -4018,6 +4173,10 @@ function connectorContactPoint(connector, pin, side) {
     return barrelTerminalPoint(connector, safePin, side);
   }
 
+  if (connector.family === "resistor") {
+    return resistorTerminalPoint(connector, safePin);
+  }
+
   const y = pinCount === 1
     ? connector.y + connector.height / 2
     : connector.y + 18 + (safePin - 1) * ((connector.height - 36) / (pinCount - 1));
@@ -4036,10 +4195,10 @@ function pinPoint(connector, pin, side) {
   const lane = connector.family === "cpc"
     ? safePin - 1
     : usedIndex >= 0 ? usedIndex : Math.max(0, safePin - 1);
-  if (connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit") {
+  if (connector.family === "barrel" || connector.family === "pcb" || connector.family === "dupont" || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit" || connector.family === "resistor") {
     return {
       x: contact.x,
-      y: ["pcb", "dupont"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit" ? connector.y + connector.height + 6 : contact.y,
+      y: ["pcb", "dupont", "resistor"].includes(connector.family) || connector.family === "rj45" || connector.family === "cpc" || connector.family === "minifit" ? connector.y + connector.height + 6 : contact.y,
       exit: "bottom",
       lane,
       side,
@@ -5066,6 +5225,11 @@ function validateHarness() {
     });
   };
 
+  const firstActiveRow = active[0];
+  if (firstActiveRow && !cleanCell(firstActiveRow.cableName)) {
+    add(firstActiveRow, "warning", "missing-cable-name", "Enter the cable name on the first active row; later rows may stay blank.");
+  }
+
   active.forEach((row) => {
     const role = normalizedSpliceRole(row);
     const spliceId = normalizedSpliceId(row);
@@ -5776,13 +5940,15 @@ function resetSample() {
   const previousCatalog = state.catalog;
   const bomAllowance = state.bomAllowance;
   const tableColumnWidths = state.tableColumnWidths;
-  const previewPaneHeight = state.previewPaneHeight;
+  const previewPaneWidth = state.previewPaneWidth;
+  const tableHidden = state.tableHidden;
   rememberUndo();
   state = blankState();
   state.catalog = normalizeCatalog(previousCatalog);
   state.bomAllowance = bomAllowance;
   state.tableColumnWidths = tableColumnWidths;
-  state.previewPaneHeight = previewPaneHeight;
+  state.previewPaneWidth = previewPaneWidth;
+  state.tableHidden = tableHidden;
   saveState();
   if (dom.searchRows) {
     dom.searchRows.value = "";
@@ -5853,16 +6019,21 @@ function calculateBom() {
         return;
       }
 
-      const perEndpointHousing = ["powerpole", "ring"].includes(item.family) || item.category === "Terminal";
+      const perEndpointHousing = ["powerpole", "ring", "resistor"].includes(item.family) || item.category === "Terminal" || item.category === "Component";
       const housingKey = perEndpointHousing
         ? `${side}|${leg}|${pin}|${item.name}`
         : `${side}|${leg}|${item.name}`;
       if (!housingInstances.has(housingKey)) {
         housingInstances.add(housingKey);
-        addComponent(item.category === "Terminal" ? "Terminal" : "Housing", item.name, item.manufacturer, housingPart || item.partNumber, 1);
+        const componentType = item.category === "Terminal"
+          ? "Terminal"
+          : item.category === "Component" || item.category === "Motor ESC"
+            ? item.category
+            : "Housing";
+        addComponent(componentType, item.name, item.manufacturer, housingPart || item.partNumber, 1);
       }
 
-      if (item.category !== "Terminal" && item.terminalType) {
+      if (!["Terminal", "Component"].includes(item.category) && item.terminalType) {
         addComponent("Terminal", item.terminalType, item.manufacturer, terminalPart || item.terminalPart, 1);
       }
       if (item.sealPart) {
@@ -6042,7 +6213,8 @@ function applyImportedRows(options = {}) {
     catalog: state.catalog,
     bomAllowance: state.bomAllowance,
     tableColumnWidths: state.tableColumnWidths,
-    previewPaneHeight: state.previewPaneHeight,
+    previewPaneWidth: state.previewPaneWidth,
+    tableHidden: state.tableHidden,
     legNames: hasImportLegNames ? importLegNames : state.legNames
   });
   saveState();
@@ -7525,6 +7697,7 @@ dom.addRow.addEventListener("click", addRow);
 dom.duplicateRow.addEventListener("click", duplicateRow);
 dom.deleteRow.addEventListener("click", deleteSelectedRow);
 dom.resetSample.addEventListener("click", resetSample);
+dom.toggleTableButton.addEventListener("click", toggleTableVisibility);
 dom.qualityButton.addEventListener("click", () => {
   renderQualityDialog();
   dom.qualityDialog.showModal();

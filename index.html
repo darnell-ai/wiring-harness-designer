@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.75</title>
+    <title>Wiring Harness Designer v1.2.77</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.75</span>
+              <span class="version-badge">v1.2.77</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -47,6 +47,10 @@
           <button id="resetSample" type="button" title="Reset to a blank wiring sheet">
             <span class="tool-icon">R</span>
             <span>Reset</span>
+          </button>
+          <button id="toggleTableButton" type="button" title="Hide the editable table">
+            <span class="tool-icon">TBL</span>
+            <span id="toggleTableLabel">Hide table</span>
           </button>
           <button id="qualityButton" class="quality-button" type="button" title="Review electrical checks">
             <span class="tool-icon">CHK</span>
@@ -93,81 +97,82 @@
         </div>
       </header>
 
-      <section class="preview-shell" aria-label="Harness preview">
-        <div class="diagram-panel">
-          <div class="diagram-topline">
+      <main class="workspace-shell" aria-label="Harness workspace">
+        <section class="preview-shell" aria-label="Harness preview">
+          <div class="diagram-panel">
+            <div class="diagram-topline">
+              <div>
+                <span class="section-label">Live harness preview</span>
+                <strong id="printHarnessTitle" class="print-harness-title"></strong>
+                <strong id="previewName">CPC 1 POWER</strong>
+              </div>
+              <div class="metric-row">
+                <span><strong id="activeCount">0</strong> active</span>
+                <span><strong id="dnpCount">0</strong> DNP</span>
+                <span><strong id="totalLength">0</strong> total inches</span>
+              </div>
+            </div>
+            <div class="svg-wrap">
+              <svg id="wirePreview" viewBox="0 0 1000 360" role="img" aria-label="Current wiring harness preview"></svg>
+            </div>
+          </div>
+        </section>
+
+        <div
+          id="layoutSplitter"
+          class="layout-splitter"
+          role="separator"
+          aria-label="Resize preview and editable table"
+          aria-orientation="vertical"
+          aria-valuemin="420"
+          aria-valuemax="1200"
+          aria-valuenow="760"
+          tabindex="0"
+          title="Drag to resize the preview and table panes"
+        ></div>
+
+        <section class="editor-shell" aria-label="Editable harness table">
+          <div class="editor-bar">
             <div>
-              <span class="section-label">Live harness preview</span>
-              <strong id="printHarnessTitle" class="print-harness-title"></strong>
-              <strong id="previewName">CPC 1 POWER</strong>
-            </div>
-            <div class="metric-row">
-              <span><strong id="activeCount">0</strong> active</span>
-              <span><strong id="dnpCount">0</strong> DNP</span>
-              <span><strong id="totalLength">0</strong> total inches</span>
+              <span class="section-label">Editable table</span>
+              <strong>Excel-style wiring rows</strong>
             </div>
           </div>
-          <div class="svg-wrap">
-            <svg id="wirePreview" viewBox="0 0 1000 360" role="img" aria-label="Current wiring harness preview"></svg>
+
+          <div class="table-wrap">
+            <table id="harnessTable" class="harness-table">
+              <colgroup id="tableColumnGroup"></colgroup>
+              <thead>
+                <tr>
+                  <th class="row-number" title="Click a row number to clear that row">#</th>
+                  <th>Cable Name</th>
+                  <th>Left Leg</th>
+                  <th>Left Leg Name</th>
+                  <th>Wire Name</th>
+                  <th>Pin Pos #</th>
+                  <th>Housing Type</th>
+                  <th>Housing Part #</th>
+                  <th>Pin P#</th>
+                  <th>AWGuage</th>
+                  <th>Color</th>
+                  <th>Length inches</th>
+                  <th>Branch</th>
+                  <th class="divider-head" aria-label="Divider"></th>
+                  <th>Right Leg</th>
+                  <th>Right Leg Name</th>
+                  <th>Pin Pos #</th>
+                  <th>Housing Type</th>
+                  <th>Housing Part #</th>
+                  <th>Pin P#</th>
+                  <th>Tool used</th>
+                  <th>Comments</th>
+                </tr>
+              </thead>
+              <tbody id="wireRows"></tbody>
+            </table>
           </div>
-        </div>
-
-      </section>
-
-      <div
-        id="layoutSplitter"
-        class="layout-splitter"
-        role="separator"
-        aria-label="Resize preview and editable table"
-        aria-orientation="horizontal"
-        aria-valuemin="220"
-        aria-valuemax="700"
-        aria-valuenow="420"
-        tabindex="0"
-        title="Drag to resize the preview and table areas"
-      ></div>
-
-      <section class="editor-shell" aria-label="Editable harness table">
-        <div class="editor-bar">
-          <div>
-            <span class="section-label">Editable table</span>
-            <strong>Excel-style wiring rows</strong>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table id="harnessTable" class="harness-table">
-            <colgroup id="tableColumnGroup"></colgroup>
-            <thead>
-              <tr>
-                <th class="row-number" title="Click a row number to clear that row">#</th>
-                <th>Cable Name</th>
-                <th>Left Leg</th>
-                <th>Left Leg Name</th>
-                <th>Wire Name</th>
-                <th>Pin Pos #</th>
-                <th>Housing Type</th>
-                <th>Housing Part #</th>
-                <th>Pin P#</th>
-                <th>AWGuage</th>
-                <th>Color</th>
-                <th>Length inches</th>
-                <th>Branch</th>
-                <th class="divider-head" aria-label="Divider"></th>
-                <th>Right Leg</th>
-                <th>Right Leg Name</th>
-                <th>Pin Pos #</th>
-                <th>Housing Type</th>
-                <th>Housing Part #</th>
-                <th>Pin P#</th>
-                <th>Tool used</th>
-                <th>Comments</th>
-              </tr>
-            </thead>
-            <tbody id="wireRows"></tbody>
-          </table>
-        </div>
-      </section>
+        </section>
+      </main>
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -303,12 +308,12 @@
           <label class="wide"><span>Name</span><input id="catalogName" required></label>
           <label><span>Type</span>
             <select id="catalogCategory">
-              <option>Connector</option><option>Terminal</option><option>Board</option><option>Splice</option>
+              <option>Connector</option><option>Terminal</option><option>Board</option><option>Motor ESC</option><option>Component</option><option>Splice</option>
             </select>
           </label>
           <label><span>Drawing family</span>
             <select id="catalogFamily">
-              <option>generic</option><option>molex</option><option>dupont</option><option>powerpole</option><option>subconn</option><option>pcb</option><option>rj45</option><option>ring</option><option>splice</option>
+              <option>generic</option><option>molex</option><option>dupont</option><option>powerpole</option><option>subconn</option><option>pcb</option><option>rj45</option><option>ring</option><option>resistor</option><option>splice</option>
             </select>
           </label>
           <label><span>Positions</span><input id="catalogPositions" type="number" min="1" max="64" value="1"></label>
@@ -396,6 +401,6 @@
       <option value="WHT/BRN"></option>
     </datalist>
 
-    <script src="app.js?v=1.2.75" defer></script>
+    <script src="app.js?v=1.2.77" defer></script>
   </body>
 </html>

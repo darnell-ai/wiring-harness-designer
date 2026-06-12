@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.76 - 2026-06-10
+
+- Added `MOTOR ESC` as a built-in housing/catalog category that renders with the VESC-style ESC board artwork.
+- Updated ESC artwork with motor-controller details from VESC-style examples, including capacitors, MOSFETs, heatsink lines, signal pads, battery pads, and U/V/W phase outputs.
+- Added `RESISTOR` as a two-terminal component that can be placed on branch rows for parallel/shunt-style harness loads.
+- Updated BOM typing so Motor ESC and resistor components appear as components instead of generic housings.
+
 ## v1.2.75 - 2026-06-10
 
 - Added a light gray shop drawing sheet with border zones, fixture pin markers, and a compact title block.
