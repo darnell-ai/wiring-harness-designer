@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.77";
+const APP_VERSION = "1.2.78";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -5272,12 +5272,13 @@ function validateHarness() {
     const endpointRows = new Map();
     const legRows = new Map();
 
-    active.filter((row) => rowUsesSide(row, side)).forEach((row) => {
+  active.filter((row) => rowUsesSide(row, side)).forEach((row) => {
       const leg = cleanCell(side === "left" ? row.leftLeg : row.rightLeg).toUpperCase();
       const pin = cleanCell(side === "left" ? row.leftPin : row.rightPin).toUpperCase();
       const housing = cleanCell(side === "left" ? row.housing : row.rightHousing).toUpperCase();
       if (leg && pin) {
-        const key = `${leg}|${pin}`;
+        const spliceId = normalizedSpliceId(row);
+        const key = spliceId ? `${leg}|${pin}|${spliceId}` : `${leg}|${pin}`;
         if (!endpointRows.has(key)) {
           endpointRows.set(key, []);
         }
@@ -5316,8 +5317,8 @@ function validateHarness() {
   spliceGroups.forEach((rows, spliceId) => {
     const parentCount = rows.filter((row) => normalizedSpliceRole(row) === "PARENT").length;
     const branchCount = rows.filter((row) => normalizedSpliceRole(row) === "BRANCH").length;
-    if (parentCount !== 1) {
-      rows.forEach((row) => add(row, "error", `splice-parent-${spliceId}`, `${spliceId} requires exactly one parent wire; found ${parentCount}.`));
+    if (parentCount < 1) {
+      rows.forEach((row) => add(row, "error", `splice-parent-${spliceId}`, `${spliceId} requires at least one parent wire.`));
     }
     if (branchCount < 1) {
       rows.forEach((row) => add(row, "error", `splice-branch-${spliceId}`, `${spliceId} requires at least one branch wire.`));

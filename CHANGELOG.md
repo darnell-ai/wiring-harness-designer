@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.78 - 2026-06-12
+
+- Relaxed splice validation for multi-conductor bus harnesses so repeated parent/branch segments do not trigger false duplicate-endpoint or "exactly one parent" errors.
+- Kept the cable-name rule limited to the first active row so CAN bus sheets can repeat the harness name only once.
+
 ## v1.2.76 - 2026-06-10
 
 - Added `MOTOR ESC` as a built-in housing/catalog category that renders with the VESC-style ESC board artwork.
