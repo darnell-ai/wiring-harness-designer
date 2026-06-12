@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.79 - 2026-06-12
+
+- Added a copy button to the harness checks dialog so you can copy all current error messages, including row numbers, in one click.
+
 ## v1.2.78 - 2026-06-12
 
 - Relaxed splice validation for multi-conductor bus harnesses so repeated parent/branch segments do not trigger false duplicate-endpoint or "exactly one parent" errors.

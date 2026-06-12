@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.78</title>
+    <title>Wiring Harness Designer v1.2.79</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -14,7 +14,7 @@
           <div>
             <div class="brand-title">
               <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.78</span>
+              <span class="version-badge">v1.2.79</span>
             </div>
             <p>Interactive harness layout editor</p>
           </div>
@@ -255,10 +255,16 @@
           <span class="section-label">Electrical error checker</span>
           <strong>Harness checks</strong>
         </div>
-        <button id="closeQualityDialog" type="button" title="Close checks">
-          <span class="tool-icon">x</span>
-          <span>Close</span>
-        </button>
+        <div class="dialog-actions">
+          <button id="copyQualityIssues" type="button" title="Copy all errors to clipboard">
+            <span class="tool-icon">CPY</span>
+            <span>Copy errors</span>
+          </button>
+          <button id="closeQualityDialog" type="button" title="Close checks">
+            <span class="tool-icon">x</span>
+            <span>Close</span>
+          </button>
+        </div>
       </div>
       <div id="qualitySummary" class="workspace-summary"></div>
       <div id="qualityIssues" class="issue-list"></div>
@@ -401,6 +407,6 @@
       <option value="WHT/BRN"></option>
     </datalist>
 
-    <script src="app.js?v=1.2.78" defer></script>
+    <script src="app.js?v=1.2.79" defer></script>
   </body>
 </html>

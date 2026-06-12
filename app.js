@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.78";
+const APP_VERSION = "1.2.79";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -456,6 +456,7 @@ Object.assign(dom, {
   qualityButton: document.querySelector("#qualityButton"),
   qualityCount: document.querySelector("#qualityCount"),
   qualityDialog: document.querySelector("#qualityDialog"),
+  copyQualityIssues: document.querySelector("#copyQualityIssues"),
   closeQualityDialog: document.querySelector("#closeQualityDialog"),
   qualitySummary: document.querySelector("#qualitySummary"),
   qualityIssues: document.querySelector("#qualityIssues"),
@@ -5407,6 +5408,71 @@ function renderQualityDialog() {
       `;
     }).join("")
     : `<div class="empty-workspace"><strong>No electrical issues found.</strong><br>The active harness passes the current checks.</div>`;
+
+  if (dom.copyQualityIssues) {
+    const canCopyErrors = errors > 0;
+    dom.copyQualityIssues.disabled = !canCopyErrors;
+    dom.copyQualityIssues.title = canCopyErrors
+      ? `Copy ${errors} error${errors === 1 ? "" : "s"} to clipboard`
+      : "No errors to copy";
+    dom.copyQualityIssues.setAttribute("aria-disabled", canCopyErrors ? "false" : "true");
+  }
+}
+
+function qualityIssuesClipboardText(issues) {
+  const harnessLabel = value(state.harnessName) || "Untitled harness";
+  const lines = issues.map((issue) => {
+    const rowNumber = state.rows.findIndex((row) => row.id === issue.rowId) + 1;
+    const prefix = rowNumber ? `Row ${rowNumber}` : "Harness";
+    return `${prefix}: ${issue.message}`;
+  });
+
+  return [`Harness errors: ${harnessLabel}`, "", ...lines].join("\n").trimEnd();
+}
+
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (error) {
+      // Fall through to the legacy clipboard path below.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.top = "-9999px";
+  textarea.style.left = "-9999px";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+
+  const copied = document.execCommand("copy");
+  document.body.removeChild(textarea);
+  if (!copied) {
+    throw new Error("Clipboard copy failed.");
+  }
+  return true;
+}
+
+async function copyQualityErrors() {
+  const errorIssues = validateHarness().filter((issue) => issue.severity === "error");
+  if (!errorIssues.length) {
+    showToast("No errors to copy.");
+    return;
+  }
+
+  try {
+    await copyTextToClipboard(qualityIssuesClipboardText(errorIssues));
+    showToast(`Copied ${errorIssues.length} error${errorIssues.length === 1 ? "" : "s"}.`);
+  } catch (error) {
+    showToast("Could not copy errors to the clipboard.");
+  }
 }
 
 function summaryMetric(label, valueText, className = "") {
@@ -7702,6 +7768,9 @@ dom.toggleTableButton.addEventListener("click", toggleTableVisibility);
 dom.qualityButton.addEventListener("click", () => {
   renderQualityDialog();
   dom.qualityDialog.showModal();
+});
+dom.copyQualityIssues.addEventListener("click", () => {
+  void copyQualityErrors();
 });
 dom.closeQualityDialog.addEventListener("click", () => dom.qualityDialog.close());
 dom.qualityIssues.addEventListener("click", (event) => {
