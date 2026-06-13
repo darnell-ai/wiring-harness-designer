@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.84 - 2026-06-13
+
+- Removed drawing BOM balloons and the BOM callout table from the harness preview.
+- Made connector pinout/detail panels movable independently from connector housings.
+- Reworked splice artwork into a smaller taped-splice symbol and made splice junctions draggable.
+- Changed wire labels from translucent boxes to text that rides directly on the wire route.
+
 ## v1.2.83 - 2026-06-12
 
 - Repaired header-based CAN imports when pasted branch rows lose the blank spacer column after `Branch`.

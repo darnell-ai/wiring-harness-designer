@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.83";
+const APP_VERSION = "1.2.84";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -1311,7 +1311,9 @@ function defaultPreviewLayout() {
   return {
     title: { x: 0, y: 0 },
     connectors: { left: {}, right: {} },
-    heatshrink: { left: {}, right: {} }
+    connectorDetails: { left: {}, right: {} },
+    heatshrink: { left: {}, right: {} },
+    splices: {}
   };
 }
 
@@ -1330,8 +1332,11 @@ function normalizePreviewLayout(input = {}) {
   next.title = normalizePoint(input.title || input.cableTitle || {});
   next.connectors.left = normalizeOffsetMap(input.connectors?.left || input.leftConnectors || input.left || {});
   next.connectors.right = normalizeOffsetMap(input.connectors?.right || input.rightConnectors || input.right || {});
+  next.connectorDetails.left = normalizeOffsetMap(input.connectorDetails?.left || input.detailPanels?.left || {});
+  next.connectorDetails.right = normalizeOffsetMap(input.connectorDetails?.right || input.detailPanels?.right || {});
   next.heatshrink.left = normalizeOffsetMap(input.heatshrink?.left || input.leftHeatshrink || {});
   next.heatshrink.right = normalizeOffsetMap(input.heatshrink?.right || input.rightHeatshrink || {});
+  next.splices = normalizeOffsetMap(input.splices || {});
   return next;
 }
 
@@ -2030,7 +2035,6 @@ function renderPreview() {
   const sheetBackdrop = renderSheetBackdrop(previewHeight);
   const formboardPins = renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
   const connectorDetailPanels = renderConnectorDetailPanels(allConnectors, routedWires, previewHeight);
-  const bomCallouts = renderBomCallouts(allConnectors, splicePoints, previewRows, previewHeight);
   const shopTitleBlock = renderShopTitleBlock(previewRows, previewHeight);
   const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
@@ -2078,9 +2082,9 @@ function renderPreview() {
         .shop-zone-label { fill: #58635c; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
         .wire-route-hit:active { cursor: grabbing; }
-        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .heatshrink-label, .cable-name-tag { cursor: grab; }
-        .wire-name-tag text { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .wire-name-tag .wire-name-detail { fill: #334039; font-weight: 800; }
+        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .connector-detail-panel, .splice-node, .heatshrink-label, .cable-name-tag { cursor: grab; }
+        .wire-name-hit, .connector-detail-hit, .splice-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
+        .wire-inline-label { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.92); stroke-width: 4.4; stroke-linejoin: round; }
         .connector-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .connector-group:active .connector-hit { cursor: grabbing; }
         .heatshrink-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
@@ -2097,11 +2101,17 @@ function renderPreview() {
         .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .tool-note rect { fill: rgba(248, 250, 245, 0.62); stroke: rgba(217, 223, 215, 0.78); stroke-width: 1.4; }
         .tool-note text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .splice-label { fill: #27332d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .splice-role { fill: #526158; font: 9px Segoe UI, Arial, sans-serif; font-weight: 750; }
+        .splice-label { fill: #27332d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.86); stroke-width: 3.6; }
+        .splice-role { fill: #526158; font: 9px Segoe UI, Arial, sans-serif; font-weight: 850; }
+        .splice-wire { fill: none; stroke: #6f7972; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
+        .splice-wire-branch { stroke-width: 4.4; }
+        .splice-twist { fill: none; stroke: #2c332f; stroke-width: 2.1; stroke-linecap: round; }
+        .splice-tape { fill: rgba(22, 28, 25, 0.88); }
+        .splice-tape-band { fill: none; stroke: rgba(230, 236, 231, 0.34); stroke-width: 2; stroke-linecap: round; }
         .empty-preview { fill: #344138; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .empty-preview-sub { fill: #637168; font: 12px Segoe UI, Arial, sans-serif; font-weight: 700; }
         .connector-detail-bg { fill: rgba(248, 250, 247, 0.88); stroke: rgba(93, 104, 96, 0.62); stroke-width: 1.4; }
+        .connector-detail-panel:active .connector-detail-hit, .splice-node:active .splice-hit { cursor: grabbing; }
         .connector-face-box { fill: #d7ddd8; stroke: #738078; stroke-width: 1.3; }
         .connector-face-key { fill: #eff2ee; stroke: #738078; stroke-width: 1.2; }
         .connector-face-pin { fill: #1d2821; font: 7.5px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -2110,13 +2120,9 @@ function renderPreview() {
         .connector-table-head { fill: #2e3932; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 950; }
         .connector-table-pin { fill: #172019; font: 9px Segoe UI, Arial, sans-serif; font-weight: 950; }
         .connector-table-text { fill: #2d3831; font: 9px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .bom-balloon circle { fill: #f8faf5; stroke: #1f2a23; stroke-width: 2; }
-        .bom-balloon text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 950; }
-        .bom-callout-table rect, .shop-title-block rect { fill: rgba(248, 250, 247, 0.9); stroke: rgba(82, 91, 85, 0.72); stroke-width: 1.5; }
-        .bom-table-title, .shop-title-primary { fill: #141d17; font: 12px Segoe UI, Arial, sans-serif; font-weight: 950; }
-        .bom-table-head { fill: #536158; font: 8.5px Segoe UI, Arial, sans-serif; font-weight: 950; }
-        .bom-table-number, .bom-table-text, .shop-title-block text { fill: #1f2a24; font: 9.5px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .bom-table-muted { fill: #617069; font: 9px Segoe UI, Arial, sans-serif; font-weight: 800; }
+        .shop-title-block rect { fill: rgba(248, 250, 247, 0.9); stroke: rgba(82, 91, 85, 0.72); stroke-width: 1.5; }
+        .shop-title-primary { fill: #141d17; font: 12px Segoe UI, Arial, sans-serif; font-weight: 950; }
+        .shop-title-block text { fill: #1f2a24; font: 9.5px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .shop-title-block line { stroke: rgba(82, 91, 85, 0.55); stroke-width: 1; }
         .formboard-pin circle { fill: rgba(246, 248, 244, 0.9); stroke: rgba(64, 72, 67, 0.72); stroke-width: 1.4; }
         .formboard-pin path { stroke: rgba(64, 72, 67, 0.58); stroke-width: 1.2; stroke-linecap: round; }
@@ -2135,7 +2141,6 @@ function renderPreview() {
     ${wireNameTags}
     ${bendHandles}
     ${connectorDetailPanels}
-    ${bomCallouts}
     ${shopTitleBlock}
     ${toolNote}
     ${selectedInfoBoxMarkup}
@@ -2264,6 +2269,10 @@ function dragToastForKind(kind) {
       return "Wire name moved.";
     case "connector":
       return "Connector moved.";
+    case "connector-detail":
+      return "Connector info moved.";
+    case "splice":
+      return "Splice moved.";
     case "heatshrink":
       return "Heatshrink moved.";
     case "cable-title":
@@ -2319,6 +2328,33 @@ function resetDragForTarget(target) {
     return true;
   }
 
+  if (dragKind === "connector-detail") {
+    const side = value(target?.dataset?.connectorSide);
+    const key = value(target?.dataset?.connectorKey);
+    if (!side || !key) {
+      return false;
+    }
+    rememberUndo();
+    resetPreviewLayoutPoint("connector-detail", side, key);
+    saveState();
+    renderPreview();
+    showToast("Connector info reset.");
+    return true;
+  }
+
+  if (dragKind === "splice") {
+    const key = value(target?.dataset?.spliceKey);
+    if (!key) {
+      return false;
+    }
+    rememberUndo();
+    resetPreviewLayoutPoint("splice", "", key);
+    saveState();
+    renderPreview();
+    showToast("Splice reset.");
+    return true;
+  }
+
   if (dragKind === "heatshrink") {
     const side = value(target?.dataset?.heatshrinkSide);
     const key = value(target?.dataset?.heatshrinkKey);
@@ -2361,9 +2397,9 @@ function startWireDrag(event) {
   const bendIndex = dragKind === "wire-bend" ? clamp(Math.round(Number(target.dataset.wireBendIndex) || 0), 0, MAX_WIRE_ROUTE_BENDS - 1) : 0;
   const bendStart = row ? wireRouteBends(row)[bendIndex] || { x: 0, y: 0 } : { x: 0, y: 0 };
   const side = value(target?.dataset?.connectorSide || target?.dataset?.heatshrinkSide);
-  const key = value(target?.dataset?.connectorKey || target?.dataset?.heatshrinkKey);
+  const key = value(target?.dataset?.connectorKey || target?.dataset?.heatshrinkKey || target?.dataset?.spliceKey);
   const hasWire = dragKind === "wire-route" || dragKind === "wire-bend" || dragKind === "wire-label";
-  const hasPreviewPoint = dragKind === "connector" || dragKind === "heatshrink";
+  const hasPreviewPoint = dragKind === "connector" || dragKind === "connector-detail" || dragKind === "heatshrink" || dragKind === "splice";
   const hasTitle = dragKind === "cable-title";
 
   if (hasWire && (!row || !isActiveWireRow(row))) {
@@ -2372,7 +2408,13 @@ function startWireDrag(event) {
   if (dragKind === "connector" && (!side || !key)) {
     return;
   }
+  if (dragKind === "connector-detail" && (!side || !key)) {
+    return;
+  }
   if (dragKind === "heatshrink" && (!side || !key)) {
+    return;
+  }
+  if (dragKind === "splice" && !key) {
     return;
   }
   if (!hasWire && !hasPreviewPoint && !hasTitle) {
@@ -2393,7 +2435,7 @@ function startWireDrag(event) {
 
   const point = wirePreviewPoint(event);
   const labelOffset = row ? wireLabelOffset(row) : { x: 0, y: 0 };
-  const previewPoint = (dragKind === "connector" || dragKind === "heatshrink")
+  const previewPoint = (dragKind === "connector" || dragKind === "connector-detail" || dragKind === "heatshrink" || dragKind === "splice")
     ? previewLayoutPoint(dragKind, side, key)
     : dragKind === "cable-title"
       ? previewLayoutPoint("title")
@@ -2466,6 +2508,12 @@ function moveWireDrag(event) {
       break;
     case "connector":
       setPreviewLayoutPoint("connector", wireDragState.side, wireDragState.key, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
+      break;
+    case "connector-detail":
+      setPreviewLayoutPoint("connector-detail", wireDragState.side, wireDragState.key, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
+      break;
+    case "splice":
+      setPreviewLayoutPoint("splice", "", wireDragState.key, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
       break;
     case "heatshrink":
       setPreviewLayoutPoint("heatshrink", wireDragState.side, wireDragState.key, wireDragState.startOffsetX + dx, wireDragState.startOffsetY + dy);
@@ -2661,9 +2709,10 @@ function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnect
 
       const parentCount = group.filter((row) => normalizedSpliceRole(row) === "PARENT").length;
       const branchCount = group.filter((row) => normalizedSpliceRole(row) === "BRANCH").length;
+      const offset = previewLayoutPoint("splice", "", spliceId);
       return [spliceId, {
-        x: 500 + (index % 2 === 0 ? -18 : 18),
-        y,
+        x: clamp(500 + (index % 2 === 0 ? -18 : 18) + offset.x, 64, 936),
+        y: clamp(y + offset.y, 64, previewHeight - 64),
         exit: "splice",
         spliceId,
         parentCount,
@@ -2710,15 +2759,19 @@ function renderSpliceNodes(splicePoints, selected) {
   const selectedSpliceId = normalizedSpliceId(selected);
   return [...splicePoints.values()].map((point) => {
     const isSelected = selectedSpliceId === point.spliceId;
-    const stroke = isSelected ? "#f2c84b" : "#8fa198";
+    const stroke = isSelected ? "#f2c84b" : "#596861";
+    const label = `${point.spliceId} splice`;
     return `
-      <g aria-label="${escapeXml(point.spliceId)} window splice">
-        <text x="${point.x}" y="${point.y - 22}" class="splice-label" text-anchor="middle">${escapeXml(point.spliceId)} WINDOW SPLICE</text>
-        <path d="M ${point.x - 31} ${point.y - 10} H ${point.x - 22} L ${point.x - 14} ${point.y - 15} H ${point.x + 14} L ${point.x + 22} ${point.y - 10} H ${point.x + 31} V ${point.y + 10} H ${point.x + 22} L ${point.x + 14} ${point.y + 15} H ${point.x - 14} L ${point.x - 22} ${point.y + 10} H ${point.x - 31} Z"
-          fill="#a8b6ae" stroke="${stroke}" stroke-width="${isSelected ? 4 : 3}" />
-        <rect x="${point.x - 15}" y="${point.y - 11}" width="30" height="22" rx="4" fill="#d7dfda" stroke="#66776e" stroke-width="2" />
-        <line x1="${point.x - 8}" y1="${point.y}" x2="${point.x + 8}" y2="${point.y}" stroke="#6f7e76" stroke-width="3" />
-        <text x="${point.x}" y="${point.y + 31}" class="splice-role" text-anchor="middle">${point.parentCount} PARENT / ${point.branchCount} BRANCH</text>
+      <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(label)}">
+        <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch`)}</title>
+        <rect class="splice-hit" x="${point.x - 62}" y="${point.y - 34}" width="124" height="76" rx="8" />
+        <text x="${point.x}" y="${point.y - 23}" class="splice-label" text-anchor="middle">${escapeXml(label)}</text>
+        <path class="splice-wire splice-wire-main" d="M ${point.x - 58} ${point.y + 1} H ${point.x - 24} C ${point.x - 14} ${point.y - 5}, ${point.x + 14} ${point.y + 7}, ${point.x + 24} ${point.y + 1} H ${point.x + 58}" />
+        <path class="splice-wire splice-wire-branch" d="M ${point.x + 4} ${point.y + 9} C ${point.x + 10} ${point.y + 22}, ${point.x + 18} ${point.y + 31}, ${point.x + 31} ${point.y + 38}" />
+        <path class="splice-twist" d="M ${point.x - 22} ${point.y + 1} C ${point.x - 16} ${point.y - 7}, ${point.x - 9} ${point.y + 9}, ${point.x - 2} ${point.y + 1} S ${point.x + 12} ${point.y - 7}, ${point.x + 22} ${point.y + 1}" />
+        <rect class="splice-tape" x="${point.x - 32}" y="${point.y - 9}" width="44" height="20" rx="8" stroke="${stroke}" stroke-width="${isSelected ? 3 : 2}" />
+        <path class="splice-tape-band" d="M ${point.x - 22} ${point.y - 8} L ${point.x - 16} ${point.y + 11} M ${point.x - 7} ${point.y - 9} L ${point.x - 1} ${point.y + 11} M ${point.x + 8} ${point.y - 9} L ${point.x + 14} ${point.y + 10}" />
+        <text x="${point.x}" y="${point.y + 55}" class="splice-role" text-anchor="middle">${point.parentCount} in / ${point.branchCount} out</text>
       </g>
     `;
   }).join("");
@@ -2856,8 +2909,9 @@ function renderConnectorDetailPanel(connector, routedWires, previewHeight) {
   const desiredX = connector.side === "left"
     ? connector.x + connector.width + 18
     : connector.x - panelWidth - 18;
-  const x = clamp(desiredX, 36, 1000 - panelWidth - 36);
-  const y = clamp(connector.y - 8, 38, Math.max(38, previewHeight - panelHeight - 38));
+  const offset = previewLayoutPoint("connector-detail", connector.side, connector.key);
+  const x = clamp(desiredX + offset.x, 36, 1000 - panelWidth - 36);
+  const y = clamp(connector.y - 8 + offset.y, 38, Math.max(38, previewHeight - panelHeight - 38));
   const tableX = x + 78;
   const tableY = y + 56;
   const rowMarkup = visibleRows.map((item, index) => {
@@ -2875,7 +2929,8 @@ function renderConnectorDetailPanel(connector, routedWires, previewHeight) {
     : "";
 
   return `
-    <g class="connector-detail-panel connector-face-panel connector-pinout-table">
+    <g class="connector-detail-panel connector-face-panel connector-pinout-table" data-drag-kind="connector-detail" data-connector-side="${escapeXml(connector.side)}" data-connector-key="${escapeXml(connector.key)}" aria-label="Connector info ${escapeXml(connector.key)}">
+      <rect class="connector-detail-hit" x="${x - 8}" y="${y - 8}" width="${panelWidth + 16}" height="${panelHeight + 16}" rx="8" />
       <rect class="connector-detail-bg" x="${x}" y="${y}" width="${panelWidth}" height="${panelHeight}" rx="5" />
       <text x="${x + 10}" y="${y + 19}" class="connector-detail-title">${escapeXml(shortLabel(`CONN ${connector.key}`, 17))}</text>
       <text x="${x + 10}" y="${y + 35}" class="connector-detail-sub">${escapeXml(shortLabel(connector.housing || "Housing", 23))}</text>
@@ -2893,117 +2948,6 @@ function renderConnectorDetailPanels(connectors, routedWires, previewHeight) {
   return connectors
     .map((connector) => renderConnectorDetailPanel(connector, routedWires, previewHeight))
     .join("");
-}
-
-function connectorBomDescription(connector, rows) {
-  const sideRows = connectorRowsForSide(connector, rows);
-  const part = sideRows
-    .map((row) => connector.side === "left" ? row.leftHousingPart : row.rightHousingPart)
-    .map(cleanCell)
-    .find(Boolean);
-  const housing = cleanCell(connector.housing) || "Connector housing";
-  return {
-    key: `CONN|${housing.toUpperCase()}|${value(part).toUpperCase()}`,
-    item: housing,
-    part: part || "-"
-  };
-}
-
-function drawingBomData(connectors, splicePoints, rows) {
-  const items = [];
-  const itemLookup = new Map();
-  const connectorNumbers = new Map();
-  const spliceNumbers = new Map();
-  const addItem = (key, type, item, part, ref) => {
-    if (!itemLookup.has(key)) {
-      itemLookup.set(key, {
-        number: items.length + 1,
-        type,
-        item,
-        part,
-        quantity: 0,
-        refs: []
-      });
-      items.push(itemLookup.get(key));
-    }
-    const entry = itemLookup.get(key);
-    entry.quantity += 1;
-    entry.refs.push(ref);
-    return entry.number;
-  };
-
-  connectors.forEach((connector) => {
-    const description = connectorBomDescription(connector, rows);
-    const number = addItem(description.key, "HOUSING", description.item, description.part, `${connector.side} ${connector.key}`);
-    connectorNumbers.set(`${connector.side}|${connector.key}`, number);
-  });
-
-  [...splicePoints.values()].forEach((point) => {
-    const key = `SPLICE|${point.spliceId}`;
-    const number = addItem(key, "SPLICE", `${point.spliceId} window splice`, "-", point.spliceId);
-    spliceNumbers.set(point.spliceId, number);
-  });
-
-  return { items, connectorNumbers, spliceNumbers };
-}
-
-function renderBomBalloon(x, y, number) {
-  return `
-    <g class="bom-balloon">
-      <circle cx="${x}" cy="${y}" r="12" />
-      <text x="${x}" y="${y + 4}" text-anchor="middle">${number}</text>
-    </g>
-  `;
-}
-
-function renderBomCallouts(connectors, splicePoints, rows, previewHeight) {
-  const bom = drawingBomData(connectors, splicePoints, rows);
-  const balloons = connectors.map((connector) => {
-    const number = bom.connectorNumbers.get(`${connector.side}|${connector.key}`);
-    const x = connector.side === "left" ? connector.x + connector.width + 14 : connector.x - 14;
-    const y = connector.y + 18;
-    return number ? renderBomBalloon(x, y, number) : "";
-  });
-  [...splicePoints.values()].forEach((point) => {
-    const number = bom.spliceNumbers.get(point.spliceId);
-    if (number) {
-      balloons.push(renderBomBalloon(point.x + 44, point.y - 22, number));
-    }
-  });
-
-  if (!bom.items.length) {
-    return balloons.join("");
-  }
-
-  const visibleItems = bom.items.slice(0, 6);
-  const legendWidth = 312;
-  const legendHeight = 36 + visibleItems.length * 18 + (bom.items.length > visibleItems.length ? 16 : 0);
-  const x = 42;
-  const y = Math.max(38, previewHeight - legendHeight - 40);
-  const rowsMarkup = visibleItems.map((item, index) => {
-    const rowY = y + 50 + index * 18;
-    return `
-      <text x="${x + 12}" y="${rowY}" class="bom-table-number">${item.number}</text>
-      <text x="${x + 38}" y="${rowY}" class="bom-table-text">${escapeXml(shortLabel(item.item, 23))}</text>
-      <text x="${x + 226}" y="${rowY}" class="bom-table-text">${item.quantity}x</text>
-    `;
-  }).join("");
-  const more = bom.items.length > visibleItems.length
-    ? `<text x="${x + 12}" y="${y + legendHeight - 9}" class="bom-table-muted">+${bom.items.length - visibleItems.length} more in BOM export</text>`
-    : "";
-
-  return `
-    ${balloons.join("")}
-    <g class="bom-callout-table">
-      <rect x="${x}" y="${y}" width="${legendWidth}" height="${legendHeight}" rx="4" />
-      <text x="${x + 12}" y="${y + 20}" class="bom-table-title">BOM CALLOUTS</text>
-      <text x="${x + 12}" y="${y + 37}" class="bom-table-head">ITEM</text>
-      <text x="${x + 38}" y="${y + 37}" class="bom-table-head">DESCRIPTION</text>
-      <text x="${x + 226}" y="${y + 37}" class="bom-table-head">QTY</text>
-      ${rowsMarkup}
-      ${more}
-    </g>
-  `;
 }
 
 function renderFormboardFixturePins(routedWires, connectors, splicePoints, routeBaseY, previewHeight) {
@@ -4425,9 +4369,19 @@ function previewLayoutPoint(kind, side = "", key = "") {
     };
   }
 
+  if (kind === "splice") {
+    const point = layout.splices?.[legKey(key)] || {};
+    return {
+      x: numberOrZero(point.x),
+      y: numberOrZero(point.y)
+    };
+  }
+
   const sideBucket = kind === "connector"
     ? layout.connectors?.[side] || {}
-    : layout.heatshrink?.[side] || {};
+    : kind === "connector-detail"
+      ? layout.connectorDetails?.[side] || {}
+      : layout.heatshrink?.[side] || {};
   const point = sideBucket[legKey(key)] || {};
   return {
     x: numberOrZero(point.x),
@@ -4448,7 +4402,18 @@ function setPreviewLayoutPoint(kind, side, key, x, y) {
     return;
   }
 
-  const bucketName = kind === "connector" ? "connectors" : "heatshrink";
+  if (kind === "splice") {
+    if (!state.previewLayout.splices) {
+      state.previewLayout.splices = {};
+    }
+    state.previewLayout.splices[legKey(key)] = {
+      x: Math.round(clamp(Number(x) || 0, -WIRE_ROUTE_DRAG_LIMIT_X, WIRE_ROUTE_DRAG_LIMIT_X)),
+      y: Math.round(clamp(Number(y) || 0, -WIRE_ROUTE_DRAG_LIMIT_Y, WIRE_ROUTE_DRAG_LIMIT_Y))
+    };
+    return;
+  }
+
+  const bucketName = kind === "connector" ? "connectors" : kind === "connector-detail" ? "connectorDetails" : "heatshrink";
   if (!state.previewLayout[bucketName]) {
     state.previewLayout[bucketName] = { left: {}, right: {} };
   }
@@ -4471,7 +4436,12 @@ function resetPreviewLayoutPoint(kind, side, key) {
     return;
   }
 
-  const bucketName = kind === "connector" ? "connectors" : "heatshrink";
+  if (kind === "splice") {
+    delete state.previewLayout.splices?.[legKey(key)];
+    return;
+  }
+
+  const bucketName = kind === "connector" ? "connectors" : kind === "connector-detail" ? "connectorDetails" : "heatshrink";
   const bucket = state.previewLayout[bucketName]?.[side];
   if (bucket) {
     delete bucket[legKey(key)];
@@ -4800,21 +4770,19 @@ function wireDrawingLabel(row, wireCount = 0) {
   }
 
   const compact = crowdingFactor(wireCount, 8, 8) > 0.36;
-  const maxNameChars = compact ? 18 : 26;
-  const maxDetailChars = compact ? 22 : 30;
-  const lines = rawLines.map((line, index) => shortLabel(line, index === 0 && name ? maxNameChars : maxDetailChars));
-  const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  const inlineText = rawLines.join("   ");
+  const line = shortLabel(inlineText, compact ? 42 : 58);
   const tagWidth = clamp(
-    longestLine * (compact ? 7.4 : 8.1) + (compact ? 34 : 40),
-    compact ? 108 : 118,
-    compact ? 250 : 300
+    line.length * (compact ? 6.8 : 7.5) + 18,
+    compact ? 118 : 132,
+    compact ? 310 : 430
   );
   return {
     rawLines,
-    lines,
+    lines: [line],
     fullText: rawLines.join("\n"),
     tagWidth,
-    tagHeight: lines.length > 1 ? 42 : 28,
+    tagHeight: compact ? 18 : 20,
     compact
   };
 }
@@ -4884,20 +4852,14 @@ function renderWireNameTag(row, start, end, index, routeBaseY, previewHeight, wi
   }
 
   const tag = wireNameTagPosition(start, end, index, routeBaseY, previewHeight, label.tagWidth, wireCount, row);
-  const boxOpacity = label.compact ? 0.6 : 0.54;
-  const primaryFontSize = label.compact ? 12 : 13;
-  const detailFontSize = label.compact ? 10.5 : 11;
-  const primaryY = label.lines.length > 1 ? tag.y - 4 : tag.y + (primaryFontSize >= 13 ? 5 : 4);
-  const detailY = tag.y + 13;
+  const fontSize = label.compact ? 11 : 12;
   const primary = escapeXml(label.lines[0]);
-  const detail = label.lines[1] ? escapeXml(label.lines[1]) : "";
 
   return `
     <g class="wire-name-tag" data-drag-kind="wire-label" data-wire-id="${escapeXml(row?.id || "")}" aria-label="Wire label ${escapeXml(label.fullText)}">
       <title>${escapeXml(label.fullText)}</title>
-      <rect x="${tag.x - label.tagWidth / 2}" y="${tag.y - label.tagHeight / 2}" width="${label.tagWidth}" height="${label.tagHeight}" rx="8" fill="#f8faf5" fill-opacity="${boxOpacity}" stroke="#d9dfd7" stroke-opacity="${label.compact ? 0.76 : 0.7}" stroke-width="1.5" />
-      <text x="${tag.x}" y="${primaryY}" text-anchor="middle" font-size="${primaryFontSize}">${primary}</text>
-      ${detail ? `<text class="wire-name-detail" x="${tag.x}" y="${detailY}" text-anchor="middle" font-size="${detailFontSize}">${detail}</text>` : ""}
+      <rect class="wire-name-hit" x="${tag.x - label.tagWidth / 2}" y="${tag.y - 13}" width="${label.tagWidth}" height="26" rx="5" />
+      <text class="wire-inline-label" x="${tag.x}" y="${tag.y + 4}" text-anchor="middle" font-size="${fontSize}">${primary}</text>
     </g>
   `;
 }
@@ -7461,16 +7423,16 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     return mxCellXml({
       id: spliceId,
       value: label,
-      style: "shape=hexagon;whiteSpace=wrap;html=1;rounded=0;fillColor=#a8b6ae;strokeColor=#93ad9f;strokeWidth=2;fontColor=#101814;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      style: "rounded=1;whiteSpace=wrap;html=1;arcSize=50;fillColor=#1c241f;strokeColor=#596861;strokeWidth=2;fontColor=#f8fbf7;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
       vertex: 1,
       parent: "1",
       [`data-type`]: "splice",
       [`data-splice-id`]: point.spliceId || ""
     }, mxGeometryXml({
-      x: Math.round(point.x - 34),
-      y: Math.round(point.y - 26),
-      width: 68,
-      height: 52,
+      x: Math.round(point.x - 42),
+      y: Math.round(point.y - 14),
+      width: 84,
+      height: 28,
       as: "geometry"
     }));
   };
@@ -7484,8 +7446,8 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     const tag = wireNameTagPosition(start, end, index, scene.routeBaseY, scene.previewHeight, label.tagWidth, scene.routedWires.length, row);
     return mxCellXml({
       id: `wire_label_${drawIoSafeId(row.id)}`,
-      value: mxTextValue(label.lines.join("\n")),
-      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=${label.compact ? 60 : 54};strokeColor=#d9dfd7;strokeOpacity=${label.compact ? 76 : 70};strokeWidth=1.5;fontColor=#101814;fontSize=${label.lines.length > 1 ? 11 : 13};fontStyle=1;align=center;verticalAlign=middle;spacing=3;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
+      value: mxTextValue(label.lines[0]),
+      style: `text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontColor=#101814;fontSize=${label.compact ? 11 : 12};fontStyle=1;align=center;verticalAlign=middle;spacing=2;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
       vertex: 1,
       parent: "1",
       [`data-type`]: "wire-label",
