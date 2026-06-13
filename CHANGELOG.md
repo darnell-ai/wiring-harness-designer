@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.89 - 2026-06-13
+
+- Simplified splice output to a true sideways Y: one parent input on the left and two branch outputs on the right.
+- Removed the fake continuation arm that was making the splice read like a trunk chain instead of a split.
+- Bumped the cache-busting version so the updated branch geometry loads immediately.
+
 ## v1.2.88 - 2026-06-13
 
 - Chained parent splice rows across the active conductor order so the main trunk now flows from one splice to the next instead of restarting at the left connector every time.

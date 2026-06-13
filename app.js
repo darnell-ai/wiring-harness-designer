@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.88";
+const APP_VERSION = "1.2.89";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2829,23 +2829,6 @@ function spliceLaneY(point, laneIndex = 0) {
   return point.y + spliceSpreadOffset(laneIndex, laneCount, 18);
 }
 
-function spliceContinuationPort(point, laneIndex = 0) {
-  const y = spliceLaneY(point, laneIndex);
-  return {
-    x: point.x + 62,
-    y,
-    exit: "splice-right",
-    side: "splice",
-    edgeX: point.x + 88,
-    spliceId: point.spliceId
-  };
-}
-
-function spliceChainRows(row, role) {
-  const targetKey = spliceWireKey(row);
-  return activeRows().filter((candidate) => normalizedSpliceRole(candidate) === role && spliceWireKey(candidate) === targetKey);
-}
-
 function splicePortForIndex(point, role, index, count, laneIndex = 0) {
   const safeIndex = Math.max(0, index);
   const safeCount = Math.max(1, count);
@@ -2861,13 +2844,13 @@ function splicePortForIndex(point, role, index, count, laneIndex = 0) {
     };
   }
 
-  const armOffset = spliceSpreadOffset(safeIndex, safeCount, 8);
+  const armOffset = spliceSpreadOffset(safeIndex, safeCount, 12);
   return {
-    x: point.x + 56,
-    y: y + 18 + armOffset,
-    exit: "splice-drop",
+    x: point.x + 62,
+    y: y + armOffset,
+    exit: "splice-right",
     side: "splice",
-    edgeX: point.x + 84,
+    edgeX: point.x + 88,
     spliceId: point.spliceId
   };
 }
@@ -2914,21 +2897,10 @@ function wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoi
     exit: "splice",
     spliceId
   };
-  const spliceLane = spliceLaneForRow(splice, item);
-  const laneIndex = spliceLane.index;
-  const parentChain = spliceChainRows(item, "PARENT");
-  const parentIndex = Math.max(0, parentChain.findIndex((candidate) => candidate.id === item.id));
 
   if (role === "PARENT") {
-    const start = parentIndex > 0
-      ? (() => {
-          const prevRow = wireRowById(parentChain[parentIndex - 1]?.id || "");
-          const prevSplice = prevRow ? splicePoints.get(normalizedSpliceId(prevRow)) : null;
-          return prevSplice ? spliceContinuationPort(prevSplice, laneIndex) : pinPoint(leftMap.get(legKey(item.leftLeg)) || leftConnectors[0], item.leftPin, "left");
-        })()
-      : pinPoint(leftMap.get(legKey(item.leftLeg)) || leftConnectors[0], item.leftPin, "left");
     return {
-      start,
+      start: pinPoint(leftMap.get(legKey(item.leftLeg)) || leftConnectors[0], item.leftPin, "left"),
       end: splicePortForRow(splice, item, "parent")
     };
   }
@@ -2966,22 +2938,17 @@ function renderSpliceNodes(splicePoints, selected) {
       const laneY = spliceLaneY(point, laneIndex);
       const parentPorts = Array.from({ length: lane.parentRows.length }, (_, index) => splicePortForIndex(point, "parent", index, lane.parentRows.length, laneIndex));
       const branchPorts = Array.from({ length: lane.branchRows.length }, (_, index) => splicePortForIndex(point, "branch", index, lane.branchRows.length, laneIndex));
-      const continuationPort = spliceContinuationPort(point, laneIndex);
       const parentPortMarkup = parentPorts.map((port) => `
         <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x - 14}" />
       `).join("");
-      const continuationMarkup = `
-        <path class="splice-port-lead" d="M ${point.x + 8} ${laneY} H ${continuationPort.x}" />
-      `;
       const branchPortMarkup = branchPorts.map((port) => {
-        return `<path class="splice-port-lead" d="M ${point.x + 18} ${laneY} C ${point.x + 28} ${laneY + 4}, ${port.x - 10} ${port.y - 14}, ${port.x} ${port.y}" />`;
+        return `<path class="splice-port-lead" d="M ${point.x + 10} ${laneY} C ${point.x + 22} ${laneY}, ${point.x + 34} ${port.y}, ${port.x} ${port.y}" />`;
       }).join("");
       return `
         <g class="splice-lane">
           ${parentPortMarkup}
-          ${continuationMarkup}
           ${branchPortMarkup}
-          <path class="splice-twist" d="M ${point.x - 12} ${laneY} C ${point.x - 7} ${laneY - 5}, ${point.x - 2} ${laneY + 5}, ${point.x + 4} ${laneY} S ${point.x + 13} ${laneY - 5}, ${point.x + 18} ${laneY}" />
+          <path class="splice-twist" d="M ${point.x - 12} ${laneY} C ${point.x - 7} ${laneY - 5}, ${point.x - 2} ${laneY + 5}, ${point.x + 4} ${laneY} S ${point.x + 10} ${laneY - 4}, ${point.x + 16} ${laneY}" />
           <rect class="splice-tape" x="${point.x - 16}" y="${laneY - 7}" width="30" height="14" rx="7" stroke="${stroke}" stroke-width="${isSelected ? 2.4 : 1.6}" />
           <path class="splice-tape-band" d="M ${point.x - 10} ${laneY - 6} L ${point.x - 6} ${laneY + 7} M ${point.x - 1} ${laneY - 7} L ${point.x + 3} ${laneY + 7} M ${point.x + 8} ${laneY - 6} L ${point.x + 12} ${laneY + 6}" />
         </g>
