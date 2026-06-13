@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.81";
+const APP_VERSION = "1.2.82";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -6686,11 +6686,12 @@ function looksLikeTemplateSheetRow(clean) {
   const lengthLooksValid = Boolean(clean[10]);
   const branchLooksValid = Boolean(clean[11]);
   const hasLeftSide = Boolean(clean[1] && /^[A-Za-z0-9#-]+$/.test(clean[1]) && /^\d{1,2}$/.test(clean[4] || ""));
-  const hasRightSide = Boolean(clean[13] && /^[A-Za-z0-9#-]+$/.test(clean[13]) && /^\d{1,2}$/.test(clean[15] || ""));
+  const hasRightSide = findTemplateRightStart(clean) >= 0;
   return hasWireName && awgLooksValid && lengthLooksValid && branchLooksValid && (hasLeftSide || hasRightSide);
 }
 
 function rowFromTemplateSheetRow(clean) {
+  const rightStart = findTemplateRightStart(clean);
   const row = {
     cableName: clean[0] || "",
     leftLeg: clean[1] || "",
@@ -6705,18 +6706,41 @@ function rowFromTemplateSheetRow(clean) {
     color: clean[9] || "",
     length: clean[10] || "",
     branch: clean[11] || "",
-    rightLeg: clean[13] || "",
-    rightLegName: clean[14] || "",
-    rightPin: clean[15] || "",
-    rightHousing: clean[16] || "",
-    rightHousingPart: clean[17] || "",
-    rightTerminalPart: clean[18] || "",
-    toolUsed: clean[19] || "",
-    comments: clean.slice(20).join(" ").trim()
+    rightLeg: rightStart >= 0 ? clean[rightStart] || "" : "",
+    rightLegName: rightStart >= 0 ? clean[rightStart + 1] || "" : "",
+    rightPin: rightStart >= 0 ? clean[rightStart + 2] || "" : "",
+    rightHousing: rightStart >= 0 ? clean[rightStart + 3] || "" : "",
+    rightHousingPart: rightStart >= 0 ? clean[rightStart + 4] || "" : "",
+    rightTerminalPart: rightStart >= 0 ? clean[rightStart + 5] || "" : "",
+    toolUsed: rightStart >= 0 ? clean[rightStart + 6] || "" : "",
+    comments: rightStart >= 0 ? clean.slice(rightStart + 7).join(" ").trim() : ""
   };
 
   applyBranchValue(row, clean[11] || "");
   return row;
+}
+
+function findTemplateRightStart(clean) {
+  for (let index = 12; index <= 15; index += 1) {
+    if (isTemplateRightLegToken(clean[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function isTemplateRightLegToken(input) {
+  const text = cleanCell(input).trim().toUpperCase();
+  if (!text) {
+    return false;
+  }
+  if (/^\d{1,2}$/.test(text)) {
+    return true;
+  }
+  if (text === "AUX" || text === "MAIN") {
+    return true;
+  }
+  return options.legs.some((leg) => leg && leg.toUpperCase() === text);
 }
 
 function looksLikeNamedLegDnpLayout(clean) {

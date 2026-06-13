@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.82 - 2026-06-12
+
+- Made the CAN template importer tolerant of rows where the blank separator after `Branch` gets lost during copy/paste.
+- Kept the same harness import format working whether the right side starts one cell later or immediately after the branch label.
+
 ## v1.2.81 - 2026-06-12
 
 - Preserved blank spreadsheet columns during import so headerless CAN rows keep their left and right side layout.
