@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.2.86 - 2026-06-13
+
+- Made splice routing conductor-aware so CAN H, CAN L, and GND no longer pile into one shared splice sleeve.
+- Draws one splice junction per wire lane, with one-left/two-out routing when a conductor has multiple branch outputs.
+- Places splice callouts near their actual branch connector route instead of a fixed middle-board column.
+- Removed the large splice in/out summary text from the drawing.
+
 ## v1.2.85 - 2026-06-13
 
 - Routed parent and branch wires to real splice ports instead of the center of the splice symbol.
