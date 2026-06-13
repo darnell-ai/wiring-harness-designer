@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.85 - 2026-06-13
+
+- Routed parent and branch wires to real splice ports instead of the center of the splice symbol.
+- Matched the splice artwork to the same left, right-through, and drop ports used by the wire paths.
+
 ## v1.2.84 - 2026-06-13
 
 - Removed drawing BOM balloons and the BOM callout table from the harness preview.

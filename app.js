@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.84";
+const APP_VERSION = "1.2.85";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2103,8 +2103,7 @@ function renderPreview() {
         .tool-note text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-label { fill: #27332d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.86); stroke-width: 3.6; }
         .splice-role { fill: #526158; font: 9px Segoe UI, Arial, sans-serif; font-weight: 850; }
-        .splice-wire { fill: none; stroke: #6f7972; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
-        .splice-wire-branch { stroke-width: 4.4; }
+        .splice-port-lead { fill: none; stroke: #6f7972; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
         .splice-twist { fill: none; stroke: #2c332f; stroke-width: 2.1; stroke-linecap: round; }
         .splice-tape { fill: rgba(22, 28, 25, 0.88); }
         .splice-tape-band { fill: none; stroke: rgba(230, 236, 231, 0.34); stroke-width: 2; stroke-linecap: round; }
@@ -2707,18 +2706,74 @@ function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnect
       }
       reservedY.push(y);
 
-      const parentCount = group.filter((row) => normalizedSpliceRole(row) === "PARENT").length;
-      const branchCount = group.filter((row) => normalizedSpliceRole(row) === "BRANCH").length;
+      const parentRows = group.filter((row) => normalizedSpliceRole(row) === "PARENT").map((row) => row.id);
+      const branchRows = group.filter((row) => normalizedSpliceRole(row) === "BRANCH").map((row) => row.id);
       const offset = previewLayoutPoint("splice", "", spliceId);
       return [spliceId, {
         x: clamp(500 + (index % 2 === 0 ? -18 : 18) + offset.x, 64, 936),
         y: clamp(y + offset.y, 64, previewHeight - 64),
         exit: "splice",
         spliceId,
-        parentCount,
-        branchCount
+        parentCount: parentRows.length,
+        branchCount: branchRows.length,
+        parentRows,
+        branchRows
       }];
     }));
+}
+
+function spliceSpreadOffset(index, count, gap = 7) {
+  if (count <= 1) {
+    return 0;
+  }
+  return Math.round((index - (count - 1) / 2) * gap);
+}
+
+function splicePortForIndex(point, role, index, count) {
+  const safeIndex = Math.max(0, index);
+  const safeCount = Math.max(1, count);
+  if (role === "parent") {
+    return {
+      x: point.x - 62,
+      y: point.y + spliceSpreadOffset(safeIndex, safeCount, 7),
+      exit: "splice-left",
+      side: "splice",
+      edgeX: point.x - 88,
+      spliceId: point.spliceId
+    };
+  }
+
+  const useDrop = safeCount > 1 && safeIndex % 2 === 1;
+  if (useDrop) {
+    const dropIndex = Math.floor(safeIndex / 2);
+    const dropCount = Math.max(1, Math.floor(safeCount / 2));
+    return {
+      x: point.x + 30 + spliceSpreadOffset(dropIndex, dropCount, 8),
+      y: point.y + 40,
+      exit: "splice-drop",
+      side: "splice",
+      edgeX: point.x + 52,
+      spliceId: point.spliceId
+    };
+  }
+
+  const throughIndex = Math.floor(safeIndex / 2);
+  const throughCount = Math.max(1, Math.ceil(safeCount / 2));
+  return {
+    x: point.x + 62,
+    y: point.y + spliceSpreadOffset(throughIndex, throughCount, 7),
+    exit: "splice-right",
+    side: "splice",
+    edgeX: point.x + 88,
+    spliceId: point.spliceId
+  };
+}
+
+function splicePortForRow(point, row, role) {
+  const rows = role === "parent" ? point.parentRows || [] : point.branchRows || [];
+  const index = Math.max(0, rows.indexOf(row?.id || ""));
+  const count = Math.max(1, rows.length);
+  return splicePortForIndex(point, role, index, count);
 }
 
 function wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoints, previewHeight) {
@@ -2734,13 +2789,13 @@ function wireEndpoints(item, index, leftMap, rightMap, leftConnectors, splicePoi
   if (role === "PARENT") {
     return {
       start: pinPoint(leftMap.get(legKey(item.leftLeg)) || leftConnectors[0], item.leftPin, "left"),
-      end: splice
+      end: splicePortForRow(splice, item, "parent")
     };
   }
 
   if (role === "BRANCH") {
     return {
-      start: splice,
+      start: splicePortForRow(splice, item, "branch"),
       end: !isDnp(item.rightDnp) && item.rightLeg && rightMap.has(legKey(item.rightLeg))
         ? pinPoint(rightMap.get(legKey(item.rightLeg)), item.rightPin || "1", "right")
         : unassignedPoint(index, previewHeight)
@@ -2761,13 +2816,24 @@ function renderSpliceNodes(splicePoints, selected) {
     const isSelected = selectedSpliceId === point.spliceId;
     const stroke = isSelected ? "#f2c84b" : "#596861";
     const label = `${point.spliceId} splice`;
+    const parentPorts = Array.from({ length: Math.max(0, point.parentCount || 0) }, (_, index) => splicePortForIndex(point, "parent", index, Math.max(1, point.parentCount || 1)));
+    const branchPorts = Array.from({ length: Math.max(0, point.branchCount || 0) }, (_, index) => splicePortForIndex(point, "branch", index, Math.max(1, point.branchCount || 1)));
+    const parentPortMarkup = parentPorts.map((port) => `
+      <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x - 28}" />
+    `).join("");
+    const branchPortMarkup = branchPorts.map((port) => {
+      if (port.exit === "splice-drop") {
+        return `<path class="splice-port-lead" d="M ${point.x + 10} ${point.y + 8} C ${point.x + 16} ${point.y + 21}, ${port.x - 4} ${port.y - 8}, ${port.x} ${port.y}" />`;
+      }
+      return `<path class="splice-port-lead" d="M ${point.x + 26} ${port.y} H ${port.x}" />`;
+    }).join("");
     return `
       <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(label)}">
         <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch`)}</title>
         <rect class="splice-hit" x="${point.x - 62}" y="${point.y - 34}" width="124" height="76" rx="8" />
         <text x="${point.x}" y="${point.y - 23}" class="splice-label" text-anchor="middle">${escapeXml(label)}</text>
-        <path class="splice-wire splice-wire-main" d="M ${point.x - 58} ${point.y + 1} H ${point.x - 24} C ${point.x - 14} ${point.y - 5}, ${point.x + 14} ${point.y + 7}, ${point.x + 24} ${point.y + 1} H ${point.x + 58}" />
-        <path class="splice-wire splice-wire-branch" d="M ${point.x + 4} ${point.y + 9} C ${point.x + 10} ${point.y + 22}, ${point.x + 18} ${point.y + 31}, ${point.x + 31} ${point.y + 38}" />
+        ${parentPortMarkup}
+        ${branchPortMarkup}
         <path class="splice-twist" d="M ${point.x - 22} ${point.y + 1} C ${point.x - 16} ${point.y - 7}, ${point.x - 9} ${point.y + 9}, ${point.x - 2} ${point.y + 1} S ${point.x + 12} ${point.y - 7}, ${point.x + 22} ${point.y + 1}" />
         <rect class="splice-tape" x="${point.x - 32}" y="${point.y - 9}" width="44" height="20" rx="8" stroke="${stroke}" stroke-width="${isSelected ? 3 : 2}" />
         <path class="splice-tape-band" d="M ${point.x - 22} ${point.y - 8} L ${point.x - 16} ${point.y + 11} M ${point.x - 7} ${point.y - 9} L ${point.x - 1} ${point.y + 11} M ${point.x + 8} ${point.y - 9} L ${point.x + 14} ${point.y + 10}" />
@@ -4489,6 +4555,23 @@ function wirePath(start, end, index, routeBaseY, wireCount = 0, row = null) {
   return pointsToOrthogonalPath(wireRoutePoints(start, end, index, routeBaseY, wireCount, row));
 }
 
+function isSplicePort(point) {
+  return value(point?.exit).startsWith("splice-");
+}
+
+function spliceApproachPoint(point) {
+  if (point.exit === "splice-left") {
+    return { x: point.x - 34, y: point.y };
+  }
+  if (point.exit === "splice-right") {
+    return { x: point.x + 34, y: point.y };
+  }
+  if (point.exit === "splice-drop") {
+    return { x: point.x, y: point.y + 34 };
+  }
+  return { x: point.x, y: point.y };
+}
+
 function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = null) {
   const offset = wireRouteOffset(row);
   const bends = wireRouteBends(row);
@@ -4519,6 +4602,26 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
     return points;
   }
 
+  if (start.exit === "bottom" && isSplicePort(end)) {
+    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
+    const dropY = bottomDropY(start, index, laneY);
+    const approach = spliceApproachPoint(end);
+    const busX = routeControlX(bottomBusX(start, index, wireCount) + offset.x, start.x, approach.x);
+    pushPoint(start.x, start.y);
+    pushPoint(start.x, dropY);
+    pushPoint(busX, dropY);
+    if (bends.length) {
+      pushManualBends(points, pushPoint, bends, "vh");
+      pushOrthogonalPoint(points, pushPoint, approach.x, approach.y, "hv");
+    } else {
+      pushPoint(busX, laneY);
+      pushPoint(approach.x, laneY);
+      pushPoint(approach.x, approach.y);
+    }
+    pushPoint(end.x, end.y);
+    return points;
+  }
+
   if (start.exit === "bottom") {
     const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
     const dropY = bottomDropY(start, index, laneY);
@@ -4539,6 +4642,16 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
 
   if (end.exit === "bottom") {
     return wireRoutePoints(end, start, index, routeBaseY, wireCount, row).slice().reverse();
+  }
+
+  if (isSplicePort(start) && isSplicePort(end)) {
+    const startApproach = spliceApproachPoint(start);
+    const endApproach = spliceApproachPoint(end);
+    pushPoint(start.x, start.y);
+    pushPoint(startApproach.x, startApproach.y);
+    pushPoint(endApproach.x, endApproach.y);
+    pushPoint(end.x, end.y);
+    return points;
   }
 
   const middleX = routeControlX(500 + ((Math.max(0, index) % 7) - 3) * 12 + offset.x, start.x, end.x);
