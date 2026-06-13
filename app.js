@@ -352,6 +352,8 @@ function buildCpcPinoutImage(title, variant) {
 const CPC_MALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN MALE", "male");
 const CPC_FEMALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN FEMALE", "female");
 
+const TABLE_LAYOUT_VERSION = 2;
+
 const EXPORT_HEADERS = [
   "Cable Name",
   "Left Leg",
@@ -364,8 +366,9 @@ const EXPORT_HEADERS = [
   "AWGuage",
   "Color",
   "Length inches",
-  "Branch",
+  "Branch ID",
   "",
+  "Branch Role",
   "Right Leg",
   "Right Leg Name",
   "Pin Pos #",
@@ -391,6 +394,7 @@ const DEFAULT_COLUMN_WIDTHS = [
   170,
   160,
   34,
+  130,
   115,
   180,
   100,
@@ -1185,6 +1189,7 @@ function createBlankRow(overrides = {}) {
 function blankState(rowCount = BLANK_ROW_COUNT) {
   const rows = Array.from({ length: rowCount }, () => createBlankRow());
   return {
+    tableLayoutVersion: TABLE_LAYOUT_VERSION,
     harnessName: "",
     selectedId: rows[0]?.id || "",
     rows,
@@ -1219,9 +1224,24 @@ function loadState() {
 
 function normalizeState(incoming) {
   const incomingHarnessName = value(incoming.harnessName);
+  const layoutVersion = Number(incoming.tableLayoutVersion) || 1;
   const rows = incoming.rows.map((row, index) => {
     const routeBends = normalizedRouteBends(row);
     const routeBend = routeBends[0] || { x: null, y: null };
+    const branchState = {
+      spliceId: value(row.spliceId).trim().toUpperCase(),
+      spliceRole: normalizedSpliceRole(row)
+    };
+    if (row.branch) {
+      const parsedBranch = { spliceId: "", spliceRole: "" };
+      applyBranchValue(parsedBranch, row.branch);
+      if (!branchState.spliceId) {
+        branchState.spliceId = parsedBranch.spliceId;
+      }
+      if (!branchState.spliceRole) {
+        branchState.spliceRole = parsedBranch.spliceRole;
+      }
+    }
     return {
       id: row.id || makeId(),
       cableName: value(row.cableName || row.harnessName || (index === 0 ? incomingHarnessName : "")),
@@ -1235,8 +1255,8 @@ function normalizeState(incoming) {
       awg: value(row.awg),
       color: value(row.color).toUpperCase(),
       length: value(row.length),
-      spliceId: value(row.spliceId).trim().toUpperCase(),
-      spliceRole: normalizedSpliceRole(row),
+      spliceId: branchState.spliceId,
+      spliceRole: branchState.spliceRole,
       rightLeg: value(row.rightLeg),
       rightPin: value(row.rightPin),
       rightDnp: row.rightDnp === undefined ? isDnp(row.dnp) : isDnp(row.rightDnp),
@@ -1264,14 +1284,15 @@ function normalizeState(incoming) {
     rows,
     catalog: normalizeCatalog(learnedCatalog.catalog),
     bomAllowance: Number.isFinite(incomingAllowance) ? Math.max(0, Math.min(100, incomingAllowance)) : 10,
-    tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths),
+    tableColumnWidths: normalizeColumnWidths(incoming.tableColumnWidths, layoutVersion),
     previewPaneWidth: normalizePreviewPaneWidth(
       incoming.previewPaneWidth ?? incoming.previewPaneHeight
     ),
     tableHidden: Boolean(incoming.tableHidden),
     previewLayout: normalizePreviewLayout(incoming.previewLayout),
     drawioXml: value(incoming.drawioXml || incoming.drawIoXml),
-    legNames: normalizeLegNames(incoming.legNames)
+    legNames: normalizeLegNames(incoming.legNames),
+    tableLayoutVersion: TABLE_LAYOUT_VERSION
   };
 }
 
@@ -1418,9 +1439,9 @@ function normalizePreviewPaneWidth(width) {
   return clamp(Math.round(nextWidth), MIN_PREVIEW_PANE_WIDTH, previewPaneMaxWidth());
 }
 
-function normalizeColumnWidths(widths) {
+function normalizeColumnWidths(widths, layoutVersion = 1) {
   let incoming = Array.isArray(widths) ? widths : [];
-  if (incoming.length === 23) {
+  if (layoutVersion < TABLE_LAYOUT_VERSION && incoming.length === 23) {
     incoming = [
       ...incoming.slice(0, 5),
       ...incoming.slice(6, 17),
@@ -1429,7 +1450,7 @@ function normalizeColumnWidths(widths) {
       incoming[19],
       ...incoming.slice(21)
     ];
-  } else if (incoming.length === 19) {
+  } else if (layoutVersion < TABLE_LAYOUT_VERSION && incoming.length === 19) {
     incoming = [
       ...incoming.slice(0, 3),
       180,
@@ -1438,7 +1459,7 @@ function normalizeColumnWidths(widths) {
       ...incoming.slice(14)
     ];
   }
-  if (incoming.length === 21) {
+  if (layoutVersion < TABLE_LAYOUT_VERSION && incoming.length === 21) {
     incoming = [
       incoming[0],
       DEFAULT_COLUMN_WIDTHS[1],
@@ -1446,6 +1467,13 @@ function normalizeColumnWidths(widths) {
       incoming[3],
       incoming[1],
       ...incoming.slice(4)
+    ];
+  }
+  if (layoutVersion < TABLE_LAYOUT_VERSION && incoming.length === 22) {
+    incoming = [
+      ...incoming.slice(0, 14),
+      DEFAULT_COLUMN_WIDTHS[14],
+      ...incoming.slice(14)
     ];
   }
   return DEFAULT_COLUMN_WIDTHS.map((defaultWidth, index) => {
@@ -1490,6 +1518,34 @@ function branchLabel(row) {
     return `${spliceId} ${role === "PARENT" ? "Parent" : "Branch"}`;
   }
   return spliceId || (role === "PARENT" ? "Parent" : "Branch");
+}
+
+function branchIdDisplay(row) {
+  return normalizedSpliceId(row) || "None";
+}
+
+function branchRoleDisplay(row) {
+  const role = normalizedSpliceRole(row);
+  if (!role) {
+    return "None";
+  }
+  return role === "PARENT" ? "Parent" : "Branch";
+}
+
+function branchIdSelectValue(row) {
+  return normalizedSpliceId(row) || "None";
+}
+
+function branchRoleSelectValue(row) {
+  return branchRoleDisplay(row);
+}
+
+function branchIdChoices() {
+  return ["None", ...options.spliceIds.filter(Boolean)];
+}
+
+function branchRoleChoices() {
+  return ["None", "Parent", "Branch"];
 }
 
 function branchChoices() {
@@ -4952,7 +5008,6 @@ function wireColorNotation(row) {
 function wireConstructionFlags(row) {
   const text = [
     row?.name,
-    row?.branch,
     branchLabel(row || {}),
     row?.toolUsed,
     row?.comments
@@ -5939,8 +5994,9 @@ function renderTable() {
           </div>
         </td>
         <td><input data-field="length" value="${escapeHtml(row.length)}" aria-label="Length inches"></td>
-        <td class="field-branch">${selectField(row, "branch", branchChoices(), "Branch", branchLabel(row))}</td>
+        <td class="field-branch-id">${selectField(row, "spliceId", branchIdChoices(), "Branch ID", branchIdSelectValue(row))}</td>
         <td class="divider-cell"></td>
+        <td class="field-branch-role">${selectField(row, "spliceRole", branchRoleChoices(), "Branch Role", branchRoleSelectValue(row))}</td>
         <td>${selectField(row, "rightLeg", options.legs, "Right leg")}</td>
         <td><input data-field="rightLegName" value="${escapeHtml(legNameFor("right", row.rightLeg))}" aria-label="Right leg name"></td>
         <td>${selectField(row, "rightPin", options.pins, "Right pin")}</td>
@@ -6009,7 +6065,8 @@ function comparableInputValue(field, input) {
     return input === "DNP" ? "DNP" : "";
   }
   if (field === "color" || field === "spliceRole" || field === "spliceId") {
-    return value(input).toUpperCase();
+    const text = cleanCell(input);
+    return text === "NONE" || text === "-" ? "" : text.toUpperCase();
   }
   if (field === "branch") {
     return cleanCell(input) || "None";
@@ -6051,8 +6108,20 @@ function handleCellChange(target, shouldRenderTable) {
     row.rightDnp = target.value === "DNP";
   } else if (field === "color") {
     row[field] = target.value.toUpperCase();
-  } else if (field === "branch") {
-    applyBranchValue(row, target.value);
+  } else if (field === "spliceId") {
+    const nextId = target.value === "None" ? "" : target.value.toUpperCase();
+    if (!nextId) {
+      row.spliceId = "";
+      row.spliceRole = "";
+    } else {
+      row.spliceId = nextId;
+    }
+  } else if (field === "spliceRole") {
+    const nextRole = target.value === "None" ? "" : target.value.toUpperCase();
+    row.spliceRole = nextRole;
+    if (nextRole && !normalizedSpliceId(row)) {
+      row.spliceId = nextSpliceId();
+    }
   } else if (field === "housing") {
     row.housing = target.value;
     applyCatalogParts(row, "left");
@@ -6063,13 +6132,6 @@ function handleCellChange(target, shouldRenderTable) {
     setLegNameFor("left", row.leftLeg, target.value);
   } else if (field === "rightLegName") {
     setLegNameFor("right", row.rightLeg, target.value);
-  } else if (field === "spliceRole") {
-    row.spliceRole = target.value.toUpperCase();
-    if (row.spliceRole && !normalizedSpliceId(row)) {
-      row.spliceId = nextSpliceId();
-    }
-  } else if (field === "spliceId") {
-    row.spliceId = target.value.toUpperCase();
   } else {
     row[field] = target.value;
   }
@@ -6397,8 +6459,9 @@ function exportCsv() {
       row.awg,
       row.color,
       row.length,
-      branchLabel(row),
+      normalizedSpliceId(row),
       "",
+      branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row),
       row.rightLeg,
       legNameFor("right", row.rightLeg),
       row.rightPin,
@@ -6479,6 +6542,7 @@ function applyImportedRows(options = {}) {
     catalog: state.catalog,
     bomAllowance: state.bomAllowance,
     tableColumnWidths: state.tableColumnWidths,
+    tableLayoutVersion: state.tableLayoutVersion,
     previewPaneWidth: state.previewPaneWidth,
     tableHidden: state.tableHidden,
     legNames: hasImportLegNames ? importLegNames : state.legNames
@@ -6499,7 +6563,7 @@ function renderImportPreview(rows) {
   pendingImportRows = rows;
   dom.importPreviewCount.textContent = `${rows.length} row${rows.length === 1 ? "" : "s"} ready`;
   if (!rows.length) {
-    dom.importPreviewRows.innerHTML = `<tr><td colspan="21">No rows ready.</td></tr>`;
+    dom.importPreviewRows.innerHTML = `<tr><td colspan="${EXPORT_HEADERS.length}">No rows ready.</td></tr>`;
     return;
   }
 
@@ -6516,8 +6580,9 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.awg)}</td>
       <td>${escapeHtml(row.color)}</td>
       <td>${escapeHtml(row.length)}</td>
-      <td>${escapeHtml(branchLabel(row))}</td>
+      <td>${escapeHtml(normalizedSpliceId(row))}</td>
       <td></td>
+      <td>${escapeHtml(branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row))}</td>
       <td>${escapeHtml(row.rightLeg)}</td>
       <td>${escapeHtml(row.rightLegName)}</td>
       <td>${escapeHtml(row.rightPin)}</td>
@@ -6705,6 +6770,9 @@ function rowFromMappedCells(cells, map) {
     awg: mappedCell(cells, map, "awg"),
     color: mappedCell(cells, map, "color"),
     length: mappedCell(cells, map, "length"),
+    branch: mappedCell(cells, map, "branch"),
+    spliceId: mappedCell(cells, map, "spliceId"),
+    spliceRole: mappedCell(cells, map, "spliceRole"),
     rightLeg: mappedCell(cells, map, "rightLeg"),
     rightLegName: mappedCell(cells, map, "rightLegName"),
     rightPin: mappedCell(cells, map, "rightPin"),
@@ -6715,7 +6783,21 @@ function rowFromMappedCells(cells, map) {
     toolUsed: mappedCell(cells, map, "toolUsed"),
     comments: mappedCell(cells, map, "comments")
   };
-  applyBranchValue(row, mappedCell(cells, map, "branch") || "");
+  const branchValue = mappedCell(cells, map, "branch");
+  if (branchValue) {
+    applyBranchValue(row, branchValue);
+  }
+  const mappedSpliceId = mappedCell(cells, map, "spliceId");
+  if (mappedSpliceId) {
+    row.spliceId = mappedSpliceId.toUpperCase();
+  }
+  const mappedSpliceRole = normalizedSpliceRole({ spliceRole: mappedCell(cells, map, "spliceRole") });
+  if (mappedSpliceRole) {
+    row.spliceRole = mappedSpliceRole;
+  }
+  if (row.spliceRole && !normalizedSpliceId(row)) {
+    row.spliceId = nextSpliceId();
+  }
   repairMappedBranchRightSide(row, clean, map);
   return row;
 }
@@ -6788,7 +6870,7 @@ function importColumnMap(cells) {
       return;
     }
 
-    if (key === "cableName" || key === "name" || key === "branch" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
+    if (key === "cableName" || key === "name" || key === "branch" || key === "spliceId" || key === "spliceRole" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
       map[key] = index;
       return;
     }
@@ -6872,6 +6954,12 @@ function headerKey(input) {
   if (text.includes("length")) {
     return "length";
   }
+  if (text === "branch id" || text === "branch number" || text === "splice id" || text === "splice number") {
+    return "spliceId";
+  }
+  if ((text.includes("branch") || text.includes("splice")) && (text.includes("role") || text.includes("type"))) {
+    return "spliceRole";
+  }
   if (text === "branch" || text.includes("splice")) {
     return "branch";
   }
@@ -6931,6 +7019,7 @@ function looksLikeTemplateSheetRow(clean) {
 
 function rowFromTemplateSheetRow(clean) {
   const rightStart = findTemplateRightStart(clean);
+  const splitBranchRole = normalizedSpliceRole({ spliceRole: clean[13] });
   const row = {
     cableName: clean[0] || "",
     leftLeg: clean[1] || "",
@@ -6945,6 +7034,8 @@ function rowFromTemplateSheetRow(clean) {
     color: clean[9] || "",
     length: clean[10] || "",
     branch: clean[11] || "",
+    spliceId: clean[11] || "",
+    spliceRole: splitBranchRole,
     rightLeg: rightStart >= 0 ? clean[rightStart] || "" : "",
     rightLegName: rightStart >= 0 ? clean[rightStart + 1] || "" : "",
     rightPin: rightStart >= 0 ? clean[rightStart + 2] || "" : "",
@@ -6955,7 +7046,11 @@ function rowFromTemplateSheetRow(clean) {
     comments: rightStart >= 0 ? clean.slice(rightStart + 7).join(" ").trim() : ""
   };
 
-  applyBranchValue(row, clean[11] || "");
+  if (!splitBranchRole) {
+    applyBranchValue(row, clean[11] || "");
+  } else if (!normalizedSpliceId(row)) {
+    row.spliceId = nextSpliceId();
+  }
   return row;
 }
 
@@ -7167,8 +7262,15 @@ function isLabelableLegKey(key) {
 
 function cleanImportedRow(row) {
   const prepared = { ...row };
-  if (prepared.branch && !prepared.spliceId && !prepared.spliceRole) {
-    applyBranchValue(prepared, prepared.branch);
+  if (prepared.branch) {
+    const parsedBranch = { spliceId: "", spliceRole: "" };
+    applyBranchValue(parsedBranch, prepared.branch);
+    if (!prepared.spliceId && parsedBranch.spliceId) {
+      prepared.spliceId = parsedBranch.spliceId;
+    }
+    if (!prepared.spliceRole && parsedBranch.spliceRole) {
+      prepared.spliceRole = parsedBranch.spliceRole;
+    }
   }
   repairImportedPartFields(prepared);
 
@@ -7439,7 +7541,7 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Cable Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Wire Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
+        <th>#</th><th>Cable Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Wire Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch ID</th><th></th><th>Branch Role</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
@@ -7457,7 +7559,9 @@ function exportInstructions() {
           <td>${escapeHtml(row.awg)}</td>
           <td>${escapeHtml(row.color)}</td>
           <td>${escapeHtml(row.length)}</td>
-          <td>${escapeHtml(branchLabel(row))}</td>
+          <td>${escapeHtml(normalizedSpliceId(row))}</td>
+          <td></td>
+          <td>${escapeHtml(branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row))}</td>
           <td>${escapeHtml(row.rightLeg)}</td>
           <td>${escapeHtml(legNameFor("right", row.rightLeg))}</td>
           <td>${escapeHtml(row.rightPin)}</td>
