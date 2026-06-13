@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.82";
+const APP_VERSION = "1.2.83";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -6492,6 +6492,7 @@ function rowFromCells(cells, columnMap = null) {
 }
 
 function rowFromMappedCells(cells, map) {
+  const clean = cells.map((cell) => value(cell).trim());
   const row = {
     cableName: mappedCell(cells, map, "cableName"),
     name: mappedCell(cells, map, "name"),
@@ -6516,12 +6517,51 @@ function rowFromMappedCells(cells, map) {
     comments: mappedCell(cells, map, "comments")
   };
   applyBranchValue(row, mappedCell(cells, map, "branch") || "");
+  repairMappedBranchRightSide(row, clean, map);
   return row;
 }
 
 function mappedCell(cells, map, key) {
   const index = map[key];
   return Number.isInteger(index) ? cells[index] || "" : "";
+}
+
+function repairMappedBranchRightSide(row, clean, map) {
+  if (normalizedSpliceRole(row) !== "BRANCH") {
+    return;
+  }
+
+  const pinLooksWrong = Boolean(row.rightPin && !/^\d{1,2}$/.test(cleanCell(row.rightPin)));
+  const needsRepair = pinLooksWrong || !cleanCell(row.rightHousing);
+  if (!needsRepair) {
+    return;
+  }
+
+  const rightStart = findMappedTemplateRightStart(clean, map);
+  if (rightStart < 0) {
+    return;
+  }
+
+  row.rightLeg = clean[rightStart] || "";
+  row.rightLegName = clean[rightStart + 1] || "";
+  row.rightPin = clean[rightStart + 2] || "";
+  row.rightHousing = clean[rightStart + 3] || "";
+  row.rightHousingPart = clean[rightStart + 4] || "";
+  row.rightTerminalPart = clean[rightStart + 5] || "";
+  row.toolUsed = clean[rightStart + 6] || "";
+  row.comments = clean.slice(rightStart + 7).join(" ").trim() || row.comments;
+}
+
+function findMappedTemplateRightStart(clean, map) {
+  const mappedStart = Number.isInteger(map.rightLeg) ? map.rightLeg : 13;
+  const first = Math.max(0, mappedStart - 2);
+  const last = Math.min(clean.length - 4, mappedStart + 2);
+  for (let index = first; index <= last; index += 1) {
+    if (looksLikeTemplateRightSideAt(clean, index)) {
+      return index;
+    }
+  }
+  return -1;
 }
 
 function looksLikeHeaderCells(cells) {
@@ -6722,11 +6762,19 @@ function rowFromTemplateSheetRow(clean) {
 
 function findTemplateRightStart(clean) {
   for (let index = 12; index <= 15; index += 1) {
-    if (isTemplateRightLegToken(clean[index])) {
+    if (looksLikeTemplateRightSideAt(clean, index)) {
       return index;
     }
   }
   return -1;
+}
+
+function looksLikeTemplateRightSideAt(clean, index) {
+  return Boolean(
+    isTemplateRightLegToken(clean[index])
+    && /^\d{1,2}$/.test(clean[index + 2] || "")
+    && clean[index + 3]
+  );
 }
 
 function isTemplateRightLegToken(input) {

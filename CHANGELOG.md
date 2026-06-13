@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.83 - 2026-06-12
+
+- Repaired header-based CAN imports when pasted branch rows lose the blank spacer column after `Branch`.
+- Rebuilds shifted branch endpoints so Molex housing names no longer land in the pin column.
+
 ## v1.2.82 - 2026-06-12
 
 - Made the CAN template importer tolerant of rows where the blank separator after `Branch` gets lost during copy/paste.
