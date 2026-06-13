@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.86";
+const APP_VERSION = "1.2.87";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2836,7 +2836,7 @@ function splicePortForIndex(point, role, index, count, laneIndex = 0) {
   if (role === "parent") {
     return {
       x: point.x - 62,
-      y: y + spliceSpreadOffset(safeIndex, safeCount, 4),
+      y: y + spliceSpreadOffset(safeIndex, safeCount, 3),
       exit: "splice-left",
       side: "splice",
       edgeX: point.x - 88,
@@ -2845,24 +2845,21 @@ function splicePortForIndex(point, role, index, count, laneIndex = 0) {
   }
 
   const useDrop = safeCount > 1 && safeIndex % 2 === 1;
+  const armOffset = spliceSpreadOffset(safeIndex, safeCount, 8);
   if (useDrop) {
-    const dropIndex = Math.floor(safeIndex / 2);
-    const dropCount = Math.max(1, Math.floor(safeCount / 2));
     return {
-      x: point.x + 30 + spliceSpreadOffset(dropIndex, dropCount, 8),
-      y: y + 34,
+      x: point.x + 56,
+      y: y + 18 + armOffset,
       exit: "splice-drop",
       side: "splice",
-      edgeX: point.x + 52,
+      edgeX: point.x + 84,
       spliceId: point.spliceId
     };
   }
 
-  const throughIndex = Math.floor(safeIndex / 2);
-  const throughCount = Math.max(1, Math.ceil(safeCount / 2));
   return {
     x: point.x + 62,
-    y: y + spliceSpreadOffset(throughIndex, throughCount, 4),
+    y: y + armOffset,
     exit: "splice-right",
     side: "splice",
     edgeX: point.x + 88,
@@ -2954,21 +2951,21 @@ function renderSpliceNodes(splicePoints, selected) {
       const parentPorts = Array.from({ length: lane.parentRows.length }, (_, index) => splicePortForIndex(point, "parent", index, lane.parentRows.length, laneIndex));
       const branchPorts = Array.from({ length: lane.branchRows.length }, (_, index) => splicePortForIndex(point, "branch", index, lane.branchRows.length, laneIndex));
       const parentPortMarkup = parentPorts.map((port) => `
-        <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x - 24}" />
+        <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x - 16}" />
       `).join("");
       const branchPortMarkup = branchPorts.map((port) => {
         if (port.exit === "splice-drop") {
-          return `<path class="splice-port-lead" d="M ${point.x + 10} ${laneY + 8} C ${point.x + 16} ${laneY + 20}, ${port.x - 4} ${port.y - 7}, ${port.x} ${port.y}" />`;
+          return `<path class="splice-port-lead" d="M ${point.x + 18} ${laneY} C ${point.x + 28} ${laneY + 4}, ${port.x - 10} ${port.y - 14}, ${port.x} ${port.y}" />`;
         }
-        return `<path class="splice-port-lead" d="M ${point.x + 24} ${port.y} H ${port.x}" />`;
+        return `<path class="splice-port-lead" d="M ${point.x + 18} ${port.y} H ${port.x}" />`;
       }).join("");
       return `
         <g class="splice-lane">
           ${parentPortMarkup}
           ${branchPortMarkup}
-          <path class="splice-twist" d="M ${point.x - 18} ${laneY} C ${point.x - 13} ${laneY - 6}, ${point.x - 8} ${laneY + 6}, ${point.x - 2} ${laneY} S ${point.x + 10} ${laneY - 6}, ${point.x + 18} ${laneY}" />
-          <rect class="splice-tape" x="${point.x - 25}" y="${laneY - 8}" width="38" height="16" rx="7" stroke="${stroke}" stroke-width="${isSelected ? 2.7 : 1.8}" />
-          <path class="splice-tape-band" d="M ${point.x - 16} ${laneY - 7} L ${point.x - 11} ${laneY + 8} M ${point.x - 3} ${laneY - 8} L ${point.x + 2} ${laneY + 8} M ${point.x + 10} ${laneY - 7} L ${point.x + 14} ${laneY + 7}" />
+          <path class="splice-twist" d="M ${point.x - 14} ${laneY} C ${point.x - 9} ${laneY - 5}, ${point.x - 4} ${laneY + 5}, ${point.x + 2} ${laneY} S ${point.x + 11} ${laneY - 5}, ${point.x + 16} ${laneY}" />
+          <rect class="splice-tape" x="${point.x - 18}" y="${laneY - 7}" width="34" height="14" rx="7" stroke="${stroke}" stroke-width="${isSelected ? 2.5 : 1.7}" />
+          <path class="splice-tape-band" d="M ${point.x - 12} ${laneY - 6} L ${point.x - 8} ${laneY + 7} M ${point.x - 1} ${laneY - 7} L ${point.x + 3} ${laneY + 7} M ${point.x + 10} ${laneY - 6} L ${point.x + 14} ${laneY + 6}" />
         </g>
       `;
     }).join("");
@@ -4709,7 +4706,7 @@ function spliceApproachPoint(point) {
     return { x: point.x + 34, y: point.y };
   }
   if (point.exit === "splice-drop") {
-    return { x: point.x, y: point.y + 34 };
+    return { x: point.x + 34, y: point.y + 18 };
   }
   return { x: point.x, y: point.y };
 }

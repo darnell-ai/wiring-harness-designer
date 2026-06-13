@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.87 - 2026-06-13
+
+- Tightened splice artwork into a smaller sideways Y junction so parent and branch wires read more like an actual splice point.
+- Changed the branch leg to angle down-right instead of dropping straight under the splice body.
+- Bumped the cache-busting app version so the site picks up the new splice geometry.
+
 ## v1.2.86 - 2026-06-13
 
 - Made splice routing conductor-aware so CAN H, CAN L, and GND no longer pile into one shared splice sleeve.
