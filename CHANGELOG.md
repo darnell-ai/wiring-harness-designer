@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.88 - 2026-06-13
+
+- Chained parent splice rows across the active conductor order so the main trunk now flows from one splice to the next instead of restarting at the left connector every time.
+- Changed branch rows to use the down-right leg of the splice, leaving the straight right arm for the trunk continuation.
+- Drew the splice artwork as a cleaner sideways Y so the tap is easier to follow in the preview.
+
 ## v1.2.87 - 2026-06-13
 
 - Tightened splice artwork into a smaller sideways Y junction so parent and branch wires read more like an actual splice point.
