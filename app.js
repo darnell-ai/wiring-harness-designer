@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.79";
+const APP_VERSION = "1.2.81";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -6336,7 +6336,6 @@ function parseImportText(text) {
   const lines = value(text)
     .replace(/\u00a0/g, " ")
     .split(/\r?\n/)
-    .map((line) => line.replace(/\s+$/g, ""))
     .filter((line) => line.trim());
   let columnMap = null;
 
@@ -6393,6 +6392,14 @@ function rowFromCells(cells, columnMap = null) {
 
   if (columnMap) {
     return rowFromMappedCells(clean, columnMap);
+  }
+
+  if (looksLikeTemplateSheetRow(clean)) {
+    return rowFromTemplateSheetRow(clean);
+  }
+
+  if (looksLikeBranchOnlyTemplateRow(clean)) {
+    return rowFromTemplateSheetRow(clean);
   }
 
   if (looksLikeNamedLegShopRow(clean)) {
@@ -6667,6 +6674,49 @@ function looksLikeNamedLegShopRow(clean) {
   const rightLegLooksValid = Boolean(clean[rightLegIndex] && /^[A-Za-z0-9#-]+$/.test(clean[rightLegIndex]));
   const rightPinLooksValid = /^\d{1,2}$/.test(clean[rightLegIndex + 2] || "");
   return secondIsLeg && fifthIsPinPosition && rightLegLooksValid && rightPinLooksValid;
+}
+
+function looksLikeBranchOnlyTemplateRow(clean) {
+  return !clean[0] && !clean[1] && !clean[2] && Boolean(clean[3]);
+}
+
+function looksLikeTemplateSheetRow(clean) {
+  const hasWireName = Boolean(clean[3]);
+  const awgLooksValid = /^\d{1,2}$/.test(clean[8] || "");
+  const lengthLooksValid = Boolean(clean[10]);
+  const branchLooksValid = Boolean(clean[11]);
+  const hasLeftSide = Boolean(clean[1] && /^[A-Za-z0-9#-]+$/.test(clean[1]) && /^\d{1,2}$/.test(clean[4] || ""));
+  const hasRightSide = Boolean(clean[13] && /^[A-Za-z0-9#-]+$/.test(clean[13]) && /^\d{1,2}$/.test(clean[15] || ""));
+  return hasWireName && awgLooksValid && lengthLooksValid && branchLooksValid && (hasLeftSide || hasRightSide);
+}
+
+function rowFromTemplateSheetRow(clean) {
+  const row = {
+    cableName: clean[0] || "",
+    leftLeg: clean[1] || "",
+    leftLegName: clean[2] || "",
+    name: clean[3] || "",
+    leftPin: clean[4] || "",
+    dnp: isDnp(clean[5]),
+    housing: clean[5] || "",
+    leftHousingPart: clean[6] || "",
+    leftTerminalPart: clean[7] || "",
+    awg: clean[8] || "",
+    color: clean[9] || "",
+    length: clean[10] || "",
+    branch: clean[11] || "",
+    rightLeg: clean[13] || "",
+    rightLegName: clean[14] || "",
+    rightPin: clean[15] || "",
+    rightHousing: clean[16] || "",
+    rightHousingPart: clean[17] || "",
+    rightTerminalPart: clean[18] || "",
+    toolUsed: clean[19] || "",
+    comments: clean.slice(20).join(" ").trim()
+  };
+
+  applyBranchValue(row, clean[11] || "");
+  return row;
 }
 
 function looksLikeNamedLegDnpLayout(clean) {

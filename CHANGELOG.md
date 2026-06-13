@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.2.81 - 2026-06-12
+
+- Preserved blank spreadsheet columns during import so headerless CAN rows keep their left and right side layout.
+- Added a headerless template-row parser for the CAN sheet so parent rows and branch rows import without false validation errors.
+
+## v1.2.80 - 2026-06-12
+
+- Added a CAN branch-row parser so rows with a blank left side and populated branch/right side import correctly from the spreadsheet template and rows-only paste.
+
 ## v1.2.79 - 2026-06-12
 
 - Added a copy button to the harness checks dialog so you can copy all current error messages, including row numbers, in one click.
