@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.90 - 2026-06-14
+
+- Added a `Tap Position inches` field so splice groups can be placed along a sequential trunk instead of being inferred from endpoint averages.
+- Updated the import, export, and printed instructions tables to carry the new tap-position column.
+- Wired splice placement to sort and position groups by tap position when the field is present.
+
 ## v1.2.89 - 2026-06-13
 
 - Simplified splice output to a true sideways Y: one parent input on the left and two branch outputs on the right.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.89";
+const APP_VERSION = "1.2.90";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -352,7 +352,7 @@ function buildCpcPinoutImage(title, variant) {
 const CPC_MALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN MALE", "male");
 const CPC_FEMALE_IMAGE = buildCpcPinoutImage("CPC 16 PIN FEMALE", "female");
 
-const TABLE_LAYOUT_VERSION = 2;
+const TABLE_LAYOUT_VERSION = 3;
 
 const EXPORT_HEADERS = [
   "Cable Name",
@@ -366,6 +366,7 @@ const EXPORT_HEADERS = [
   "AWGuage",
   "Color",
   "Length inches",
+  "Tap Position inches",
   "Branch ID",
   "",
   "Branch Role",
@@ -392,6 +393,7 @@ const DEFAULT_COLUMN_WIDTHS = [
   115,
   150,
   170,
+  145,
   160,
   34,
   130,
@@ -1158,6 +1160,7 @@ function blankWireFields() {
     awg: "",
     color: "",
     length: "",
+    tapPosition: "",
     spliceId: "",
     spliceRole: "",
     rightLeg: "",
@@ -1255,6 +1258,7 @@ function normalizeState(incoming) {
       awg: value(row.awg),
       color: value(row.color).toUpperCase(),
       length: value(row.length),
+      tapPosition: value(row.tapPosition),
       spliceId: branchState.spliceId,
       spliceRole: branchState.spliceRole,
       rightLeg: value(row.rightLeg),
@@ -1476,6 +1480,13 @@ function normalizeColumnWidths(widths, layoutVersion = 1) {
       ...incoming.slice(14)
     ];
   }
+  if (layoutVersion < TABLE_LAYOUT_VERSION && incoming.length === 23) {
+    incoming = [
+      ...incoming.slice(0, 12),
+      DEFAULT_COLUMN_WIDTHS[12],
+      ...incoming.slice(12)
+    ];
+  }
   return DEFAULT_COLUMN_WIDTHS.map((defaultWidth, index) => {
     const parsed = Number(incoming[index]);
     if (!Number.isFinite(parsed)) {
@@ -1489,7 +1500,7 @@ function minColumnWidth(index) {
   if (index === 0) {
     return 42;
   }
-  if (index === 13) {
+  if (index === 14) {
     return 24;
   }
   return MIN_COLUMN_WIDTH;
@@ -2729,14 +2740,39 @@ function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnect
       groups.get(spliceId).push(row);
     });
 
+  const entries = [...groups.entries()].map(([spliceId, group]) => ({
+    spliceId,
+    group,
+    tapPosition: spliceGroupTapPosition(group)
+  }));
+  const tapPositions = entries
+    .map((entry) => entry.tapPosition)
+    .filter((position) => Number.isFinite(position));
+  const tapBounds = tapPositions.length
+    ? { min: Math.min(...tapPositions), max: Math.max(...tapPositions) }
+    : null;
   const reservedY = [];
-  return new Map([...groups.entries()]
-    .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
-    .map(([spliceId, group], index) => {
+  return new Map(entries
+    .sort((left, right) => {
+      const leftTap = Number.isFinite(left.tapPosition) ? left.tapPosition : null;
+      const rightTap = Number.isFinite(right.tapPosition) ? right.tapPosition : null;
+      if (leftTap !== null && rightTap !== null && leftTap !== rightTap) {
+        return leftTap - rightTap;
+      }
+      if (leftTap !== null) {
+        return -1;
+      }
+      if (rightTap !== null) {
+        return 1;
+      }
+      return left.spliceId.localeCompare(right.spliceId, undefined, { numeric: true });
+    })
+    .map((entry, index) => {
+      const { spliceId, group, tapPosition } = entry;
       const parentRows = group.filter((row) => normalizedSpliceRole(row) === "PARENT").map((row) => row.id);
       const branchRows = group.filter((row) => normalizedSpliceRole(row) === "BRANCH").map((row) => row.id);
       const lanes = spliceConductorLanes(group);
-      const placement = splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight);
+      const placement = splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight, tapBounds, tapPosition);
       let y = placement.y;
       while (reservedY.some((usedY) => Math.abs(usedY - y) < 36)) {
         y = clamp(y + 40, 92, previewHeight - 74);
@@ -2752,6 +2788,7 @@ function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnect
         y: clamp(y + offset.y, 64, previewHeight - 64),
         exit: "splice",
         spliceId,
+        tapPosition,
         parentCount: parentRows.length,
         branchCount: branchRows.length,
         parentRows,
@@ -2768,6 +2805,32 @@ function averageCoordinate(points, key, fallback) {
   return points.reduce((sum, point) => sum + numberOrZero(point?.[key]), 0) / points.length;
 }
 
+function spliceTapPositionForRow(row) {
+  return numberOrDefault(row?.tapPosition, NaN);
+}
+
+function spliceGroupTapPosition(group) {
+  const positions = group
+    .map((row) => spliceTapPositionForRow(row))
+    .filter((position) => Number.isFinite(position));
+  if (!positions.length) {
+    return NaN;
+  }
+  return positions.reduce((sum, position) => sum + position, 0) / positions.length;
+}
+
+function tapPositionToPreviewY(tapPosition, bounds, previewHeight) {
+  const top = 92;
+  const bottom = previewHeight - 74;
+  const min = Number.isFinite(bounds?.min) ? bounds.min : tapPosition;
+  const max = Number.isFinite(bounds?.max) ? bounds.max : tapPosition;
+  if (!Number.isFinite(tapPosition) || max <= min) {
+    return clamp((top + bottom) / 2, top, bottom);
+  }
+  const ratio = (tapPosition - min) / (max - min);
+  return clamp(top + ratio * (bottom - top), top, bottom);
+}
+
 function spliceEndpointPoint(row, role, leftMap, rightMap, leftConnectors, rightConnectors) {
   if (role === "PARENT") {
     const connector = leftMap.get(legKey(row.leftLeg)) || leftConnectors[0];
@@ -2782,7 +2845,7 @@ function spliceEndpointPoint(row, role, leftMap, rightMap, leftConnectors, right
   return null;
 }
 
-function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight) {
+function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors, rightConnectors, previewHeight, tapBounds = null, tapPosition = NaN) {
   const parentPoints = [];
   const branchPoints = [];
   group.forEach((row) => {
@@ -2803,7 +2866,10 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
   const parentX = averageCoordinate(parentPoints, "x", fallbackX - 180);
   const branchX = averageCoordinate(branchPoints, "x", fallbackX + 180);
   const yPoints = branchPoints.length ? branchPoints : parentPoints;
-  const y = clamp(averageCoordinate(yPoints, "y", fallbackY), 92, previewHeight - 74);
+  const inferredY = clamp(averageCoordinate(yPoints, "y", fallbackY), 92, previewHeight - 74);
+  const y = Number.isFinite(tapPosition)
+    ? tapPositionToPreviewY(tapPosition, tapBounds, previewHeight)
+    : inferredY;
 
   if (parentPoints.length && branchPoints.length) {
     const span = Math.max(1, Math.abs(branchX - parentX));
@@ -3007,9 +3073,10 @@ function renderSpliceNodes(splicePoints, selected) {
     }).join("");
     const topY = Math.min(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) - 20;
     const bottomY = Math.max(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) + 20;
+    const tapLabel = Number.isFinite(point.tapPosition) ? ` @ ${point.tapPosition} in` : "";
     return `
       <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(`${point.spliceId} splice junction`)}">
-        <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch`)}</title>
+        <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch${tapLabel}`)}</title>
         <rect class="splice-hit" x="${point.x - 70}" y="${topY}" width="140" height="${bottomY - topY}" rx="8" />
         ${laneMarkup}
       </g>
@@ -5988,6 +6055,7 @@ function renderTable() {
           </div>
         </td>
         <td><input data-field="length" value="${escapeHtml(row.length)}" aria-label="Length inches"></td>
+        <td><input data-field="tapPosition" value="${escapeHtml(row.tapPosition)}" aria-label="Tap position inches"></td>
         <td class="field-branch-id">${selectField(row, "spliceId", branchIdChoices(), "Branch ID", branchIdSelectValue(row))}</td>
         <td class="divider-cell"></td>
         <td class="field-branch-role">${selectField(row, "spliceRole", branchRoleChoices(), "Branch Role", branchRoleSelectValue(row))}</td>
@@ -6453,6 +6521,7 @@ function exportCsv() {
       row.awg,
       row.color,
       row.length,
+      row.tapPosition,
       normalizedSpliceId(row),
       "",
       branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row),
@@ -6574,6 +6643,7 @@ function renderImportPreview(rows) {
       <td>${escapeHtml(row.awg)}</td>
       <td>${escapeHtml(row.color)}</td>
       <td>${escapeHtml(row.length)}</td>
+      <td>${escapeHtml(row.tapPosition)}</td>
       <td>${escapeHtml(normalizedSpliceId(row))}</td>
       <td></td>
       <td>${escapeHtml(branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row))}</td>
@@ -6764,6 +6834,7 @@ function rowFromMappedCells(cells, map) {
     awg: mappedCell(cells, map, "awg"),
     color: mappedCell(cells, map, "color"),
     length: mappedCell(cells, map, "length"),
+    tapPosition: mappedCell(cells, map, "tapPosition"),
     branch: mappedCell(cells, map, "branch"),
     spliceId: mappedCell(cells, map, "spliceId"),
     spliceRole: mappedCell(cells, map, "spliceRole"),
@@ -6864,7 +6935,7 @@ function importColumnMap(cells) {
       return;
     }
 
-    if (key === "cableName" || key === "name" || key === "branch" || key === "spliceId" || key === "spliceRole" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
+    if (key === "cableName" || key === "name" || key === "branch" || key === "tapPosition" || key === "spliceId" || key === "spliceRole" || key === "toolUsed" || key === "comments" || key === "awg" || key === "color" || key === "length") {
       map[key] = index;
       return;
     }
@@ -6948,6 +7019,9 @@ function headerKey(input) {
   if (text.includes("length")) {
     return "length";
   }
+  if (text.includes("tap position") || text.includes("splice position") || text.includes("trunk position")) {
+    return "tapPosition";
+  }
   if (text === "branch id" || text === "branch number" || text === "splice id" || text === "splice number") {
     return "spliceId";
   }
@@ -6964,6 +7038,27 @@ function headerKey(input) {
     return "comments";
   }
   return "";
+}
+
+function looksLikeTapPositionCell(input) {
+  const text = cleanCell(input);
+  if (!text) {
+    return false;
+  }
+  return /^\d+(?:\.\d+)?(?:\s*(?:in|inch|inches))?$/i.test(text);
+}
+
+function looksLikeTemplateSpliceIdCell(input) {
+  return /^S\d+$/i.test(cleanCell(input));
+}
+
+function templateSheetLayout(clean) {
+  const hasNewLayout = looksLikeTapPositionCell(clean[11]) || looksLikeTemplateSpliceIdCell(clean[12]) || normalizedSpliceRole({ spliceRole: clean[14] });
+  return {
+    hasTapPosition: looksLikeTapPositionCell(clean[11]),
+    branchIndex: hasNewLayout ? 12 : 11,
+    roleIndex: hasNewLayout ? 14 : 13
+  };
 }
 
 function looksLikeShopRow(clean) {
@@ -7005,15 +7100,18 @@ function looksLikeTemplateSheetRow(clean) {
   const hasWireName = Boolean(clean[3]);
   const awgLooksValid = /^\d{1,2}$/.test(clean[8] || "");
   const lengthLooksValid = Boolean(clean[10]);
-  const branchLooksValid = Boolean(clean[11]);
+  const layout = templateSheetLayout(clean);
+  const branchLooksValid = Boolean(clean[layout.branchIndex]);
   const hasLeftSide = Boolean(clean[1] && /^[A-Za-z0-9#-]+$/.test(clean[1]) && /^\d{1,2}$/.test(clean[4] || ""));
   const hasRightSide = findTemplateRightStart(clean) >= 0;
   return hasWireName && awgLooksValid && lengthLooksValid && branchLooksValid && (hasLeftSide || hasRightSide);
 }
 
 function rowFromTemplateSheetRow(clean) {
+  const layout = templateSheetLayout(clean);
   const rightStart = findTemplateRightStart(clean);
-  const splitBranchRole = normalizedSpliceRole({ spliceRole: clean[13] });
+  const branchValue = clean[layout.branchIndex] || "";
+  const splitBranchRole = normalizedSpliceRole({ spliceRole: clean[layout.roleIndex] });
   const row = {
     cableName: clean[0] || "",
     leftLeg: clean[1] || "",
@@ -7027,8 +7125,9 @@ function rowFromTemplateSheetRow(clean) {
     awg: clean[8] || "",
     color: clean[9] || "",
     length: clean[10] || "",
-    branch: clean[11] || "",
-    spliceId: clean[11] || "",
+    tapPosition: layout.hasTapPosition ? clean[11] || "" : "",
+    branch: branchValue,
+    spliceId: branchValue,
     spliceRole: splitBranchRole,
     rightLeg: rightStart >= 0 ? clean[rightStart] || "" : "",
     rightLegName: rightStart >= 0 ? clean[rightStart + 1] || "" : "",
@@ -7040,9 +7139,13 @@ function rowFromTemplateSheetRow(clean) {
     comments: rightStart >= 0 ? clean.slice(rightStart + 7).join(" ").trim() : ""
   };
 
-  if (!splitBranchRole) {
-    applyBranchValue(row, clean[11] || "");
-  } else if (!normalizedSpliceId(row)) {
+  if (branchValue) {
+    applyBranchValue(row, branchValue);
+  }
+  if (splitBranchRole) {
+    row.spliceRole = splitBranchRole;
+  }
+  if (row.spliceRole && !normalizedSpliceId(row)) {
     row.spliceId = nextSpliceId();
   }
   return row;
@@ -7289,6 +7392,7 @@ function cleanImportedRow(row) {
     awg: cleanGauge(prepared.awg),
     color: matchColor(prepared.color) || cleanCell(prepared.color).toUpperCase(),
     length: cleanLength(prepared.length),
+    tapPosition: cleanLength(prepared.tapPosition),
     spliceId: cleanCell(prepared.spliceId).toUpperCase(),
     spliceRole: normalizedSpliceRole(prepared),
     rightLeg: rightLeg.key,
@@ -7367,6 +7471,7 @@ function isUsefulRow(row) {
     row.awg ||
     row.color ||
     row.length ||
+    row.tapPosition ||
     row.spliceId ||
     row.spliceRole ||
     row.rightLeg ||
@@ -7535,7 +7640,7 @@ function exportInstructions() {
   <table>
     <thead>
       <tr>
-        <th>#</th><th>Cable Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Wire Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Branch ID</th><th></th><th>Branch Role</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
+        <th>#</th><th>Cable Name</th><th>Left Leg</th><th>Left Leg Name</th><th>Wire Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>AWGuage</th><th>Color</th><th>Length inches</th><th>Tap Position inches</th><th>Branch ID</th><th></th><th>Branch Role</th><th>Right Leg</th><th>Right Leg Name</th><th>Pin Pos #</th><th>Housing Type</th><th>Housing Part #</th><th>Pin P#</th><th>Tool used</th><th>Comments</th>
       </tr>
     </thead>
     <tbody>
@@ -7553,6 +7658,7 @@ function exportInstructions() {
           <td>${escapeHtml(row.awg)}</td>
           <td>${escapeHtml(row.color)}</td>
           <td>${escapeHtml(row.length)}</td>
+          <td>${escapeHtml(row.tapPosition)}</td>
           <td>${escapeHtml(normalizedSpliceId(row))}</td>
           <td></td>
           <td>${escapeHtml(branchRoleDisplay(row) === "None" ? "" : branchRoleDisplay(row))}</td>
