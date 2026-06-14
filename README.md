@@ -4,7 +4,7 @@ An open-source, browser-based wiring harness diagram editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.2.91**
+Current release: **v1.2.92**
 
 ## Use The App
 

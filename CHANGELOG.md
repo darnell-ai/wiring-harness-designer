@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.92 - 2026-06-14
+
+- Tightened splice placement so branch junctions bias toward the trunk instead of floating midway between the trunk and the branch destination.
+- Kept the connector detail panels removed so the routing view stays cleaner.
+
 ## v1.2.91 - 2026-06-14
 
 - Removed the connector info panels from the default harness drawing so the routing and splice layout stay readable.

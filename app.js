@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.91";
+const APP_VERSION = "1.2.92";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2871,7 +2871,7 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
 
   if (parentPoints.length && branchPoints.length) {
     const span = Math.max(1, Math.abs(branchX - parentX));
-    const branchOffset = clamp(span * 0.22, 64, 160);
+    const branchOffset = clamp(span * 0.12, 72, 130);
     const x = branchX >= parentX
       ? parentX + branchOffset
       : parentX - branchOffset;
