@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.92";
+const APP_VERSION = "1.2.93";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2826,7 +2826,7 @@ function tapPositionToPreviewY(tapPosition, bounds, previewHeight) {
     return clamp((top + bottom) / 2, top, bottom);
   }
   const ratio = (tapPosition - min) / (max - min);
-  return clamp(top + ratio * (bottom - top), top, bottom);
+  return clamp(bottom - ratio * (bottom - top), top, bottom);
 }
 
 function spliceEndpointPoint(row, role, leftMap, rightMap, leftConnectors, rightConnectors) {

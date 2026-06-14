@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.93 - 2026-06-14
+
+- Flipped tap-position mapping so smaller tap distances sit near the USB end and larger tap distances sit toward the terminator, matching the hand sketch.
+
 ## v1.2.92 - 2026-06-14
 
 - Tightened splice placement so branch junctions bias toward the trunk instead of floating midway between the trunk and the branch destination.
