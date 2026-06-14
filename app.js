@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.4.3";
+const APP_VERSION = "1.4.4";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -230,14 +230,28 @@ function analyzeGeometry(source, rotation) {
   const cleanedMask = pruneTinyComponents(rawMask, source.width, source.height, 8);
   const horizontal = extractLineSegments(cleanedMask, source.width, source.height, "horizontal");
   const vertical = extractLineSegments(cleanedMask, source.width, source.height, "vertical");
-  const segments = mergeSegments([...horizontal, ...vertical], source.width, source.height);
+  const segments = mergeSegments([...horizontal, ...vertical], source.width, source.height)
+    .filter((segment) => !isBorderLikeSegment(segment, source.width, source.height));
   const connectors = inferConnectors(segments, source.width, source.height);
   const components = inferMarkupComponents(cleanedMask, source.width, source.height);
-  const longHorizontal = horizontal.filter((segment) => segment.length >= source.width * 0.14).length;
-  const longVertical = vertical.filter((segment) => segment.length >= source.height * 0.16).length;
-  const connectorBonus = connectors.length * 260;
-  const markBonus = components.length * 30;
-  const score = longHorizontal * 540 + longVertical * 160 + segments.length * 24 + connectorBonus + markBonus;
+  const usableHorizontal = segments.filter((segment) => segment.kind === "horizontal" && segment.length >= source.width * 0.1);
+  const usableVertical = segments.filter((segment) => segment.kind === "vertical" && segment.length >= source.height * 0.12);
+  const horizontalLengthScore = usableHorizontal.reduce((total, segment) => total + Math.min(1, segment.length / source.width), 0);
+  const connectorPinScore = connectors.reduce((total, connector) => total + connector.pins.length, 0);
+  const horizontalDominance = (usableHorizontal.length + 1) / (usableVertical.length + 1);
+  const dominanceBonus = clamp((horizontalDominance - 1) * 1600, -900, 1800);
+  const connectorOverfitPenalty = Math.max(0, connectors.length - Math.max(6, usableHorizontal.length * 0.55)) * 130;
+  const markerPenalty = Math.min(components.length, 50) * 10;
+  const score =
+    usableHorizontal.length * 820 +
+    horizontalLengthScore * 620 +
+    usableVertical.length * 35 +
+    connectors.length * 260 +
+    connectorPinScore * 38 +
+    segments.length * 12 -
+    connectorOverfitPenalty -
+    markerPenalty +
+    dominanceBonus;
 
   return {
     imageData: source.imageData,
@@ -256,18 +270,30 @@ function analyzeGeometry(source, rotation) {
 
 function compileSchematic(best, ocr, meta) {
   const wireSegments = best.segments
-    .filter((segment) => segment.kind === "horizontal" && segment.length >= best.width * 0.08)
+    .filter((segment) => segment.kind === "horizontal" && segment.length >= best.width * 0.1 && !isBorderLikeSegment(segment, best.width, best.height))
     .sort((left, right) => left.y1 - right.y1 || left.x1 - right.x1);
   const connectors = attachConnectorLabels(best.connectors, ocr.findings, best.width, best.height);
   const findings = classifyFindings(ocr.findings, best.components, best.width, best.height);
   const model = buildInternalModel(wireSegments, connectors, findings, best.width, best.height);
-  const geometryConfidence = Math.min(1, wireSegments.length / 8);
+  const visibleFindings = findings.filter(isVisibleFinding);
+  const markerCount = findings.length - visibleFindings.length;
+  const geometryConfidence = Math.min(1, wireSegments.filter((segment) => segment.confidence >= 0.48).length / 10);
   const connectorConfidence = Math.min(1, connectors.length / 4);
-  const ocrConfidence = findings.length ? average(findings.map((finding) => finding.confidence)) : 0;
-  const confidence = clamp(0.18 + geometryConfidence * 0.42 + connectorConfidence * 0.2 + ocrConfidence * 0.2, 0, 1);
-  const status = confidence >= 0.74
+  const ocrConfidence = visibleFindings.length ? average(visibleFindings.map((finding) => finding.confidence)) : 0;
+  const markerPenalty = Math.min(0.22, markerCount * 0.018);
+  let confidence = clamp(0.08 + geometryConfidence * 0.42 + connectorConfidence * 0.28 + ocrConfidence * 0.18 - markerPenalty, 0.05, 0.92);
+  if (wireSegments.length < 4) {
+    confidence = Math.min(confidence, 0.42);
+  }
+  if (connectors.length < 2) {
+    confidence = Math.min(confidence, 0.58);
+  }
+  if (!visibleFindings.length) {
+    confidence = Math.min(confidence, 0.68);
+  }
+  const status = confidence >= 0.78
     ? "High confidence read. Review the output, then export."
-    : confidence >= 0.48
+    : confidence >= 0.46
       ? "Medium confidence read. Review highlighted labels and endpoints."
       : "Low confidence read. Use a flatter photo with darker lines for production work.";
 
@@ -350,7 +376,7 @@ function buildSchematicSvg(result) {
     `;
   }).join("");
 
-  const findings = result.findings.map((finding) => {
+  const findings = result.findings.filter(isVisibleFinding).map((finding) => {
     const point = toSvgPoint(finding.x, finding.y, fit);
     const confidence = confidenceKey(finding.confidence);
     if (finding.kind === "dimension") {
@@ -636,6 +662,10 @@ function classifyFindings(ocrFindings, components, width, height) {
   return [...textFindings, ...markerFindings]
     .filter((finding) => finding.width <= width * 0.5 && finding.height <= height * 0.5)
     .sort((left, right) => left.y - right.y || left.x - right.x);
+}
+
+function isVisibleFinding(finding) {
+  return finding.kind !== "marker" || normalizeText(finding.text) !== "MARK";
 }
 
 function attachConnectorLabels(connectors, findings, width, height) {
@@ -927,62 +957,146 @@ function pruneTinyComponents(mask, width, height, minArea) {
 function extractLineSegments(mask, width, height, orientation) {
   const axisLength = orientation === "horizontal" ? height : width;
   const crossLength = orientation === "horizontal" ? width : height;
-  const counts = new Array(axisLength).fill(0);
-  const minCross = new Array(axisLength).fill(crossLength);
-  const maxCross = new Array(axisLength).fill(-1);
+  const minRunLength = Math.max(28, Math.round(crossLength * 0.035));
+  const maxGap = Math.max(2, Math.round(crossLength * 0.004));
+  const minDensity = 0.26;
+  const runs = [];
 
-  for (let y = 0; y < height; y += 1) {
-    for (let x = 0; x < width; x += 1) {
-      if (!mask[y * width + x]) {
-        continue;
+  for (let axis = 0; axis < axisLength; axis += 1) {
+    let start = -1;
+    let lastInk = -1;
+    let inkCount = 0;
+    let gap = 0;
+    for (let cross = 0; cross < crossLength; cross += 1) {
+      const index = orientation === "horizontal"
+        ? axis * width + cross
+        : cross * width + axis;
+      if (mask[index]) {
+        if (start < 0) {
+          start = cross;
+          inkCount = 0;
+        }
+        lastInk = cross;
+        inkCount += 1;
+        gap = 0;
+      } else if (start >= 0) {
+        gap += 1;
+        if (gap > maxGap) {
+          addLineRun(runs, orientation, axis, start, lastInk, inkCount, minRunLength, minDensity);
+          start = -1;
+          lastInk = -1;
+          inkCount = 0;
+          gap = 0;
+        }
       }
-      const axis = orientation === "horizontal" ? y : x;
-      const cross = orientation === "horizontal" ? x : y;
-      counts[axis] += 1;
-      minCross[axis] = Math.min(minCross[axis], cross);
-      maxCross[axis] = Math.max(maxCross[axis], cross);
+    }
+    if (start >= 0) {
+      addLineRun(runs, orientation, axis, start, lastInk, inkCount, minRunLength, minDensity);
     }
   }
 
-  const smoothed = smooth(counts, 2);
-  const peak = smoothed.reduce((max, count) => Math.max(max, count), 0);
-  const threshold = Math.max(5, peak * 0.34);
-  const clusters = [];
-  let start = -1;
-  for (let index = 0; index < axisLength; index += 1) {
-    if (smoothed[index] >= threshold) {
-      if (start < 0) {
-        start = index;
+  return mergeLineRuns(runs, width, height, orientation)
+    .filter((segment) => !isBorderLikeSegment(segment, width, height));
+}
+
+function addLineRun(runs, orientation, axis, start, end, inkCount, minRunLength, minDensity) {
+  const length = end - start + 1;
+  const density = length > 0 ? inkCount / length : 0;
+  if (length < minRunLength || density < minDensity) {
+    return;
+  }
+  runs.push({
+    kind: orientation,
+    axis,
+    axisMin: axis,
+    axisMax: axis,
+    start,
+    end,
+    inkCount,
+    density,
+    samples: 1
+  });
+}
+
+function mergeLineRuns(runs, width, height, orientation) {
+  const axisLength = orientation === "horizontal" ? height : width;
+  const crossLength = orientation === "horizontal" ? width : height;
+  const axisTolerance = Math.max(3, Math.round(axisLength * 0.006));
+  const rangeTolerance = Math.max(12, Math.round(crossLength * 0.018));
+  const sorted = [...runs].sort((left, right) => left.axis - right.axis || left.start - right.start);
+  const merged = [];
+
+  sorted.forEach((run) => {
+    const target = merged.find((candidate) => lineRunsBelong(candidate, run, axisTolerance, rangeTolerance));
+    if (!target) {
+      merged.push({ ...run });
+      return;
+    }
+
+    const totalSamples = target.samples + run.samples;
+    target.axis = (target.axis * target.samples + run.axis * run.samples) / totalSamples;
+    target.axisMin = Math.min(target.axisMin, run.axisMin);
+    target.axisMax = Math.max(target.axisMax, run.axisMax);
+    target.start = Math.min(target.start, run.start);
+    target.end = Math.max(target.end, run.end);
+    target.inkCount += run.inkCount;
+    target.samples = totalSamples;
+    target.density = Math.min(1, target.inkCount / Math.max(1, (target.end - target.start + 1) * target.samples));
+  });
+
+  return merged
+    .map((run) => lineRunToSegment(run, width, height, orientation))
+    .filter((segment) => segment.length >= Math.max(30, crossLength * 0.04) && segment.thickness <= Math.max(18, axisLength * 0.04))
+    .sort((left, right) => {
+      if (left.kind !== right.kind) {
+        return left.kind.localeCompare(right.kind);
       }
-    } else if (start >= 0) {
-      clusters.push({ start, end: index - 1 });
-      start = -1;
-    }
-  }
-  if (start >= 0) {
-    clusters.push({ start, end: axisLength - 1 });
-  }
+      return left.kind === "horizontal" ? left.y1 - right.y1 : left.x1 - right.x1;
+    });
+}
 
-  return clusters.map((cluster) => {
-    let low = crossLength;
-    let high = -1;
-    let peakCount = 0;
-    for (let index = cluster.start; index <= cluster.end; index += 1) {
-      peakCount = Math.max(peakCount, counts[index]);
-      low = Math.min(low, minCross[index]);
-      high = Math.max(high, maxCross[index]);
-    }
-    const axis = (cluster.start + cluster.end) / 2;
-    const thickness = cluster.end - cluster.start + 1;
-    const length = high - low + 1;
-    if (high <= low || length < crossLength * 0.045 || thickness > axisLength * 0.22) {
-      return null;
-    }
-    const confidence = clamp(length / crossLength * 0.75 + peakCount / crossLength * 0.25, 0, 1);
-    return orientation === "horizontal"
-      ? { id: makeId("H"), kind: "horizontal", x1: low, y1: axis, x2: high, y2: axis, length, thickness, confidence }
-      : { id: makeId("V"), kind: "vertical", x1: axis, y1: low, x2: axis, y2: high, length, thickness, confidence };
-  }).filter(Boolean);
+function lineRunsBelong(left, right, axisTolerance, rangeTolerance) {
+  if (Math.abs(left.axis - right.axis) > axisTolerance) {
+    return false;
+  }
+  const overlap = Math.min(left.end, right.end) - Math.max(left.start, right.start);
+  const leftLength = left.end - left.start + 1;
+  const rightLength = right.end - right.start + 1;
+  const shorter = Math.max(1, Math.min(leftLength, rightLength));
+  const closeStart = Math.abs(left.start - right.start) <= rangeTolerance;
+  const closeEnd = Math.abs(left.end - right.end) <= rangeTolerance;
+  return overlap >= shorter * 0.35 || (closeStart && closeEnd);
+}
+
+function lineRunToSegment(run, width, height, orientation) {
+  const length = run.end - run.start + 1;
+  const thickness = run.axisMax - run.axisMin + 1;
+  const crossLength = orientation === "horizontal" ? width : height;
+  const lengthScore = clamp(length / Math.max(1, crossLength * 0.22), 0, 1);
+  const densityScore = clamp(run.density, 0, 1);
+  const thicknessScore = clamp(1 - Math.max(0, thickness - 7) / 24, 0.35, 1);
+  const confidence = clamp(0.16 + lengthScore * 0.58 + densityScore * 0.18 + thicknessScore * 0.08, 0, 0.97);
+  return orientation === "horizontal"
+    ? { id: makeId("H"), kind: "horizontal", x1: run.start, y1: run.axis, x2: run.end, y2: run.axis, length, thickness, confidence }
+    : { id: makeId("V"), kind: "vertical", x1: run.axis, y1: run.start, x2: run.axis, y2: run.end, length, thickness, confidence };
+}
+
+function isBorderLikeSegment(segment, width, height) {
+  const edgeX = width * 0.06;
+  const edgeY = height * 0.06;
+  if (segment.kind === "horizontal") {
+    const y = (segment.y1 + segment.y2) / 2;
+    const touchesSide = segment.x1 <= edgeX || segment.x2 >= width - edgeX;
+    const nearTopOrBottom = y <= edgeY || y >= height - edgeY;
+    return (
+      segment.length >= width * 0.78 && touchesSide
+    ) || (
+      nearTopOrBottom && segment.length >= width * 0.34
+    );
+  }
+  const x = (segment.x1 + segment.x2) / 2;
+  const nearSide = x <= edgeX || x >= width - edgeX;
+  return nearSide && segment.length >= height * 0.34;
 }
 
 function mergeSegments(segments, width, height) {
@@ -1171,20 +1285,21 @@ function renderFacts(result) {
   const percent = Math.round(result.confidence * 100);
   dom.confidenceValue.textContent = `${percent}%`;
   dom.confidenceFill.style.width = `${percent}%`;
-  dom.confidenceFill.style.background = result.confidence >= 0.74 ? "var(--green)" : result.confidence >= 0.48 ? "var(--amber)" : "var(--red)";
+  dom.confidenceFill.style.background = result.confidence >= 0.78 ? "var(--green)" : result.confidence >= 0.46 ? "var(--amber)" : "var(--red)";
   dom.orientationFact.textContent = orientationLabel(result.rotation);
   dom.wireFact.textContent = String(result.wires.length);
   dom.connectorFact.textContent = String(result.connectors.length);
-  dom.labelFact.textContent = String(result.findings.filter((finding) => finding.kind !== "marker").length);
+  dom.labelFact.textContent = String(result.findings.filter(isVisibleFinding).length);
 }
 
 function renderFindings(findings) {
-  dom.findingCount.textContent = `${findings.length} item${findings.length === 1 ? "" : "s"}`;
-  if (!findings.length) {
+  const visibleFindings = findings.filter(isVisibleFinding);
+  dom.findingCount.textContent = `${visibleFindings.length} item${visibleFindings.length === 1 ? "" : "s"}`;
+  if (!visibleFindings.length) {
     dom.findingsList.innerHTML = `<span class="quiet">No labels or markups were read.</span>`;
     return;
   }
-  dom.findingsList.innerHTML = findings.slice(0, 40).map((finding) => {
+  dom.findingsList.innerHTML = visibleFindings.slice(0, 40).map((finding) => {
     const key = confidenceKey(finding.confidence);
     return `
       <div class="finding" data-confidence="${key}">
@@ -1370,7 +1485,7 @@ function buildDrawioXml(result) {
       parent: "1"
     }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(start.x, start.y, "sourcePoint")}${mxPoint(end.x, end.y, "targetPoint")}`)));
   });
-  result.findings.forEach((finding, index) => {
+  result.findings.filter(isVisibleFinding).forEach((finding, index) => {
     const point = toSvgPoint(finding.x, finding.y, fit);
     add(mxCell({
       id: `finding_${index + 1}`,

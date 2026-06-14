@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.4 - 2026-06-14
+
+- Replaced row/column span detection with contiguous ink-run tracing so scattered marks cannot become fake full-page wires.
+- Updated rotation scoring to prefer the orientation with real harness-like horizontal runs and connector endpoint groups.
+- Made confidence scoring stricter and stopped generic MARK detections from cluttering the schematic or Draw.io export.
+
 ## v1.4.3 - 2026-06-14
 
 - Reworked the ink reader to use local contrast against the nearby paper instead of a global darkness threshold.
