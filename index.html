@@ -3,414 +3,100 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Wiring Harness Designer v1.2.96</title>
+    <title>DIGIWIRE v1.4.1</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <div class="app-shell">
+    <main class="app-shell">
       <header class="topbar">
-        <div class="brand-block">
-          <div class="brand-mark">WH</div>
+        <div class="brand">
+          <div class="brand-mark">DW</div>
           <div>
-            <div class="brand-title">
-              <h1>Wiring Harness Designer</h1>
-              <span class="version-badge">v1.2.96</span>
-            </div>
-            <p>Interactive harness layout editor</p>
+            <h1>DIGIWIRE</h1>
+            <p>Upload a sketch. Get a clean electrical drawing.</p>
           </div>
         </div>
-
-        <div class="route-shortcut-note" aria-label="Wire route drag shortcuts" title="9 adds a bend point. 8 removes the bend you are dragging, or the most recent bend if you are holding the wire body. 7 clears route bends and route offset for the cleanest automatic path.">
-          <span>While dragging a wire</span>
-          <strong><kbd>9</kbd> Add bend</strong>
-          <strong><kbd>8</kbd> Remove bend</strong>
-          <strong><kbd>7</kbd> Straighten</strong>
-        </div>
-
-        <div class="toolbar" aria-label="Harness actions">
-          <button id="undoButton" type="button" title="Undo last project change" disabled>
-            <span class="tool-icon">UNDO</span>
-            <span>Undo</span>
-          </button>
-          <button id="addRow" type="button" title="Add a new row" hidden>
-            <span class="tool-icon">+</span>
-            <span>Add</span>
-          </button>
-          <button id="duplicateRow" type="button" title="Duplicate selected row" hidden>
-            <span class="tool-icon">[]</span>
-            <span>Copy</span>
-          </button>
-          <button id="deleteRow" type="button" title="Delete selected row" hidden>
-            <span class="tool-icon">x</span>
-            <span>Delete</span>
-          </button>
-          <button id="resetSample" type="button" title="Reset to a blank wiring sheet">
-            <span class="tool-icon">R</span>
-            <span>Reset</span>
-          </button>
-          <button id="toggleTableButton" type="button" title="Hide the editable table">
-            <span class="tool-icon">TBL</span>
-            <span id="toggleTableLabel">Hide table</span>
-          </button>
-          <button id="qualityButton" class="quality-button" type="button" title="Review electrical checks">
-            <span class="tool-icon">CHK</span>
-            <span>Checks</span>
-            <strong id="qualityCount" class="toolbar-count">0</strong>
-          </button>
-          <button id="catalogButton" type="button" title="Open connector and terminal catalog">
-            <span class="tool-icon">CAT</span>
-            <span>Catalog</span>
-          </button>
-          <button id="bomButton" type="button" title="Open bill of materials and wire cut list" hidden>
-            <span class="tool-icon">BOM</span>
-            <span>BOM</span>
-          </button>
-          <button id="imageImportButton" type="button" title="Import copied Excel rows from clipboard">
-            <span class="tool-icon">UP</span>
-            <span>Upload</span>
-          </button>
-          <button id="drawIoButton" type="button" title="Open the current harness in draw.io">
-            <span class="tool-icon">DIO</span>
-            <span>Draw.io</span>
-          </button>
-          <button id="exportCsv" type="button" title="Export table CSV" hidden>
-            <span class="tool-icon">CSV</span>
-            <span>CSV</span>
-          </button>
-          <button id="exportDrawing" type="button" title="Download the current drawing as SVG" hidden>
-            <span class="tool-icon">SVG</span>
-            <span>Drawing</span>
-          </button>
-          <button id="exportInstructions" type="button" title="Download printable drawing and instructions" hidden>
-            <span class="tool-icon">DOC</span>
-            <span>Guide</span>
-          </button>
-          <button id="printButton" type="button" title="Print the current harness drawing">
-            <span class="tool-icon">PRN</span>
+        <div class="top-actions">
+          <button id="printButton" type="button" disabled title="Print the digital electrical drawing">
+            <span class="icon">PRN</span>
             <span>Print</span>
           </button>
-          <button id="importJsonButton" type="button" title="Import project JSON" hidden>
-            <span class="tool-icon">IN</span>
-            <span>Import</span>
+          <button id="exportDrawio" type="button" disabled title="Download a Draw.io file for editing">
+            <span class="icon">DIO</span>
+            <span>Edit in Draw.io</span>
           </button>
-          <input id="importJson" class="sr-only" type="file" accept="application/json">
         </div>
       </header>
 
-      <main class="workspace-shell" aria-label="Harness workspace">
-        <section class="preview-shell" aria-label="Harness preview">
-          <div class="diagram-panel">
-            <div class="diagram-topline">
-              <div>
-                <span class="section-label">Live harness preview</span>
-                <strong id="printHarnessTitle" class="print-harness-title"></strong>
-                <strong id="previewName">CPC 1 POWER</strong>
-              </div>
-              <div class="metric-row">
-                <span><strong id="activeCount">0</strong> active</span>
-                <span><strong id="dnpCount">0</strong> DNP</span>
-                <span><strong id="totalLength">0</strong> total inches</span>
-              </div>
-            </div>
-            <div class="svg-wrap">
-              <svg id="wirePreview" viewBox="0 0 1000 360" role="img" aria-label="Current wiring harness preview"></svg>
-            </div>
+      <section class="simple-flow">
+        <section class="upload-card">
+          <section id="dropZone" class="drop-zone" tabindex="0">
+            <input id="fileInput" type="file" accept="image/*">
+            <div class="drop-icon">IMG</div>
+            <strong>Upload image</strong>
+            <span>Photo or scan of a hand-drawn wire sheet.</span>
+          </section>
+
+          <div class="reader-promise">
+            <span>Reads all sides</span>
+            <span>Finds wires</span>
+            <span>Reads labels</span>
+            <span>Interprets markups</span>
           </div>
+
+          <div class="action-row">
+            <button id="analyzeButton" class="primary" type="button" disabled>
+              <span class="icon">RUN</span>
+              <span>Read drawing</span>
+            </button>
+            <button id="rotateButton" type="button" disabled title="Rotate the uploaded image and read again">
+              <span class="icon">ROT</span>
+              <span>Rotate</span>
+            </button>
+            <button id="resetButton" type="button">
+              <span class="icon">CLR</span>
+              <span>Clear</span>
+            </button>
+          </div>
+
+          <p id="statusText" class="status-text">Upload an image to start.</p>
         </section>
 
-        <div
-          id="layoutSplitter"
-          class="layout-splitter"
-          role="separator"
-          aria-label="Resize preview and editable table"
-          aria-orientation="vertical"
-          aria-valuemin="420"
-          aria-valuemax="1200"
-          aria-valuenow="760"
-          tabindex="0"
-          title="Drag to resize the preview and table panes"
-        ></div>
-
-        <section class="editor-shell" aria-label="Editable harness table">
-          <div class="editor-bar">
+        <section class="drawing-pane">
+          <div class="pane-head">
             <div>
-              <span class="section-label">Editable table</span>
-              <strong>Excel-style wiring rows</strong>
+              <span class="panel-label">Digital electrical drawing</span>
+              <strong id="drawingTitle">Waiting for image</strong>
+            </div>
+            <span id="engineBadge">Multi-reader engine</span>
+          </div>
+          <div id="schematicStage" class="schematic-stage">
+            <div class="empty-state">
+              <strong>No image loaded</strong>
+              <span>The clean digital schematic will appear here.</span>
             </div>
           </div>
-
-          <div class="table-wrap">
-            <table id="harnessTable" class="harness-table">
-              <colgroup id="tableColumnGroup"></colgroup>
-              <thead>
-                <tr>
-                  <th class="row-number" title="Click a row number to clear that row">#</th>
-                  <th>Cable Name</th>
-                  <th>Left Leg</th>
-                  <th>Left Leg Name</th>
-                  <th>Wire Name</th>
-                  <th>Pin Pos #</th>
-                  <th>Housing Type</th>
-                  <th>Housing Part #</th>
-                  <th>Pin P#</th>
-                  <th>AWGuage</th>
-                  <th>Color</th>
-                  <th>Length inches</th>
-                  <th>Tap Position inches</th>
-                  <th>Branch ID</th>
-                  <th class="divider-head" aria-label="Divider"></th>
-                  <th>Branch Role</th>
-                  <th>Right Leg</th>
-                  <th>Right Leg Name</th>
-                  <th>Pin Pos #</th>
-                  <th>Housing Type</th>
-                  <th>Housing Part #</th>
-                  <th>Pin P#</th>
-                  <th>Tool used</th>
-                  <th>Comments</th>
-                </tr>
-              </thead>
-              <tbody id="wireRows"></tbody>
-            </table>
-          </div>
         </section>
-      </main>
-    </div>
+      </section>
 
-    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+      <section class="reader-data" hidden aria-hidden="true">
+        <button id="exportSvg" type="button" disabled>SVG</button>
+        <button id="exportPng" type="button" disabled>PNG</button>
+        <span id="confidenceValue">--</span>
+        <span id="confidenceFill"></span>
+        <span id="orientationFact">--</span>
+        <span id="wireFact">0</span>
+        <span id="connectorFact">0</span>
+        <span id="labelFact">0</span>
+        <span id="sourceTitle">None</span>
+        <strong id="findingCount">0 items</strong>
+        <div id="findingsList"></div>
+        <canvas id="sourceCanvas" width="420" height="300"></canvas>
+      </section>
+    </main>
 
-    <dialog id="imageDialog" class="import-dialog">
-      <div class="dialog-head">
-        <div>
-          <span class="section-label">Upload rows</span>
-          <strong>Paste spreadsheet data</strong>
-        </div>
-        <button id="closeImageDialog" type="button" title="Close upload">
-          <span class="tool-icon">x</span>
-          <span>Close</span>
-        </button>
-      </div>
-
-      <div class="import-grid">
-        <div class="paste-card">
-          <label class="paste-input">
-            <span class="section-label">Copied rows</span>
-            <textarea id="importText" spellcheck="false" placeholder="Paste copied Excel rows, CSV, or TSV here"></textarea>
-          </label>
-          <div class="import-actions">
-            <button id="translateImageText" type="button">
-              <span class="tool-icon">ROW</span>
-              <span>Translate</span>
-            </button>
-            <button id="applyImageRows" type="button">
-              <span class="tool-icon">OK</span>
-              <span>Apply</span>
-            </button>
-          </div>
-          <p id="imageStatus" class="import-status">Paste copied spreadsheet rows, then press Translate.</p>
-        </div>
-      </div>
-
-      <div class="import-preview">
-        <div class="dialog-head compact">
-          <div>
-            <span class="section-label">Import preview</span>
-            <strong id="importPreviewCount">0 rows ready</strong>
-          </div>
-        </div>
-        <div class="import-preview-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Cable Name</th>
-                <th>Left Leg</th>
-                <th>Left Leg Name</th>
-                <th>Wire Name</th>
-                <th>Pin Pos #</th>
-                <th>Housing Type</th>
-                <th>Housing Part #</th>
-                <th>Pin P#</th>
-                <th>AWGuage</th>
-                <th>Color</th>
-                <th>Length inches</th>
-                <th>Tap Position inches</th>
-                <th>Branch ID</th>
-                <th></th>
-                <th>Branch Role</th>
-                <th>Right Leg</th>
-                <th>Right Leg Name</th>
-                <th>Pin Pos #</th>
-                <th>Housing Type</th>
-                <th>Housing Part #</th>
-                <th>Pin P#</th>
-                <th>Tool used</th>
-                <th>Comments</th>
-              </tr>
-            </thead>
-            <tbody id="importPreviewRows"></tbody>
-          </table>
-        </div>
-      </div>
-    </dialog>
-
-    <dialog id="qualityDialog" class="workspace-dialog">
-      <div class="dialog-head">
-        <div>
-          <span class="section-label">Electrical error checker</span>
-          <strong>Harness checks</strong>
-        </div>
-        <div class="dialog-actions">
-          <button id="copyQualityIssues" type="button" title="Copy all errors to clipboard">
-            <span class="tool-icon">CPY</span>
-            <span>Copy errors</span>
-          </button>
-          <button id="closeQualityDialog" type="button" title="Close checks">
-            <span class="tool-icon">x</span>
-            <span>Close</span>
-          </button>
-        </div>
-      </div>
-      <div id="qualitySummary" class="workspace-summary"></div>
-      <div id="qualityIssues" class="issue-list"></div>
-    </dialog>
-
-    <dialog id="catalogDialog" class="workspace-dialog catalog-dialog">
-      <div class="dialog-head">
-        <div>
-          <span class="section-label">Connector and terminal catalog</span>
-          <strong>Parts library</strong>
-        </div>
-        <div class="dialog-actions">
-          <button id="newCatalogItem" type="button" title="Create a custom catalog item">
-            <span class="tool-icon">+</span>
-            <span>New</span>
-          </button>
-          <button id="resetCatalog" type="button" title="Restore the built-in catalog">
-            <span class="tool-icon">R</span>
-            <span>Defaults</span>
-          </button>
-          <button id="closeCatalogDialog" type="button" title="Close catalog">
-            <span class="tool-icon">x</span>
-            <span>Close</span>
-          </button>
-        </div>
-      </div>
-      <div class="catalog-workspace">
-        <div class="catalog-list-pane">
-          <label class="workspace-search">
-            <span>Find part</span>
-            <input id="catalogSearch" type="search" placeholder="Housing, manufacturer, part number">
-          </label>
-          <div class="workspace-table-scroll">
-            <table class="workspace-table">
-              <thead>
-                <tr><th>Item</th><th>Type</th><th>Positions</th><th>Part #</th></tr>
-              </thead>
-              <tbody id="catalogRows"></tbody>
-            </table>
-          </div>
-        </div>
-        <form id="catalogForm" class="catalog-form">
-          <input id="catalogId" type="hidden">
-          <div id="catalogImagePreview" class="catalog-image-preview">
-            <span>No image</span>
-          </div>
-          <label class="wide"><span>Name</span><input id="catalogName" required></label>
-          <label><span>Type</span>
-            <select id="catalogCategory">
-              <option>Connector</option><option>Terminal</option><option>Board</option><option>Motor ESC</option><option>Component</option><option>Splice</option>
-            </select>
-          </label>
-          <label><span>Drawing family</span>
-            <select id="catalogFamily">
-              <option>generic</option><option>molex</option><option>dupont</option><option>powerpole</option><option>subconn</option><option>pcb</option><option>rj45</option><option>ring</option><option>resistor</option><option>splice</option>
-            </select>
-          </label>
-          <label><span>Positions</span><input id="catalogPositions" type="number" min="1" max="64" value="1"></label>
-          <label><span>Gender</span>
-            <select id="catalogGender"><option value="">-</option><option>Male</option><option>Female</option></select>
-          </label>
-          <label><span>Manufacturer</span><input id="catalogManufacturer"></label>
-          <label><span>Housing part #</span><input id="catalogPartNumber"></label>
-          <label><span>Terminal type</span><input id="catalogTerminalType"></label>
-          <label><span>Terminal part #</span><input id="catalogTerminalPart"></label>
-          <label><span>Seal part #</span><input id="catalogSealPart"></label>
-          <label class="wide"><span>Connector image URL or uploaded image</span><input id="catalogImageUrl" type="text" placeholder="https://..."></label>
-          <div class="catalog-image-actions wide">
-            <button id="catalogImageUploadButton" type="button"><span class="tool-icon">IMG</span><span>Upload connector image</span></button>
-            <input id="catalogImageUpload" class="sr-only" type="file" accept="image/*">
-          </div>
-          <label class="wide"><span>Notes</span><textarea id="catalogNotes" rows="3"></textarea></label>
-          <div class="catalog-form-actions wide">
-            <button id="saveCatalogItem" type="submit"><span class="tool-icon">SAVE</span><span>Save item</span></button>
-            <button id="deleteCatalogItem" type="button"><span class="tool-icon">x</span><span>Delete custom item</span></button>
-          </div>
-        </form>
-      </div>
-    </dialog>
-
-    <dialog id="bomDialog" class="workspace-dialog bom-dialog">
-      <div class="dialog-head">
-        <div>
-          <span class="section-label">Automatic production totals</span>
-          <strong>Bill of materials and cut list</strong>
-        </div>
-        <div class="dialog-actions">
-          <button id="exportBom" type="button" title="Download BOM and cut list CSV">
-            <span class="tool-icon">CSV</span>
-            <span>Export</span>
-          </button>
-          <button id="closeBomDialog" type="button" title="Close BOM">
-            <span class="tool-icon">x</span>
-            <span>Close</span>
-          </button>
-        </div>
-      </div>
-      <div class="bom-controls">
-        <label><span>Wire allowance</span><input id="bomAllowance" type="number" min="0" max="100" step="1"><strong>%</strong></label>
-      </div>
-      <div id="bomSummary" class="workspace-summary"></div>
-      <div class="bom-sections">
-        <section>
-          <div class="workspace-section-title"><strong>Wire material</strong><span>Grouped by gauge and color</span></div>
-          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>AWG</th><th>Color</th><th>Wires</th><th>Exact</th><th>With allowance</th></tr></thead><tbody id="wireMaterialRows"></tbody></table></div>
-        </section>
-        <section>
-          <div class="workspace-section-title"><strong>Wire cut list</strong><span>Grouped by gauge, color, and cut length</span></div>
-          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>AWG</th><th>Color</th><th>Cut length</th><th>Quantity</th><th>Total</th></tr></thead><tbody id="cutListRows"></tbody></table></div>
-        </section>
-        <section class="wide">
-          <div class="workspace-section-title"><strong>Components</strong><span>Housings, terminals, seals, and splices</span></div>
-          <div class="workspace-table-scroll"><table class="workspace-table"><thead><tr><th>Type</th><th>Item</th><th>Manufacturer</th><th>Part #</th><th>Quantity</th></tr></thead><tbody id="componentBomRows"></tbody></table></div>
-        </section>
-      </div>
-    </dialog>
-
-    <datalist id="nameChoices">
-      <option value="CPC 1 POWER"></option>
-      <option value="CPC 2 SIGNAL"></option>
-      <option value="MAIN FEED"></option>
-      <option value="GROUND RETURN"></option>
-      <option value="SPARE"></option>
-    </datalist>
-    <datalist id="colorChoices">
-      <option value="BLACK"></option>
-      <option value="RED"></option>
-      <option value="WHITE"></option>
-      <option value="GREEN"></option>
-      <option value="BLUE"></option>
-      <option value="YELLOW"></option>
-      <option value="ORANGE"></option>
-      <option value="BROWN"></option>
-      <option value="VIOLET"></option>
-      <option value="GRAY"></option>
-      <option value="RED/BLK"></option>
-      <option value="WHT/ORG"></option>
-      <option value="WHT/GRN"></option>
-      <option value="WHT/BLU"></option>
-      <option value="WHT/BRN"></option>
-    </datalist>
-
-    <script src="app.js?v=1.2.96" defer></script>
+    <canvas id="workCanvas" hidden></canvas>
+    <script src="vendor/tesseract/tesseract.min.js" defer></script>
+    <script src="app.js?v=1.4.1" defer></script>
   </body>
 </html>

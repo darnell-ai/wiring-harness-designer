@@ -1,39 +1,33 @@
-# Wiring Harness Designer
+# DIGIWIRE
 
-An open-source, browser-based wiring harness diagram editor.
+A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.2.96**
+Current release: **v1.4.1**
 
 ## Use The App
 
-Open the live app in a modern desktop browser. No installation or account is required.
+Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-Harness edits are stored locally in the browser. The app can print the current harness drawing for production review.
+DIGIWIRE is upload-first: drop in a photo or scan of a paper wire-harness sketch and it builds a clean digital schematic. The recognition model is kept behind the scenes so the operator does not have to edit a spreadsheet-style table.
 
-Data saved by the former Windows desktop version does not automatically move to the website because browsers keep storage separate for each address.
+The user-facing flow is intentionally simple: upload an image, let DIGIWIRE interpret it, print the clean electrical drawing, or export a Draw.io file for Google Drive / diagrams.net editing.
 
 ## Features
 
-- Live harness drawing driven by editable wiring rows.
-- Wire names, AWG, color notation, construction notes, and cut length displayed directly on routed wire labels.
-- Shop drawing overlays with connector face views, pinout tables, BOM callout balloons, sheet zones, and formboard fixture pins.
-- Heatshrink-style endpoint labels for left/right leg names and connector housing details.
-- Excel-style production table with cable name, numbered left/right legs, left/right leg names, wire name, pin positions, DNP, housing type, housing part number, terminal pin part number, AWG, color, length, branch, tool, and comments.
-- Resizable wiring-table columns that stay saved in the browser.
-- Wider default drawing spacing plus draggable wire routes with up to ten saved 90-degree bend points per wire; while dragging a route, use `9` to add a bend, `8` to remove one, and `7` to straighten the wire.
-- Parent-and-branch window splices with shared splice IDs.
-- Vertically stacked left and right connector legs.
-- Illustrated Powerpole, SubConn, Molex, Dupont, RJ45/Cat6, PCB, Motor ESC/VESC, resistor, barrel connection, ring terminal, and splice housings.
-- DNP filtering that removes unused wires, contacts, pins, and connector housings from the drawing.
-- Pasted Excel/CSV/TSV row import, including separate housing type, housing part, and terminal pin part fields.
-- CSV, SVG drawing, printable guide, and browser print exports.
-- Local browser storage and no server-side project database.
-- Continuous electrical checks for duplicate endpoints, housing conflicts, pin capacity, incomplete splices, and missing wire details.
-- Editable connector and terminal catalog with manufacturer, part number, gender, terminal, seal, notes, and image metadata.
-- Automatic catalog learning from imported rows and edited housing part fields.
-- Automatic wire-material totals, purchasing allowance, component BOM, and grouped wire cut list.
+- Reads sideways, upside-down, and normal uploads by trying all four page orientations.
+- Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
+- Detects long horizontal and vertical conductors from hand-drawn wire lines.
+- Infers connector groups from repeated wire endpoints instead of asking the user for a table.
+- Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.
+- Classifies arrows and dimension notes as schematic callouts where possible.
+- Converts sketch geometry into an internal hidden electrical model.
+- Renders a clean digital schematic with connectors, pins, junction dots, wire routes, labels, and confidence metadata.
+- Keeps reader diagnostics behind the scenes so the screen stays simple.
+- Prints the generated digital electrical drawing.
+- Exports editable Draw.io `.drawio` files for follow-up editing.
+- Runs as static browser files with no server-side project database.
 
 ## Run Locally
 
@@ -42,10 +36,10 @@ The web app has no build step. Open `index.html` directly or serve the folder wi
 The application source is:
 
 - `index.html`: user interface.
-- `styles.css`: layout, appearance, responsive behavior, and print styles.
-- `app.js`: harness data model, editor behavior, drawing logic, imports, and exports.
+- `styles.css`: layout, appearance, responsive behavior, and schematic styles.
+- `app.js`: sketch reader, OCR pipeline, hidden model builder, schematic renderer, and exports.
 
-The older optional Windows launcher remains in `desktop/` and can be rebuilt with `Build EXE.cmd`, but the GitHub Pages website is the primary version.
+The optional Windows launcher remains in `desktop/` and can be rebuilt with `Build EXE.cmd`.
 
 ## GitHub Pages
 

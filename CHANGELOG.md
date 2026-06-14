@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.4.1 - 2026-06-14
+
+- Simplified the DIGIWIRE interface to the core shop flow: upload image, read drawing, print, and edit in Draw.io.
+- Hid visible reader diagnostics, source-preview panels, and extra SVG/PNG export buttons from the main app screen.
+- Added a dedicated Print button that prints the generated digital electrical drawing without the upload controls.
+
+## v1.4.0 - 2026-06-14
+
+- Rebuilt DIGIWIRE as a separate upload-first sketch reader instead of another visible table-based harness editor.
+- Added a hidden internal schematic model so users upload a drawing and receive a clean output without seeing or editing row data.
+- Added four-way orientation analysis, page cropping, graph-paper suppression, ink cleanup, line extraction, connector inference, OCR-backed findings, and confidence scoring.
+- Added a new DIGIWIRE interface focused on the uploaded sheet, generated schematic, reader findings, and SVG, PNG, and Draw.io export buttons.
+
+## v1.3.0 - 2026-06-14
+
+- Rebranded the app as DIGIWIRE across the browser UI, docs, and desktop launcher.
+- Added paper-sketch upload that traces long pencil line bands into editable draft rows.
+- Added OCR-backed page cropping, label readback, and confidence overlays to the sketch reader.
+- Added sketch trace overlays to the preview and Draw.io export path so the converted drawing can be edited downstream.
+
 ## v1.2.96 - 2026-06-14
 
 - Switched the preview to a sketch-first layout with notebook-style graph paper and no board grid labels.

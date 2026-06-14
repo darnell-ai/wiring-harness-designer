@@ -4,16 +4,16 @@ using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("Wiring Harness Designer")]
-[assembly: AssemblyDescription("Offline wiring harness drawing and instruction editor")]
-[assembly: AssemblyCompany("Wiring Harness Designer")]
-[assembly: AssemblyProduct("Wiring Harness Designer")]
-[assembly: AssemblyVersion("1.1.8.0")]
-[assembly: AssemblyFileVersion("1.1.8.0")]
+[assembly: AssemblyTitle("DIGIWIRE")]
+[assembly: AssemblyDescription("Offline sketch-to-schematic wiring harness reader")]
+[assembly: AssemblyCompany("DIGIWIRE")]
+[assembly: AssemblyProduct("DIGIWIRE")]
+[assembly: AssemblyVersion("1.4.1.0")]
+[assembly: AssemblyFileVersion("1.4.1.0")]
 
 internal static class WiringHarnessDesignerProgram
 {
-    private const string ProductFolderName = "WiringHarnessDesigner";
+    private const string ProductFolderName = "DIGIWIRE";
     private static readonly string[] AppFiles =
     {
         "index.html",
@@ -21,7 +21,28 @@ internal static class WiringHarnessDesignerProgram
         "app.js",
         "VERSION.txt",
         "CHANGELOG.md",
-        "README.md"
+        "README.md",
+        @"vendor\tesseract\tesseract.min.js",
+        @"vendor\tesseract\worker.min.js",
+        @"vendor\tesseract\core\tesseract-core.js",
+        @"vendor\tesseract\core\tesseract-core.wasm",
+        @"vendor\tesseract\core\tesseract-core.wasm.js",
+        @"vendor\tesseract\core\tesseract-core-simd.js",
+        @"vendor\tesseract\core\tesseract-core-simd.wasm",
+        @"vendor\tesseract\core\tesseract-core-simd.wasm.js",
+        @"vendor\tesseract\core\tesseract-core-lstm.js",
+        @"vendor\tesseract\core\tesseract-core-lstm.wasm",
+        @"vendor\tesseract\core\tesseract-core-lstm.wasm.js",
+        @"vendor\tesseract\core\tesseract-core-simd-lstm.js",
+        @"vendor\tesseract\core\tesseract-core-simd-lstm.wasm",
+        @"vendor\tesseract\core\tesseract-core-simd-lstm.wasm.js",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd.js",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd.wasm",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd.wasm.js",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd-lstm.js",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd-lstm.wasm",
+        @"vendor\tesseract\core\tesseract-core-relaxedsimd-lstm.wasm.js",
+        @"vendor\tesseract\lang\eng.traineddata.gz"
     };
 
     [STAThread]
@@ -62,8 +83,8 @@ internal static class WiringHarnessDesignerProgram
         catch (Exception error)
         {
             MessageBox.Show(
-                "Wiring Harness Designer could not start.\r\n\r\n" + error.Message,
-                "Wiring Harness Designer",
+                "DIGIWIRE could not start.\r\n\r\n" + error.Message,
+                "DIGIWIRE",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error
             );
@@ -80,7 +101,7 @@ internal static class WiringHarnessDesignerProgram
 
         string documentsDirectory = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            "WiringHarnessDesigner"
+            "DIGIWIRE"
         );
         if (HasAppFiles(documentsDirectory))
         {
@@ -106,13 +127,16 @@ internal static class WiringHarnessDesignerProgram
     {
         return File.Exists(Path.Combine(directory, "index.html"))
             && File.Exists(Path.Combine(directory, "styles.css"))
-            && File.Exists(Path.Combine(directory, "app.js"));
+            && File.Exists(Path.Combine(directory, "app.js"))
+            && File.Exists(Path.Combine(directory, @"vendor\tesseract\tesseract.min.js"))
+            && File.Exists(Path.Combine(directory, @"vendor\tesseract\worker.min.js"))
+            && File.Exists(Path.Combine(directory, @"vendor\tesseract\core\tesseract-core.wasm.js"));
     }
 
     private static void ExtractResource(string fileName, string destinationPath)
     {
         Assembly assembly = Assembly.GetExecutingAssembly();
-        string resourceName = ProductFolderName + "." + fileName;
+        string resourceName = ProductFolderName + "." + fileName.Replace('\\', '.').Replace('/', '.');
 
         using (Stream input = assembly.GetManifestResourceStream(resourceName))
         {
@@ -135,6 +159,11 @@ internal static class WiringHarnessDesignerProgram
                     }
                 }
 
+                string destinationDirectory = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(destinationDirectory))
+                {
+                    Directory.CreateDirectory(destinationDirectory);
+                }
                 File.WriteAllBytes(destinationPath, newData);
             }
         }
