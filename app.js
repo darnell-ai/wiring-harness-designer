@@ -2807,12 +2807,10 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
 
   if (parentPoints.length && branchPoints.length) {
     const span = Math.max(1, Math.abs(branchX - parentX));
-    const branchInset = clamp(span * 0.28, 72, 180);
-    const fromBranch = branchX >= parentX ? branchX - branchInset : branchX + branchInset;
-    const minParentClearance = clamp(span * 0.18, 54, 120);
+    const branchOffset = clamp(span * 0.22, 64, 160);
     const x = branchX >= parentX
-      ? Math.max(parentX + minParentClearance, fromBranch)
-      : Math.min(parentX - minParentClearance, fromBranch);
+      ? parentX + branchOffset
+      : parentX - branchOffset;
     return { x: clamp(x, 96, 904), y };
   }
 
@@ -2983,7 +2981,6 @@ function renderSpliceNodes(splicePoints, selected) {
   return [...splicePoints.values()].map((point) => {
     const isSelected = selectedSpliceId === point.spliceId;
     const stroke = isSelected ? "#f2c84b" : "#596861";
-    const label = `${point.spliceId} splice`;
     const lanes = point.lanes?.length ? point.lanes : [{
       key: `${point.spliceId}|default`,
       label: point.spliceId,
@@ -2995,28 +2992,25 @@ function renderSpliceNodes(splicePoints, selected) {
       const parentPorts = Array.from({ length: lane.parentRows.length }, (_, index) => splicePortForIndex(point, "parent", index, lane.parentRows.length, laneIndex));
       const branchPorts = Array.from({ length: lane.branchRows.length }, (_, index) => splicePortForIndex(point, "branch", index, lane.branchRows.length, laneIndex));
       const parentPortMarkup = parentPorts.map((port) => `
-        <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x - 14}" />
+        <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x}" />
       `).join("");
       const branchPortMarkup = branchPorts.map((port) => {
-        return `<path class="splice-port-lead" d="M ${point.x + 10} ${laneY} C ${point.x + 22} ${laneY}, ${point.x + 34} ${port.y}, ${port.x} ${port.y}" />`;
+        return `<path class="splice-port-lead" d="M ${point.x} ${laneY} C ${point.x + 18} ${laneY}, ${point.x + 32} ${port.y}, ${port.x} ${port.y}" />`;
       }).join("");
       return `
         <g class="splice-lane">
           ${parentPortMarkup}
           ${branchPortMarkup}
-          <path class="splice-twist" d="M ${point.x - 12} ${laneY} C ${point.x - 7} ${laneY - 5}, ${point.x - 2} ${laneY + 5}, ${point.x + 4} ${laneY} S ${point.x + 10} ${laneY - 4}, ${point.x + 16} ${laneY}" />
-          <rect class="splice-tape" x="${point.x - 16}" y="${laneY - 7}" width="30" height="14" rx="7" stroke="${stroke}" stroke-width="${isSelected ? 2.4 : 1.6}" />
-          <path class="splice-tape-band" d="M ${point.x - 10} ${laneY - 6} L ${point.x - 6} ${laneY + 7} M ${point.x - 1} ${laneY - 7} L ${point.x + 3} ${laneY + 7} M ${point.x + 8} ${laneY - 6} L ${point.x + 12} ${laneY + 6}" />
+          <circle cx="${point.x}" cy="${laneY}" r="6" fill="${isSelected ? "#263028" : "#1b221e"}" stroke="${stroke}" stroke-width="${isSelected ? 2.4 : 1.6}" />
         </g>
       `;
     }).join("");
     const topY = Math.min(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) - 20;
     const bottomY = Math.max(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) + 20;
     return `
-      <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(label)}">
+      <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(`${point.spliceId} splice junction`)}">
         <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch`)}</title>
         <rect class="splice-hit" x="${point.x - 70}" y="${topY}" width="140" height="${bottomY - topY}" rx="8" />
-        <text x="${point.x}" y="${topY - 8}" class="splice-label" text-anchor="middle">${escapeXml(label)}</text>
         ${laneMarkup}
       </g>
     `;
@@ -7760,20 +7754,19 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
 
   const makeSpliceCell = (point) => {
     const spliceId = `splice_${drawIoSafeId(point.spliceId || "splice")}`;
-    const label = mxTextValue(`${point.spliceId || "SPLICE"}\n${point.parentCount} PARENT / ${point.branchCount} BRANCH`);
     return mxCellXml({
       id: spliceId,
-      value: label,
-      style: "rounded=1;whiteSpace=wrap;html=1;arcSize=50;fillColor=#1c241f;strokeColor=#596861;strokeWidth=2;fontColor=#f8fbf7;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      value: "",
+      style: "ellipse;whiteSpace=wrap;html=1;aspect=fixed=1;fillColor=#1c241f;strokeColor=#596861;strokeWidth=2;fontColor=#f8fbf7;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
       vertex: 1,
       parent: "1",
       [`data-type`]: "splice",
       [`data-splice-id`]: point.spliceId || ""
     }, mxGeometryXml({
-      x: Math.round(point.x - 42),
-      y: Math.round(point.y - 14),
-      width: 84,
-      height: 28,
+      x: Math.round(point.x - 9),
+      y: Math.round(point.y - 9),
+      width: 18,
+      height: 18,
       as: "geometry"
     }));
   };
