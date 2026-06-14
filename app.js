@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.90";
+const APP_VERSION = "1.2.91";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2101,7 +2101,6 @@ function renderPreview() {
     .join("");
   const sheetBackdrop = renderSheetBackdrop(previewHeight);
   const formboardPins = renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
-  const connectorDetailPanels = renderConnectorDetailPanels(allConnectors, routedWires, previewHeight);
   const shopTitleBlock = renderShopTitleBlock(previewRows, previewHeight);
   const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
@@ -2149,7 +2148,7 @@ function renderPreview() {
         .shop-zone-label { fill: #58635c; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
         .wire-route-hit:active { cursor: grabbing; }
-        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .connector-detail-panel, .splice-node, .heatshrink-label, .cable-name-tag { cursor: grab; }
+        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .splice-node, .heatshrink-label, .cable-name-tag { cursor: grab; }
         .wire-name-hit, .connector-detail-hit, .splice-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .wire-inline-label { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.92); stroke-width: 4.4; stroke-linejoin: round; }
         .connector-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
@@ -2177,7 +2176,7 @@ function renderPreview() {
         .empty-preview { fill: #344138; font: 18px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .empty-preview-sub { fill: #637168; font: 12px Segoe UI, Arial, sans-serif; font-weight: 700; }
         .connector-detail-bg { fill: rgba(248, 250, 247, 0.88); stroke: rgba(93, 104, 96, 0.62); stroke-width: 1.4; }
-        .connector-detail-panel:active .connector-detail-hit, .splice-node:active .splice-hit { cursor: grabbing; }
+        .splice-node:active .splice-hit { cursor: grabbing; }
         .connector-face-box { fill: #d7ddd8; stroke: #738078; stroke-width: 1.3; }
         .connector-face-key { fill: #eff2ee; stroke: #738078; stroke-width: 1.2; }
         .connector-face-pin { fill: #1d2821; font: 7.5px Segoe UI, Arial, sans-serif; font-weight: 900; }
@@ -2206,7 +2205,6 @@ function renderPreview() {
     ${spliceNodes}
     ${wireNameTags}
     ${bendHandles}
-    ${connectorDetailPanels}
     ${shopTitleBlock}
     ${toolNote}
     ${selectedInfoBoxMarkup}

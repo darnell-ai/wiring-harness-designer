@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.91 - 2026-06-14
+
+- Removed the connector info panels from the default harness drawing so the routing and splice layout stay readable.
+- Bumped the cache-busting version to keep the simplified preview loading cleanly.
+
 ## v1.2.90 - 2026-06-14
 
 - Added a `Tap Position inches` field so splice groups can be placed along a sequential trunk instead of being inferred from endpoint averages.
