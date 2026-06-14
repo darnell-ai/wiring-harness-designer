@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.3 - 2026-06-14
+
+- Reworked the ink reader to use local contrast against the nearby paper instead of a global darkness threshold.
+- Pruned tiny noise blobs instead of blurring the entire sheet into one blob, which restores the wire rows in the sample sketch.
+- Bumped the cache-busting version so the repaired reader loads cleanly in the browser.
+
 ## v1.4.2 - 2026-06-14
 
 - Changed the visible DIGIWIRE text/buttons to a black-on-light treatment so the interface is easier to read.

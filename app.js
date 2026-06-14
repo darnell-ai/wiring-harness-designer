@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -227,12 +227,12 @@ async function analyzeCurrentDrawing() {
 
 function analyzeGeometry(source, rotation) {
   const rawMask = createInkMask(source);
-  const closedMask = closeMask(rawMask, source.width, source.height);
-  const horizontal = extractLineSegments(closedMask, source.width, source.height, "horizontal");
-  const vertical = extractLineSegments(closedMask, source.width, source.height, "vertical");
+  const cleanedMask = pruneTinyComponents(rawMask, source.width, source.height, 8);
+  const horizontal = extractLineSegments(cleanedMask, source.width, source.height, "horizontal");
+  const vertical = extractLineSegments(cleanedMask, source.width, source.height, "vertical");
   const segments = mergeSegments([...horizontal, ...vertical], source.width, source.height);
   const connectors = inferConnectors(segments, source.width, source.height);
-  const components = inferMarkupComponents(closedMask, source.width, source.height);
+  const components = inferMarkupComponents(cleanedMask, source.width, source.height);
   const longHorizontal = horizontal.filter((segment) => segment.length >= source.width * 0.14).length;
   const longVertical = vertical.filter((segment) => segment.length >= source.height * 0.16).length;
   const connectorBonus = connectors.length * 260;
@@ -244,7 +244,7 @@ function analyzeGeometry(source, rotation) {
     width: source.width,
     height: source.height,
     rotation,
-    mask: closedMask,
+    mask: cleanedMask,
     segments,
     horizontal,
     vertical,
@@ -807,64 +807,118 @@ function sourcePointForRotation(x, y, rotation, width, height) {
 
 function createInkMask(source) {
   const { imageData, width, height } = source;
-  const mask = new Uint8Array(width * height);
+  const pixelCount = width * height;
+  const gray = new Uint8Array(pixelCount);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
       const index = (y * width + x) * 4;
       const r = imageData.data[index];
       const g = imageData.data[index + 1];
       const b = imageData.data[index + 2];
-      const lum = r * 0.299 + g * 0.587 + b * 0.114;
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const saturation = max === 0 ? 0 : (max - min) / max;
-      const dark = (255 - lum) / 255;
-      const blueGrid = b > r + 8 && b > g + 3 ? clamp((b - Math.max(r, g) - 4) / 55, 0, 1) : 0;
-      const score = dark * (1 - saturation * 0.72) * (1 - blueGrid * 0.65);
-      if (score >= 0.155) {
-        mask[y * width + x] = 1;
-      }
+      gray[y * width + x] = Math.round(r * 0.299 + g * 0.587 + b * 0.114);
+    }
+  }
+
+  const radius = Math.max(6, Math.round(Math.min(width, height) * 0.012));
+  const localMean = boxBlurGray(gray, width, height, radius);
+  const mask = new Uint8Array(pixelCount);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const base = index * 4;
+    const r = imageData.data[base];
+    const g = imageData.data[base + 1];
+    const b = imageData.data[base + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const saturation = max === 0 ? 0 : (max - min) / max;
+    const blueGrid = b > r + 8 && b > g + 3 ? clamp((b - Math.max(r, g) - 4) / 55, 0, 1) : 0;
+    const contrast = localMean[index] - gray[index];
+    const score = clamp((contrast - 12) / 32, 0, 1) * (1 - blueGrid * 0.65) * (1 - saturation * 0.25);
+    if (score >= 0.18) {
+      mask[index] = 1;
     }
   }
   return mask;
 }
 
-function closeMask(mask, width, height) {
-  return erodeMask(dilateMask(dilateMask(mask, width, height), width, height), width, height);
+function boxBlurGray(gray, width, height, radius) {
+  const stride = width + 1;
+  const integral = new Float64Array(stride * (height + 1));
+  for (let y = 0; y < height; y += 1) {
+    let rowSum = 0;
+    const rowOffset = y * width;
+    const integralRow = (y + 1) * stride;
+    const previousRow = y * stride;
+    for (let x = 0; x < width; x += 1) {
+      rowSum += gray[rowOffset + x];
+      integral[integralRow + x + 1] = integral[previousRow + x + 1] + rowSum;
+    }
+  }
+
+  const blurred = new Float32Array(gray.length);
+  for (let y = 0; y < height; y += 1) {
+    const y0 = Math.max(0, y - radius);
+    const y1 = Math.min(height - 1, y + radius);
+    const topRow = y0 * stride;
+    const bottomRow = (y1 + 1) * stride;
+    const areaHeight = y1 - y0 + 1;
+    for (let x = 0; x < width; x += 1) {
+      const x0 = Math.max(0, x - radius);
+      const x1 = Math.min(width - 1, x + radius);
+      const area = areaHeight * (x1 - x0 + 1);
+      const sum =
+        integral[bottomRow + x1 + 1] -
+        integral[topRow + x1 + 1] -
+        integral[bottomRow + x0] +
+        integral[topRow + x0];
+      blurred[y * width + x] = sum / area;
+    }
+  }
+  return blurred;
 }
 
-function dilateMask(mask, width, height) {
+function pruneTinyComponents(mask, width, height, minArea) {
+  const visited = new Uint8Array(mask.length);
   const output = new Uint8Array(mask.length);
+  const stack = [];
+  const component = [];
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      let on = false;
-      for (let dy = -1; dy <= 1 && !on; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx >= 0 && ny >= 0 && nx < width && ny < height && mask[ny * width + nx]) {
-            on = true;
-            break;
+      const startIndex = y * width + x;
+      if (!mask[startIndex] || visited[startIndex]) {
+        continue;
+      }
+      component.length = 0;
+      stack.length = 0;
+      stack.push(startIndex);
+      visited[startIndex] = 1;
+      while (stack.length) {
+        const index = stack.pop();
+        component.push(index);
+        const px = index % width;
+        const py = Math.floor(index / width);
+        for (let dy = -1; dy <= 1; dy += 1) {
+          for (let dx = -1; dx <= 1; dx += 1) {
+            if (dx === 0 && dy === 0) {
+              continue;
+            }
+            const nx = px + dx;
+            const ny = py + dy;
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+              continue;
+            }
+            const nextIndex = ny * width + nx;
+            if (mask[nextIndex] && !visited[nextIndex]) {
+              visited[nextIndex] = 1;
+              stack.push(nextIndex);
+            }
           }
         }
       }
-      output[y * width + x] = on ? 1 : 0;
-    }
-  }
-  return output;
-}
-
-function erodeMask(mask, width, height) {
-  const output = new Uint8Array(mask.length);
-  for (let y = 1; y < height - 1; y += 1) {
-    for (let x = 1; x < width - 1; x += 1) {
-      let neighbors = 0;
-      for (let dy = -1; dy <= 1; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          neighbors += mask[(y + dy) * width + x + dx] ? 1 : 0;
+      if (component.length >= minArea) {
+        for (let index = 0; index < component.length; index += 1) {
+          output[component[index]] = 1;
         }
       }
-      output[y * width + x] = neighbors >= 2 ? 1 : 0;
     }
   }
   return output;
@@ -1097,7 +1151,7 @@ function maskToCanvas(mask, width, height) {
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const image = ctx.createImageData(width, height);
   for (let index = 0; index < mask.length; index += 1) {
-    const value = mask[index] ? 18 : 250;
+    const value = mask[index] ? 0 : 255;
     const offset = index * 4;
     image.data[offset] = value;
     image.data[offset + 1] = value;
