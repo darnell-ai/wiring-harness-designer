@@ -1,13 +1,14 @@
 "use strict";
 
-const APP_VERSION = "1.2.95";
+const APP_VERSION = "1.2.96";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const BLANK_ROW_COUNT = 24;
-const WIRE_LANE_GAP = 32;
-const WIRE_EXIT_GAP = 14;
-const WIRE_BUS_GAP = 18;
+const SKETCH_RENDER_MODE = true;
+const WIRE_LANE_GAP = 28;
+const WIRE_EXIT_GAP = 12;
+const WIRE_BUS_GAP = 12;
 const WIRE_ROUTE_DRAG_LIMIT_X = 480;
 const WIRE_ROUTE_DRAG_LIMIT_Y = 280;
 const WIRE_BEND_HANDLE_SIZE = 12;
@@ -2048,17 +2049,20 @@ function renderPreview() {
       const path = wirePath(start, end, index, routeBaseY, routedWires.length, item);
       const crowd = crowdingFactor(routedWires.length, 10, 6);
       const lowerBundle = start.exit === "bottom" && end.exit === "bottom";
-      const outlineOpacity = lowerBundle ? 0.66 - crowd * 0.06 : 0.8;
-      const fillOpacity = lowerBundle ? 0.84 - crowd * 0.06 : 0.9;
-      const outlineWidth = lowerBundle ? 6.4 : 7;
-      const fillWidth = lowerBundle ? 4.2 : 4.5;
+      const outlineOpacity = SKETCH_RENDER_MODE ? 0.52 : (lowerBundle ? 0.66 - crowd * 0.06 : 0.8);
+      const fillOpacity = SKETCH_RENDER_MODE ? 0.92 : (lowerBundle ? 0.84 - crowd * 0.06 : 0.9);
+      const outlineWidth = SKETCH_RENDER_MODE ? (lowerBundle ? 4.2 : 4.6) : (lowerBundle ? 6.4 : 7);
+      const fillWidth = SKETCH_RENDER_MODE ? (lowerBundle ? 2.7 : 3.1) : (lowerBundle ? 4.2 : 4.5);
       const shieldMarkup = wireStyle.shielded
+        && !SKETCH_RENDER_MODE
         ? `<path d="${path}" fill="none" stroke="#6f7771" stroke-width="${outlineWidth + 5}" stroke-linecap="round" stroke-linejoin="round" opacity="0.34" stroke-dasharray="18 12" />`
         : "";
       const stripeMarkup = wireStyle.stripe
+        && !SKETCH_RENDER_MODE
         ? `<path d="${path}" fill="none" stroke="${wireStyle.stripe}" stroke-width="${Math.max(1.8, fillWidth * 0.48)}" stroke-linecap="butt" stroke-linejoin="round" opacity="0.92" stroke-dasharray="14 10" />`
         : "";
       const twistMarkup = wireStyle.twisted
+        && !SKETCH_RENDER_MODE
         ? `<path d="${path}" fill="none" stroke="#f8faf5" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" opacity="0.82" stroke-dasharray="2 9" />`
         : "";
       return `
@@ -2075,11 +2079,15 @@ function renderPreview() {
     .join("");
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
-  const bendHandles = routedWires
-    .map(({ item }) => renderWireBendHandles(item, previewHeight))
-    .join("");
   const sheetBackdrop = renderSheetBackdrop(previewHeight);
-  const formboardPins = renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
+  const formboardPins = SKETCH_RENDER_MODE
+    ? ""
+    : renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
+  const bendHandles = SKETCH_RENDER_MODE
+    ? ""
+    : routedWires
+        .map(({ item }) => renderWireBendHandles(item, previewHeight))
+        .join("");
   const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
@@ -2116,6 +2124,7 @@ function renderPreview() {
         .wire-inline-label { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.92); stroke-width: 4.4; stroke-linejoin: round; }
         .connector-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .connector-group:active .connector-hit { cursor: grabbing; }
+        .connector-sketch-label { fill: #18211c; font: 12px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(241, 244, 239, 0.9); stroke-width: 3.6; }
         .wire-bend-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; cursor: grab; }
         .wire-bend-handle:active .wire-bend-hit { cursor: grabbing; }
         .wire-bend-core { fill: rgba(7, 10, 9, 0.88); stroke: rgba(242, 200, 75, 0.96); stroke-width: 1.8; pointer-events: none; }
@@ -2796,36 +2805,17 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
     }
   });
 
-  const fallbackX = 500 + (index % 2 === 0 ? -18 : 18);
   const fallbackY = 118 + index * 72;
-  const parentX = averageCoordinate(parentPoints, "x", fallbackX - 180);
-  const branchX = averageCoordinate(branchPoints, "x", fallbackX + 180);
   const yPoints = branchPoints.length ? branchPoints : parentPoints;
   const inferredY = clamp(averageCoordinate(yPoints, "y", fallbackY), 92, previewHeight - 74);
   const y = Number.isFinite(tapPosition)
     ? tapPositionToPreviewY(tapPosition, tapBounds, previewHeight)
     : inferredY;
-
-  if (parentPoints.length && branchPoints.length) {
-    const span = Math.max(1, Math.abs(branchX - parentX));
-    const branchOffset = clamp(span * 0.05, 28, 72);
-    const x = branchX >= parentX
-      ? parentX + branchOffset
-      : parentX - branchOffset;
-    return { x: clamp(x, 96, 904), y };
-  }
-
-  if (parentPoints.length) {
-    const x = parentX + (leftConnectors.length ? 34 : 0) + (index % 2 === 0 ? -8 : 8);
-    return { x: clamp(x, 96, 904), y };
-  }
-
-  if (branchPoints.length) {
-    const x = branchX + (rightConnectors.length ? -34 : 0) + (index % 2 === 0 ? -8 : 8);
-    return { x: clamp(x, 96, 904), y };
-  }
-
-  return { x: clamp(fallbackX, 96, 904), y };
+  const leftEdge = leftConnectors.length
+    ? Math.max(...leftConnectors.map((connector) => connector.x + connector.width))
+    : 168;
+  const trunkX = clamp(Math.round(leftEdge + 28), 160, 320);
+  return { x: trunkX, y };
 }
 
 function spliceWireKey(row) {
@@ -2989,7 +2979,7 @@ function renderSpliceNodes(splicePoints, selected) {
       const laneY = spliceLaneY(point, laneIndex);
       return `
         <g class="splice-lane">
-          <circle cx="${point.x}" cy="${laneY}" r="4.5" fill="${isSelected ? "#2b342e" : "#1b221e"}" stroke="${stroke}" stroke-width="${isSelected ? 2.2 : 1.4}" />
+          <circle cx="${point.x}" cy="${laneY}" r="${isSelected ? 3.8 : 3.1}" fill="${isSelected ? "#2b342e" : "#1b221e"}" stroke="${stroke}" stroke-width="${isSelected ? 1.8 : 1.1}" />
         </g>
       `;
     }).join("");
@@ -3002,48 +2992,32 @@ function renderSpliceNodes(splicePoints, selected) {
 }
 
 function renderSheetBackdrop(previewHeight) {
-  const margin = 28;
   const width = 1000;
-  const innerWidth = width - margin * 2;
-  const innerHeight = previewHeight - margin * 2;
-  const columnCount = 6;
-  const rowCount = Math.max(3, Math.ceil(innerHeight / 170));
+  const margin = 20;
+  const gridSpacing = 28;
+  const softGridSpacing = gridSpacing * 4;
   const gridLines = [];
 
-  for (let x = margin; x <= width - margin + 0.1; x += 40) {
+  for (let x = margin; x <= width - margin + 0.1; x += gridSpacing) {
     gridLines.push(`<line x1="${Math.round(x)}" y1="${margin}" x2="${Math.round(x)}" y2="${previewHeight - margin}" class="shop-grid-line" />`);
   }
-  for (let y = margin; y <= previewHeight - margin + 0.1; y += 40) {
+  for (let y = margin; y <= previewHeight - margin + 0.1; y += gridSpacing) {
     gridLines.push(`<line x1="${margin}" y1="${Math.round(y)}" x2="${width - margin}" y2="${Math.round(y)}" class="shop-grid-line" />`);
   }
 
-  const zoneLines = [];
-  const columnLabels = Array.from({ length: columnCount }, (_, index) => String.fromCharCode(65 + index));
-  columnLabels.forEach((label, index) => {
-    const x = margin + index * innerWidth / columnCount;
-    const nextX = margin + (index + 1) * innerWidth / columnCount;
-    const centerX = (x + nextX) / 2;
-    zoneLines.push(`<line x1="${Math.round(x)}" y1="${margin}" x2="${Math.round(x)}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
-    zoneLines.push(`<text x="${Math.round(centerX)}" y="21" text-anchor="middle" class="shop-zone-label">${label}</text>`);
-    zoneLines.push(`<text x="${Math.round(centerX)}" y="${previewHeight - 10}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
-  });
-  zoneLines.push(`<line x1="${width - margin}" y1="${margin}" x2="${width - margin}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
-
-  Array.from({ length: rowCount }, (_, index) => index + 1).forEach((label, index) => {
-    const y = margin + index * innerHeight / rowCount;
-    const nextY = margin + (index + 1) * innerHeight / rowCount;
-    const centerY = (y + nextY) / 2 + 4;
-    zoneLines.push(`<line x1="${margin}" y1="${Math.round(y)}" x2="${width - margin}" y2="${Math.round(y)}" class="shop-zone-line" />`);
-    zoneLines.push(`<text x="14" y="${Math.round(centerY)}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
-    zoneLines.push(`<text x="${width - 14}" y="${Math.round(centerY)}" text-anchor="middle" class="shop-zone-label">${label}</text>`);
-  });
-  zoneLines.push(`<line x1="${margin}" y1="${previewHeight - margin}" x2="${width - margin}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
+  const majorLines = [];
+  for (let x = margin; x <= width - margin + 0.1; x += softGridSpacing) {
+    majorLines.push(`<line x1="${Math.round(x)}" y1="${margin}" x2="${Math.round(x)}" y2="${previewHeight - margin}" class="shop-zone-line" />`);
+  }
+  for (let y = margin; y <= previewHeight - margin + 0.1; y += softGridSpacing) {
+    majorLines.push(`<line x1="${margin}" y1="${Math.round(y)}" x2="${width - margin}" y2="${Math.round(y)}" class="shop-zone-line" />`);
+  }
 
   return `
-    <rect x="0" y="0" width="${width}" height="${previewHeight}" fill="#d9ddda" />
-    <rect x="${margin}" y="${margin}" width="${innerWidth}" height="${innerHeight}" fill="#eef0ed" stroke="#6f7871" stroke-width="2.2" class="shop-sheet-border" />
+    <rect x="0" y="0" width="${width}" height="${previewHeight}" fill="#f7f8f4" />
+    <rect x="${margin}" y="${margin}" width="${width - margin * 2}" height="${previewHeight - margin * 2}" fill="#fbfcf9" stroke="#c6cec8" stroke-width="1.8" class="shop-sheet-border" />
     ${gridLines.join("")}
-    ${zoneLines.join("")}
+    ${majorLines.join("")}
   `;
 }
 
@@ -3731,9 +3705,13 @@ function renderConnector(connector, side, rows, selected) {
       ${renderConnectorPin(connector, point, port, pin, isSelected, isUsed, side)}
     `;
   }).join("");
+  const sketchLabel = SKETCH_RENDER_MODE
+    ? `<text x="${connector.x + connector.width / 2}" y="${Math.max(18, connector.y - 10)}" text-anchor="middle" class="connector-sketch-label">${escapeXml(shortLabel(connector.key || "", 12))}</text>`
+    : "";
   return `
     <g class="connector-group" data-drag-kind="connector" data-connector-side="${side}" data-connector-key="${escapeXml(connector.key)}" aria-label="Connector ${escapeXml(side)} ${escapeXml(connector.key)}">
       <rect class="connector-hit" x="${connector.x - 14}" y="${connector.y - 14}" width="${connector.width + 28}" height="${connector.height + 28}" rx="18" />
+      ${sketchLabel}
       ${renderConnectorBody(connector)}
       ${pins}
     </g>
@@ -3756,6 +3734,13 @@ function renderConnectorBody(connector) {
   const { x, y, width, height, family, side } = connector;
   const centerX = x + width / 2;
   const centerY = y + height / 2;
+
+  if (SKETCH_RENDER_MODE) {
+    return `
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="8" fill="#202923" stroke="#66726b" stroke-width="2.4" />
+      <rect x="${x + 6}" y="${y + 6}" width="${width - 12}" height="${height - 12}" rx="6" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
+    `;
+  }
 
   if (family === "subconn") {
     const radius = Math.min(width, height) / 2 - 12;
@@ -4800,12 +4785,23 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
     return wireRoutePoints(end, start, index, routeBaseY, wireCount, row).slice().reverse();
   }
 
-  if (isSplicePort(start) && isSplicePort(end)) {
-    const startApproach = spliceApproachPoint(start);
-    const endApproach = spliceApproachPoint(end);
+  if (isSplicePort(end) && !isSplicePort(start)) {
     pushPoint(start.x, start.y);
-    pushPoint(startApproach.x, startApproach.y);
-    pushPoint(endApproach.x, endApproach.y);
+    pushPoint(end.x, start.y);
+    pushPoint(end.x, end.y);
+    return points;
+  }
+
+  if (isSplicePort(start) && !isSplicePort(end)) {
+    pushPoint(start.x, start.y);
+    pushPoint(start.x, end.y);
+    pushPoint(end.x, end.y);
+    return points;
+  }
+
+  if (isSplicePort(start) && isSplicePort(end)) {
+    pushPoint(start.x, start.y);
+    pushPoint(end.x, start.y);
     pushPoint(end.x, end.y);
     return points;
   }

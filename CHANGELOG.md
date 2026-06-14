@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.2.96 - 2026-06-14
+
+- Switched the preview to a sketch-first layout with notebook-style graph paper and no board grid labels.
+- Pinned splice taps to a single trunk line so branch groups read more like the hand-drawn Y layout.
+- Hid the edit-only fixture pin clutter in sketch mode and tightened the wire styling for cleaner routing.
+
 ## v1.2.95 - 2026-06-14
 
 - Cleaned up the harness canvas by removing title and label boxes from the drawing/export and shrinking splice taps to simple junction markers.
