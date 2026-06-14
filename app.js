@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.2.93";
+const APP_VERSION = "1.2.94";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -2871,7 +2871,7 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
 
   if (parentPoints.length && branchPoints.length) {
     const span = Math.max(1, Math.abs(branchX - parentX));
-    const branchOffset = clamp(span * 0.12, 72, 130);
+    const branchOffset = clamp(span * 0.08, 42, 96);
     const x = branchX >= parentX
       ? parentX + branchOffset
       : parentX - branchOffset;
@@ -2953,7 +2953,7 @@ function splicePortForIndex(point, role, index, count, laneIndex = 0) {
   const y = spliceLaneY(point, laneIndex);
   if (role === "parent") {
     return {
-      x: point.x - 62,
+      x: point.x - 44,
       y: y + spliceSpreadOffset(safeIndex, safeCount, 3),
       exit: "splice-left",
       side: "splice",
@@ -2964,7 +2964,7 @@ function splicePortForIndex(point, role, index, count, laneIndex = 0) {
 
   const armOffset = spliceSpreadOffset(safeIndex, safeCount, 12);
   return {
-    x: point.x + 62,
+    x: point.x + 44,
     y: y + armOffset,
     exit: "splice-right",
     side: "splice",
@@ -4842,21 +4842,19 @@ function wireRoutePoints(start, end, index, routeBaseY, wireCount = 0, row = nul
   }
 
   if (start.exit === "bottom" && isSplicePort(end)) {
-    const laneY = routeBaseY + Math.max(0, index) * WIRE_LANE_GAP + offset.y;
-    const dropY = bottomDropY(start, index, laneY);
     const approach = spliceApproachPoint(end);
-    const busX = routeControlX(bottomBusX(start, index, wireCount) + offset.x, start.x, approach.x);
     pushPoint(start.x, start.y);
-    pushPoint(start.x, dropY);
-    pushPoint(busX, dropY);
-    if (bends.length) {
-      pushManualBends(points, pushPoint, bends, "vh");
-      pushOrthogonalPoint(points, pushPoint, approach.x, approach.y, "hv");
-    } else {
-      pushPoint(busX, laneY);
-      pushPoint(approach.x, laneY);
-      pushPoint(approach.x, approach.y);
-    }
+    pushPoint(start.x, approach.y);
+    pushPoint(approach.x, approach.y);
+    pushPoint(end.x, end.y);
+    return points;
+  }
+
+  if (isSplicePort(start) && end.exit === "bottom") {
+    const approach = spliceApproachPoint(start);
+    pushPoint(start.x, start.y);
+    pushPoint(approach.x, start.y);
+    pushPoint(approach.x, end.y);
     pushPoint(end.x, end.y);
     return points;
   }

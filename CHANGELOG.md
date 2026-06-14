@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.94 - 2026-06-14
+
+- Simplified splice routing so parent rows run into a vertical trunk and branch rows leave the splice with a cleaner horizontal turn.
+- Tightened splice port spacing a bit so the junction reads more like the hand-drawn Y layout.
+
 ## v1.2.93 - 2026-06-14
 
 - Flipped tap-position mapping so smaller tap distances sit near the USB end and larger tap distances sit toward the terminator, matching the hand sketch.
