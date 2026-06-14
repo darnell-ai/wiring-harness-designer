@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.4.1**
+Current release: **v1.4.2**
 
 ## Use The App
 
@@ -12,12 +12,13 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 
 DIGIWIRE is upload-first: drop in a photo or scan of a paper wire-harness sketch and it builds a clean digital schematic. The recognition model is kept behind the scenes so the operator does not have to edit a spreadsheet-style table.
 
-The user-facing flow is intentionally simple: upload an image, let DIGIWIRE interpret it, print the clean electrical drawing, or export a Draw.io file for Google Drive / diagrams.net editing.
+The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, let DIGIWIRE interpret it, print the clean electrical drawing, or export a Draw.io file for Google Drive / diagrams.net editing.
 
 ## Features
 
 - Reads sideways, upside-down, and normal uploads by trying all four page orientations.
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
+- Accepts pasted clipboard images as well as file uploads and drag-and-drop.
 - Detects long horizontal and vertical conductors from hand-drawn wire lines.
 - Infers connector groups from repeated wire endpoints instead of asking the user for a table.
 - Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.

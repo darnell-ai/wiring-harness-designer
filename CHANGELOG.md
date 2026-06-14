@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.2 - 2026-06-14
+
+- Changed the visible DIGIWIRE text/buttons to a black-on-light treatment so the interface is easier to read.
+- Added a clipboard-image paste button and clipboard paste handling so copied screenshots can be loaded directly.
+- Updated the visible upload hint to call out pasted screenshots alongside normal file uploads.
+
 ## v1.4.1 - 2026-06-14
 
 - Simplified the DIGIWIRE interface to the core shop flow: upload image, read drawing, print, and edit in Draw.io.

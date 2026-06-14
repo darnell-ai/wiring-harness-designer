@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -13,6 +13,7 @@ const dom = {
   fileInput: document.querySelector("#fileInput"),
   dropZone: document.querySelector("#dropZone"),
   analyzeButton: document.querySelector("#analyzeButton"),
+  pasteButton: document.querySelector("#pasteButton"),
   rotateButton: document.querySelector("#rotateButton"),
   resetButton: document.querySelector("#resetButton"),
   printButton: document.querySelector("#printButton"),
@@ -80,6 +81,7 @@ function init() {
   });
 
   dom.analyzeButton.addEventListener("click", () => void analyzeCurrentDrawing());
+  dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
   dom.rotateButton.addEventListener("click", () => {
     if (!appState.image) {
       return;
@@ -92,6 +94,9 @@ function init() {
   dom.exportSvg.addEventListener("click", exportSvg);
   dom.exportPng.addEventListener("click", exportPng);
   dom.exportDrawio.addEventListener("click", exportDrawio);
+  document.addEventListener("paste", (event) => {
+    void handlePasteEvent(event);
+  });
 
   renderEmpty();
 }
@@ -104,25 +109,77 @@ async function loadDrawingFile(file) {
 
   setStatus("Loading drawing...");
   const dataUrl = await readFileAsDataUrl(file);
-  const image = await loadImage(dataUrl);
-  appState = {
-    fileName: cleanFileName(file.name),
-    dataUrl,
-    image,
-    manualRotation: 0,
-    result: null,
-    svgText: ""
-  };
-  dom.analyzeButton.disabled = false;
-  dom.rotateButton.disabled = false;
-  dom.sourceTitle.textContent = appState.fileName;
-  renderSourcePreview();
-  await analyzeCurrentDrawing();
+  await loadDrawingAsset(dataUrl, cleanFileName(file.name));
+}
+
+async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
+  try {
+    const image = await loadImage(dataUrl);
+    appState = {
+      fileName,
+      dataUrl,
+      image,
+      manualRotation: 0,
+      result: null,
+      svgText: ""
+    };
+    dom.analyzeButton.disabled = false;
+    dom.pasteButton.disabled = false;
+    dom.rotateButton.disabled = false;
+    dom.sourceTitle.textContent = appState.fileName;
+    renderSourcePreview();
+    await analyzeCurrentDrawing();
+  } finally {
+    if (revokeAfterLoad) {
+      setTimeout(() => URL.revokeObjectURL(dataUrl), 0);
+    }
+  }
+}
+
+async function pasteClipboardImage() {
+  if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
+    setStatus("Clipboard paste is not available here. Click the page and press Ctrl+V to paste the copied image.");
+    return;
+  }
+
+  try {
+    setStatus("Reading copied image from clipboard...");
+    const items = await navigator.clipboard.read();
+    for (const item of items) {
+      const imageType = item.types.find((type) => type.startsWith("image/"));
+      if (!imageType) {
+        continue;
+      }
+      const blob = await item.getType(imageType);
+      await loadDrawingAsset(URL.createObjectURL(blob), "Clipboard Image", true);
+      return;
+    }
+    setStatus("No image was found in the clipboard. Copy a screenshot or photo first.");
+  } catch (error) {
+    console.error(error);
+    setStatus("Could not read the clipboard image. Try Ctrl+V or upload a file.");
+  }
+}
+
+async function handlePasteEvent(event) {
+  const items = event.clipboardData?.items || [];
+  const imageItem = Array.from(items).find((item) => item.type && item.type.startsWith("image/"));
+  if (!imageItem) {
+    return;
+  }
+
+  const file = imageItem.getAsFile();
+  if (!file) {
+    return;
+  }
+
+  event.preventDefault();
+  await loadDrawingFile(file);
 }
 
 async function analyzeCurrentDrawing() {
   if (!appState.image) {
-    setStatus("Upload an image first.");
+    setStatus("Upload or paste an image first.");
     return;
   }
 
@@ -1143,6 +1200,7 @@ function renderEmpty() {
 
 function setBusy(isBusy) {
   dom.analyzeButton.disabled = isBusy || !appState.image;
+  dom.pasteButton.disabled = isBusy;
   dom.rotateButton.disabled = isBusy || !appState.image;
   dom.resetButton.disabled = isBusy;
 }
@@ -1169,8 +1227,10 @@ function resetApp() {
   };
   dom.fileInput.value = "";
   dom.analyzeButton.disabled = true;
+  dom.pasteButton.disabled = false;
   dom.rotateButton.disabled = true;
-  setStatus("Upload an image to start.");
+  dom.printButton.disabled = true;
+  setStatus("Upload or paste an image to start.");
   renderEmpty();
 }
 

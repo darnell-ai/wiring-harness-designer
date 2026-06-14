@@ -66,9 +66,9 @@ button:disabled {
 }
 
 button.primary {
-  background: var(--green-dark);
-  border-color: var(--green-dark);
-  color: #f8fcf7;
+  background: #f4f1dd;
+  border-color: #b7af87;
+  color: var(--ink);
 }
 
 .icon {
@@ -83,7 +83,7 @@ button.primary {
 }
 
 button.primary .icon {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(21, 27, 24, 0.08);
 }
 
 .app-shell {
@@ -242,10 +242,6 @@ h1 {
   gap: 9px;
 }
 
-.action-row .primary {
-  grid-column: 1 / -1;
-}
-
 .status-text {
   min-height: 44px;
   margin: 0;
@@ -259,6 +255,24 @@ h1 {
   font-size: 14px;
   line-height: 1.35;
   font-weight: 800;
+}
+
+.drop-zone strong,
+.drop-zone span,
+.reader-promise span,
+.status-text,
+.pane-head strong,
+.panel-label,
+#engineBadge,
+.empty-state strong,
+.empty-state span,
+button {
+  color: #111;
+}
+
+button.primary:hover:not(:disabled) {
+  border-color: #8d8461;
+  box-shadow: 0 0 0 4px rgba(142, 131, 88, 0.14);
 }
 
 .drawing-pane {
