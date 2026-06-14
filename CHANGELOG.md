@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.2.95 - 2026-06-14
+
+- Cleaned up the harness canvas by removing title and label boxes from the drawing/export and shrinking splice taps to simple junction markers.
+- Tightened splice placement so branch points stay on the trunk instead of drifting into floating layout.
+
 ## v1.2.94 - 2026-06-14
 
 - Simplified splice routing so parent rows run into a vertical trunk and branch rows leave the splice with a cleaner horizontal turn.

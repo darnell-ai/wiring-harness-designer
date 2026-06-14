@@ -1,13 +1,13 @@
 "use strict";
 
-const APP_VERSION = "1.2.94";
+const APP_VERSION = "1.2.95";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const STORAGE_KEY = "wiring-harness-designer-state-v1";
 const subconPinCounts = [2, 4, 6, 8, 10, 12, 14, 16];
 const BLANK_ROW_COUNT = 24;
-const WIRE_LANE_GAP = 40;
-const WIRE_EXIT_GAP = 18;
-const WIRE_BUS_GAP = 22;
+const WIRE_LANE_GAP = 32;
+const WIRE_EXIT_GAP = 14;
+const WIRE_BUS_GAP = 18;
 const WIRE_ROUTE_DRAG_LIMIT_X = 480;
 const WIRE_ROUTE_DRAG_LIMIT_Y = 280;
 const WIRE_BEND_HANDLE_SIZE = 12;
@@ -2075,52 +2075,15 @@ function renderPreview() {
     .join("");
 
   const spliceNodes = renderSpliceNodes(splicePoints, selected);
-  const heatshrinkSleeves = [
-    renderHeatshrinkGroupLabels("left", routedWires, routeBaseY, previewHeight, "sleeve"),
-    renderHeatshrinkGroupLabels("right", routedWires, routeBaseY, previewHeight, "sleeve")
-  ].join("");
-  const heatshrinkText = [
-    renderHeatshrinkGroupLabels("left", routedWires, routeBaseY, previewHeight, "text"),
-    renderHeatshrinkGroupLabels("right", routedWires, routeBaseY, previewHeight, "text")
-  ].join("");
-  const wireNameTags = routedWires
-    .map(({ item, index, endpoints }) => {
-      return renderWireNameTag(
-        item,
-        endpoints.start,
-        endpoints.end,
-        index,
-        routeBaseY,
-        previewHeight,
-        routedWires.length
-      );
-    })
-    .join("");
   const bendHandles = routedWires
     .map(({ item }) => renderWireBendHandles(item, previewHeight))
     .join("");
   const sheetBackdrop = renderSheetBackdrop(previewHeight);
   const formboardPins = renderFormboardFixturePins(routedWires, allConnectors, splicePoints, routeBaseY, previewHeight);
-  const shopTitleBlock = renderShopTitleBlock(previewRows, previewHeight);
-  const toolNote = renderDrawingToolNote(routedWires.map((route) => route.item), previewHeight);
   const selectedWireMarkup = active.length ? "" : `
     <text x="500" y="${previewHeight / 2 - 8}" class="empty-preview" text-anchor="middle">NO ACTIVE WIRES</text>
     <text x="500" y="${previewHeight / 2 + 20}" class="empty-preview-sub" text-anchor="middle">Choose a row and enter its wire settings.</text>
   `;
-
-  const cableNameText = shortLabel(state.harnessName || "", 14);
-  const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
-  const titleOffset = previewLayoutPoint("title");
-  const cableNameCenterX = 500 + titleOffset.x;
-  const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
-  const cableNameMarkup = state.harnessName ? `
-    <g class="cable-name-tag" data-drag-kind="cable-title" aria-label="Cable name ${escapeXml(state.harnessName)}">
-      <rect x="${cableNameCenterX - cableNameWidth / 2}" y="${cableNameY}" width="${cableNameWidth}" height="46" rx="4" />
-      <text x="${cableNameCenterX}" y="${cableNameY + 29}" text-anchor="middle">${escapeXml(cableNameText)}</text>
-    </g>
-  ` : "";
-
-  const selectedInfoBoxMarkup = state.harnessName ? cableNameMarkup : "";
 
   dom.wirePreview.setAttribute("viewBox", `0 0 1000 ${previewHeight}`);
   dom.wirePreview.style.height = `${previewHeight}px`;
@@ -2148,25 +2111,16 @@ function renderPreview() {
         .shop-zone-label { fill: #58635c; font: 10px Segoe UI, Arial, sans-serif; font-weight: 900; }
         .wire-route-hit { fill: none; stroke: rgba(0, 0, 0, 0); stroke-width: 24; pointer-events: stroke; cursor: grab; }
         .wire-route-hit:active { cursor: grabbing; }
-        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .wire-name-tag, .connector-group, .splice-node, .heatshrink-label, .cable-name-tag { cursor: grab; }
+        .wire-route, .wire-bend-handle, .wire-route:hover .wire-route-hit, .connector-group, .splice-node { cursor: grab; }
         .wire-name-hit, .connector-detail-hit, .splice-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .wire-inline-label { fill: #101814; font-family: Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.92); stroke-width: 4.4; stroke-linejoin: round; }
         .connector-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
         .connector-group:active .connector-hit { cursor: grabbing; }
-        .heatshrink-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; }
-        .heatshrink-label:active .heatshrink-hit { cursor: grabbing; }
         .wire-bend-hit { fill: rgba(0, 0, 0, 0); stroke: rgba(0, 0, 0, 0); pointer-events: all; cursor: grab; }
         .wire-bend-handle:active .wire-bend-hit { cursor: grabbing; }
         .wire-bend-core { fill: rgba(7, 10, 9, 0.88); stroke: rgba(242, 200, 75, 0.96); stroke-width: 1.8; pointer-events: none; }
         .wire-bend-handle:hover .wire-bend-core { fill: rgba(7, 10, 9, 0.98); }
         .wire-bend-index { fill: #f8fbf7; font: 8px Segoe UI, Arial, sans-serif; font-weight: 900; pointer-events: none; }
-        .heatshrink-sleeve { fill: rgba(0, 0, 0, 0.22); stroke: rgba(9, 12, 10, 0.78); stroke-width: 2; }
-        .heatshrink-title { fill: #f8fbf7; font: 12px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .heatshrink-name { fill: #f2c84b; font: 11px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .cable-name-tag rect { fill: #6d128c; stroke: #a83ad1; stroke-width: 2; opacity: 0.96; }
-        .cable-name-tag text { fill: #fff5ff; font: 15px Segoe UI, Arial, sans-serif; font-weight: 900; }
-        .tool-note rect { fill: rgba(248, 250, 245, 0.62); stroke: rgba(217, 223, 215, 0.78); stroke-width: 1.4; }
-        .tool-note text { fill: #101814; font: 11px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-label { fill: #27332d; font: 11px Segoe UI, Arial, sans-serif; font-weight: 950; paint-order: stroke fill; stroke: rgba(238, 240, 237, 0.86); stroke-width: 3.6; }
         .splice-role { fill: #526158; font: 9px Segoe UI, Arial, sans-serif; font-weight: 850; }
         .splice-port-lead { fill: none; stroke: #6f7972; stroke-width: 5.2; stroke-linecap: round; stroke-linejoin: round; }
@@ -2198,16 +2152,10 @@ function renderPreview() {
     ${sheetBackdrop}
     ${formboardPins}
     ${connectors}
-    ${heatshrinkSleeves}
     ${backgroundWires}
     ${selectedWireMarkup}
-    ${heatshrinkText}
     ${spliceNodes}
-    ${wireNameTags}
     ${bendHandles}
-    ${shopTitleBlock}
-    ${toolNote}
-    ${selectedInfoBoxMarkup}
   `;
 }
 
@@ -2248,11 +2196,6 @@ function buildPreviewScene() {
   const labelY = spliceSelected
     ? clamp((selectedStart.exit === "splice" ? selectedStart.y : selectedEnd.y) - 140, 74, previewHeight - 112)
     : 54;
-  const cableNameText = shortLabel(state.harnessName || "", 14);
-  const cableNameWidth = state.harnessName ? clamp(cableNameText.length * 10 + 40, 94, 176) : 0;
-  const titleOffset = previewLayoutPoint("title");
-  const cableNameCenterX = 500 + titleOffset.x;
-  const cableNameY = clamp(labelY + 15 + titleOffset.y, 8, previewHeight - 54);
   return {
     row,
     active,
@@ -2274,12 +2217,7 @@ function buildPreviewScene() {
     selectedStart,
     selectedEnd,
     spliceSelected,
-    labelY,
-    cableNameText,
-    cableNameWidth,
-    titleOffset,
-    cableNameCenterX,
-    cableNameY
+    labelY
   };
 }
 
@@ -2780,10 +2718,9 @@ function buildSplicePoints(rows, leftMap, rightMap, leftConnectors, rightConnect
         }
       }
       reservedY.push(y);
-      const offset = previewLayoutPoint("splice", "", spliceId);
       return [spliceId, {
-        x: clamp(placement.x + offset.x, 64, 936),
-        y: clamp(y + offset.y, 64, previewHeight - 64),
+        x: clamp(placement.x, 64, 936),
+        y: clamp(y, 64, previewHeight - 64),
         exit: "splice",
         spliceId,
         tapPosition,
@@ -2871,7 +2808,7 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
 
   if (parentPoints.length && branchPoints.length) {
     const span = Math.max(1, Math.abs(branchX - parentX));
-    const branchOffset = clamp(span * 0.08, 42, 96);
+    const branchOffset = clamp(span * 0.05, 28, 72);
     const x = branchX >= parentX
       ? parentX + branchOffset
       : parentX - branchOffset;
@@ -2879,12 +2816,12 @@ function splicePlacementForGroup(group, index, leftMap, rightMap, leftConnectors
   }
 
   if (parentPoints.length) {
-    const x = parentX + (leftConnectors.length ? 260 : 0) + (index % 2 === 0 ? -18 : 18);
+    const x = parentX + (leftConnectors.length ? 34 : 0) + (index % 2 === 0 ? -8 : 8);
     return { x: clamp(x, 96, 904), y };
   }
 
   if (branchPoints.length) {
-    const x = branchX + (rightConnectors.length ? -160 : 0) + (index % 2 === 0 ? -18 : 18);
+    const x = branchX + (rightConnectors.length ? -34 : 0) + (index % 2 === 0 ? -8 : 8);
     return { x: clamp(x, 96, 904), y };
   }
 
@@ -2948,27 +2885,24 @@ function spliceLaneY(point, laneIndex = 0) {
 }
 
 function splicePortForIndex(point, role, index, count, laneIndex = 0) {
-  const safeIndex = Math.max(0, index);
-  const safeCount = Math.max(1, count);
   const y = spliceLaneY(point, laneIndex);
   if (role === "parent") {
     return {
-      x: point.x - 44,
-      y: y + spliceSpreadOffset(safeIndex, safeCount, 3),
+      x: point.x,
+      y,
       exit: "splice-left",
       side: "splice",
-      edgeX: point.x - 88,
+      edgeX: point.x - 18,
       spliceId: point.spliceId
     };
   }
 
-  const armOffset = spliceSpreadOffset(safeIndex, safeCount, 12);
   return {
-    x: point.x + 44,
-    y: y + armOffset,
+    x: point.x,
+    y,
     exit: "splice-right",
     side: "splice",
-    edgeX: point.x + 88,
+    edgeX: point.x + 18,
     spliceId: point.spliceId
   };
 }
@@ -3053,29 +2987,14 @@ function renderSpliceNodes(splicePoints, selected) {
     }];
     const laneMarkup = lanes.map((lane, laneIndex) => {
       const laneY = spliceLaneY(point, laneIndex);
-      const parentPorts = Array.from({ length: lane.parentRows.length }, (_, index) => splicePortForIndex(point, "parent", index, lane.parentRows.length, laneIndex));
-      const branchPorts = Array.from({ length: lane.branchRows.length }, (_, index) => splicePortForIndex(point, "branch", index, lane.branchRows.length, laneIndex));
-      const parentPortMarkup = parentPorts.map((port) => `
-        <path class="splice-port-lead" d="M ${port.x} ${port.y} H ${point.x}" />
-      `).join("");
-      const branchPortMarkup = branchPorts.map((port) => {
-        return `<path class="splice-port-lead" d="M ${point.x} ${laneY} C ${point.x + 18} ${laneY}, ${point.x + 32} ${port.y}, ${port.x} ${port.y}" />`;
-      }).join("");
       return `
         <g class="splice-lane">
-          ${parentPortMarkup}
-          ${branchPortMarkup}
-          <circle cx="${point.x}" cy="${laneY}" r="6" fill="${isSelected ? "#263028" : "#1b221e"}" stroke="${stroke}" stroke-width="${isSelected ? 2.4 : 1.6}" />
+          <circle cx="${point.x}" cy="${laneY}" r="4.5" fill="${isSelected ? "#2b342e" : "#1b221e"}" stroke="${stroke}" stroke-width="${isSelected ? 2.2 : 1.4}" />
         </g>
       `;
     }).join("");
-    const topY = Math.min(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) - 20;
-    const bottomY = Math.max(...lanes.map((_, laneIndex) => spliceLaneY(point, laneIndex))) + 20;
-    const tapLabel = Number.isFinite(point.tapPosition) ? ` @ ${point.tapPosition} in` : "";
     return `
       <g class="splice-node" data-drag-kind="splice" data-splice-key="${escapeXml(point.spliceId)}" aria-label="${escapeXml(`${point.spliceId} splice junction`)}">
-        <title>${escapeXml(`${point.spliceId}: ${point.parentCount} parent / ${point.branchCount} branch${tapLabel}`)}</title>
-        <rect class="splice-hit" x="${point.x - 70}" y="${topY}" width="140" height="${bottomY - topY}" rx="8" />
         ${laneMarkup}
       </g>
     `;
@@ -4800,13 +4719,13 @@ function isSplicePort(point) {
 
 function spliceApproachPoint(point) {
   if (point.exit === "splice-left") {
-    return { x: point.x - 34, y: point.y };
+    return { x: point.x, y: point.y };
   }
   if (point.exit === "splice-right") {
-    return { x: point.x + 34, y: point.y };
+    return { x: point.x, y: point.y };
   }
   if (point.exit === "splice-drop") {
-    return { x: point.x + 34, y: point.y + 18 };
+    return { x: point.x, y: point.y };
   }
   return { x: point.x, y: point.y };
 }
@@ -7859,114 +7778,16 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
     return mxCellXml({
       id: spliceId,
       value: "",
-      style: "ellipse;whiteSpace=wrap;html=1;aspect=fixed=1;fillColor=#1c241f;strokeColor=#596861;strokeWidth=2;fontColor=#f8fbf7;fontSize=10;fontStyle=1;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
+      style: "ellipse;whiteSpace=wrap;html=1;aspect=fixed=1;fillColor=#1c241f;strokeColor=#596861;strokeWidth=1.6;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
       vertex: 1,
       parent: "1",
       [`data-type`]: "splice",
       [`data-splice-id`]: point.spliceId || ""
     }, mxGeometryXml({
-      x: Math.round(point.x - 9),
-      y: Math.round(point.y - 9),
-      width: 18,
-      height: 18,
-      as: "geometry"
-    }));
-  };
-
-  const makeWireLabelCell = (row, start, end, index) => {
-    const label = wireDrawingLabel(row, scene.routedWires.length);
-    if (!label) {
-      return "";
-    }
-
-    const tag = wireNameTagPosition(start, end, index, scene.routeBaseY, scene.previewHeight, label.tagWidth, scene.routedWires.length, row);
-    return mxCellXml({
-      id: `wire_label_${drawIoSafeId(row.id)}`,
-      value: mxTextValue(label.lines[0]),
-      style: `text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;fontColor=#101814;fontSize=${label.compact ? 11 : 12};fontStyle=1;align=center;verticalAlign=middle;spacing=2;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;`,
-      vertex: 1,
-      parent: "1",
-      [`data-type`]: "wire-label",
-      [`data-row-id`]: row.id || "",
-      [`data-wire-name`]: value(row?.name).trim(),
-      [`data-awg`]: row.awg || "",
-      [`data-length`]: row.length || ""
-    }, mxGeometryXml({
-      x: Math.round(tag.x - label.tagWidth / 2),
-      y: Math.round(tag.y - label.tagHeight / 2),
-      width: Math.round(label.tagWidth),
-      height: Math.round(label.tagHeight),
-      as: "geometry"
-    }));
-  };
-
-  const makeHeatshrinkCell = (side, group, routeBaseY, previewHeight) => {
-    const crowd = crowdingFactor(group.routes.length, 3, 5);
-    const legName = legNameFor(side, group.leg);
-    const box = heatshrinkGroupBox(group, side, routeBaseY, previewHeight, crowd);
-    const text = `${side === "left" ? "LEFT" : "RIGHT"} ${group.leg}\n${legName || "Leg name"}\n${group.routes[0]?.row?.housing || "Housing"}`;
-    return mxCellXml({
-      id: `heat_${side}_${drawIoSafeId(group.leg)}`,
-      value: mxTextValue(text),
-      style: `rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;fillOpacity=${Math.max(22, 30 - Math.round(crowd * 8))};strokeColor=#0f1110;strokeOpacity=${Math.max(48, 62 - Math.round(crowd * 10))};strokeWidth=1.5;fontColor=#f8fbf7;align=center;verticalAlign=middle;movable=1;resizable=1;rotatable=0;editable=1;deletable=1;`,
-      vertex: 1,
-      parent: "1",
-      [`data-type`]: "heatshrink",
-      [`data-side`]: side,
-      [`data-leg`]: group.leg || "",
-      [`data-leg-name`]: legName || ""
-    }, mxGeometryXml({
-      x: Math.round(box.x),
-      y: Math.round(box.y),
-      width: Math.round(box.width),
-      height: Math.round(box.height),
-      as: "geometry"
-    }));
-  };
-
-  const makeTitleCell = () => {
-    if (!state.harnessName) {
-      return "";
-    }
-
-    const width = scene.cableNameWidth || 120;
-    const height = 46;
-    return mxCellXml({
-      id: "harness_title",
-      value: mxTextValue(scene.cableNameText || state.harnessName),
-      style: "rounded=1;whiteSpace=wrap;html=1;fillColor=#6d128c;strokeColor=#a83ad1;strokeWidth=2;fontColor=#fff5ff;align=center;verticalAlign=middle;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
-      vertex: 1,
-      parent: "1",
-      [`data-type`]: "title"
-    }, mxGeometryXml({
-      x: Math.round(scene.cableNameCenterX - width / 2),
-      y: Math.round(scene.cableNameY),
-      width: Math.round(width),
-      height,
-      as: "geometry"
-    }));
-  };
-
-  const makeToolNoteCell = () => {
-    const label = drawingToolSummary(scene.routedWires.map((route) => route.item));
-    if (!label) {
-      return "";
-    }
-
-    const width = clamp(label.length * 7.2 + 26, 120, 360);
-    const height = 26;
-    return mxCellXml({
-      id: "tool_note",
-      value: mxTextValue(label),
-      style: "rounded=1;whiteSpace=wrap;html=1;fillColor=#f8faf5;fillOpacity=62;strokeColor=#d9dfd7;strokeOpacity=78;strokeWidth=1.4;fontColor=#101814;fontSize=11;fontStyle=1;align=right;verticalAlign=middle;spacingRight=10;movable=1;resizable=0;rotatable=0;editable=1;deletable=1;",
-      vertex: 1,
-      parent: "1",
-      [`data-type`]: "tool-note"
-    }, mxGeometryXml({
-      x: Math.round(pageWidth - width - 18),
-      y: Math.round(pageHeight - height - 16),
-      width: Math.round(width),
-      height,
+      x: Math.round(point.x - 5),
+      y: Math.round(point.y - 5),
+      width: 10,
+      height: 10,
       as: "geometry"
     }));
   };
@@ -8036,23 +7857,12 @@ function buildDrawIoXml(scene = buildPreviewScene()) {
       }, makeWireGeometry(pathPoints)));
     }
 
-    addCell(makeWireLabelCell(item, start, end, index));
   });
 
   scene.leftConnectors.forEach((connector) => addCell(makeConnectorCell(connector, "left")));
   scene.rightConnectors.forEach((connector) => addCell(makeConnectorCell(connector, "right")));
 
   scene.splicePoints.forEach((point) => addCell(makeSpliceCell(point)));
-
-  collectHeatshrinkGroups("left", scene.routedWires).forEach((group) => {
-    addCell(makeHeatshrinkCell("left", group, scene.routeBaseY, scene.previewHeight));
-  });
-  collectHeatshrinkGroups("right", scene.routedWires).forEach((group) => {
-    addCell(makeHeatshrinkCell("right", group, scene.routeBaseY, scene.previewHeight));
-  });
-
-  addCell(makeTitleCell());
-  addCell(makeToolNoteCell());
 
   const diagramName = escapeXml(state.harnessName || "Harness");
   return `<?xml version="1.0" encoding="UTF-8"?>
