@@ -1,10 +1,11 @@
 "use strict";
 
-const APP_VERSION = "1.5.0";
+const APP_VERSION = "1.5.1";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
+const DRAWIO_ALLOWED_ORIGINS = new Set([DRAWIO_EMBED_ORIGIN, "https://app.diagrams.net"]);
 const MAX_IMAGE_SIDE = 1600;
 const SVG_WIDTH = 1600;
 const SVG_HEIGHT = 800;
@@ -19,7 +20,6 @@ const dom = {
   printButton: document.querySelector("#printButton"),
   exportDrawio: document.querySelector("#exportDrawio"),
   exportSvg: document.querySelector("#exportSvg"),
-  exportPng: document.querySelector("#exportPng"),
   copyTableButton: document.querySelector("#copyTableButton"),
   tablePreview: document.querySelector("#tablePreview"),
   confidenceValue: document.querySelector("#confidenceValue"),
@@ -51,6 +51,7 @@ let appState = {
 let ocrWorkerPromise = null;
 let ocrWorker = null;
 let ocrUnavailable = false;
+let drawioSession = null;
 
 init();
 
@@ -95,9 +96,9 @@ function init() {
   dom.resetButton.addEventListener("click", resetApp);
   dom.printButton.addEventListener("click", printDrawing);
   dom.exportSvg.addEventListener("click", exportSvg);
-  dom.exportPng.addEventListener("click", exportPng);
   dom.exportDrawio.addEventListener("click", exportDrawio);
   dom.copyTableButton.addEventListener("click", () => void copyHarnessTable());
+  window.addEventListener("message", handleDrawioMessage);
   document.addEventListener("paste", (event) => {
     void handlePasteEvent(event);
   });
@@ -298,7 +299,7 @@ function compileSchematic(best, ocr, meta) {
   if (!visibleFindings.length) {
     confidence = Math.min(confidence, 0.9);
   }
-  const status = "Professional CAN bus harness generated. Use PNG, Print, Draw.io, or Copy table.";
+  const status = "Professional CAN bus harness generated. Use Print, Draw.io, or Copy table.";
 
   return {
     version: APP_VERSION,
@@ -1711,7 +1712,6 @@ function setBusy(isBusy) {
 function setExportsEnabled(enabled) {
   dom.exportDrawio.disabled = !enabled;
   dom.exportSvg.disabled = !enabled;
-  dom.exportPng.disabled = !enabled;
   dom.printButton.disabled = !enabled;
   dom.copyTableButton.disabled = !enabled || !appState.tableText;
 }
@@ -1784,7 +1784,65 @@ function exportDrawio() {
     return;
   }
   const xml = buildDrawioXml(appState.result);
-  downloadText(`${fileBase(appState.fileName || "digiwire")}.drawio`, xml, "application/xml");
+  const title = `${fileBase(appState.fileName || "digiwire")}.drawio`;
+  const popup = window.open(
+    `${DRAWIO_EMBED_ORIGIN}/?embed=1&proto=json&spin=1&ui=min&libraries=1`,
+    "DIGIWIRE_DRAWIO_EDITOR",
+    "popup=yes,width=1280,height=900,menubar=no,toolbar=no,location=no,status=no"
+  );
+  if (!popup) {
+    setStatus("Draw.io popup was blocked. Allow popups for this site, then click Edit in Draw.io again.");
+    return;
+  }
+  drawioSession = {
+    popup,
+    xml,
+    title,
+    loaded: false
+  };
+  popup.focus();
+  setStatus("Opening Draw.io editor. Loading the DIGIWIRE drawing...");
+}
+
+function handleDrawioMessage(event) {
+  if (!drawioSession || event.source !== drawioSession.popup || !DRAWIO_ALLOWED_ORIGINS.has(event.origin)) {
+    return;
+  }
+  const message = parseDrawioMessage(event.data);
+  if (!message) {
+    return;
+  }
+  if (message.event === "init" && !drawioSession.loaded) {
+    drawioSession.popup.postMessage(JSON.stringify({
+      action: "load",
+      autosave: 1,
+      title: drawioSession.title,
+      xml: drawioSession.xml
+    }), event.origin);
+    drawioSession.loaded = true;
+    setStatus("Draw.io popup loaded with the editable DIGIWIRE drawing.");
+    return;
+  }
+  if (message.event === "save") {
+    drawioSession.xml = message.xml || drawioSession.xml;
+    setStatus("Draw.io sent an updated drawing back to DIGIWIRE.");
+    return;
+  }
+  if (message.event === "exit") {
+    drawioSession = null;
+    setStatus(appState.result?.status || "Draw.io editor closed.");
+  }
+}
+
+function parseDrawioMessage(data) {
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  return data && typeof data === "object" ? data : null;
 }
 
 function buildDrawioXml(result) {

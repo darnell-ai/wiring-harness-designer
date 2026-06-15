@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.5.0**
+Current release: **v1.5.1**
 
 ## Use The App
 
@@ -12,7 +12,7 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 
 DIGIWIRE is upload-first: drop in a photo or scan of the CAN bus wire-harness sketch and it builds a clean professional CAN harness drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
 
-The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, generate the clean electrical drawing, download PNG, print, export Draw.io for Google Drive / diagrams.net editing, or copy the generated table rows.
+The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, generate the clean electrical drawing, print, open the editable drawing in Draw.io, or copy the generated table rows.
 
 ## Features
 
@@ -29,8 +29,8 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Converts sketch geometry into an internal hidden electrical model.
 - Renders a clean digital schematic with connector labels, branch dimensions, a resistor symbol, and a JST pinout box.
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
-- Downloads a high-resolution PNG and prints the generated digital electrical drawing.
-- Exports editable Draw.io `.drawio` files for follow-up editing.
+- Prints the generated digital electrical drawing.
+- Opens a Draw.io popup and loads the editable diagram for follow-up editing.
 - Runs as static browser files with no server-side project database.
 
 ## Run Locally

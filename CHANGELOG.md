@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.1 - 2026-06-15
+
+- Removed the visible PNG button from the simple DIGIWIRE action bar.
+- Changed the Draw.io action to open a popup editor and load the current editable drawing automatically.
+- Updated the app cache-busting version so GitHub Pages serves the Draw.io popup flow.
+
 ## v1.5.0 - 2026-06-14
 
 - Reworked DIGIWIRE output into a professional CAN bus harness assembly drawing with CAN-H, CAN-L, GND, four JST drops, dimensions, pinout, and 120 ohm termination.
