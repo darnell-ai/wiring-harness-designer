@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.5.0 - 2026-06-14
+
+- Reworked DIGIWIRE output into a professional CAN bus harness assembly drawing with CAN-H, CAN-L, GND, four JST drops, dimensions, pinout, and 120 ohm termination.
+- Added a visible PNG export button for a 4800 x 2400 drawing download.
+- Added a copy-only generated harness table with the production column headers and a one-click copy button.
+
 ## v1.4.4 - 2026-06-14
 
 - Replaced row/column span detection with contiguous ink-run tracing so scattered marks cannot become fake full-page wires.

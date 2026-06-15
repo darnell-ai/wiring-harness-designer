@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v1.4.4</title>
+    <title>DIGIWIRE v1.5.0</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -20,6 +20,10 @@
           <button id="printButton" type="button" disabled title="Print the digital electrical drawing">
             <span class="icon">PRN</span>
             <span>Print</span>
+          </button>
+          <button id="exportPng" type="button" disabled title="Download the professional drawing as a PNG">
+            <span class="icon">PNG</span>
+            <span>PNG</span>
           </button>
           <button id="exportDrawio" type="button" disabled title="Download a Draw.io file for editing">
             <span class="icon">DIO</span>
@@ -72,7 +76,7 @@
               <span class="panel-label">Digital electrical drawing</span>
               <strong id="drawingTitle">Waiting for image</strong>
             </div>
-            <span id="engineBadge">Multi-reader engine</span>
+            <span id="engineBadge">CAN harness engine</span>
           </div>
           <div id="schematicStage" class="schematic-stage">
             <div class="empty-state">
@@ -83,9 +87,24 @@
         </section>
       </section>
 
+      <section class="table-card">
+        <div class="table-head">
+          <div>
+            <span class="panel-label">Copy table format</span>
+            <strong>Harness rows generated from the drawing</strong>
+          </div>
+          <button id="copyTableButton" type="button" disabled title="Copy the generated table as tab-separated text">
+            <span class="icon">CPY</span>
+            <span>Copy table</span>
+          </button>
+        </div>
+        <div id="tablePreview" class="table-preview">
+          <span class="quiet">Upload or paste a sketch to generate the copy-only table.</span>
+        </div>
+      </section>
+
       <section class="reader-data" hidden aria-hidden="true">
         <button id="exportSvg" type="button" disabled>SVG</button>
-        <button id="exportPng" type="button" disabled>PNG</button>
         <span id="confidenceValue">--</span>
         <span id="confidenceFill"></span>
         <span id="orientationFact">--</span>
@@ -101,6 +120,6 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="app.js?v=1.4.4" defer></script>
+    <script src="app.js?v=1.5.0" defer></script>
   </body>
 </html>

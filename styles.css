@@ -154,7 +154,8 @@ h1 {
 }
 
 .upload-card,
-.drawing-pane {
+.drawing-pane,
+.table-card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -291,6 +292,26 @@ button.primary:hover:not(:disabled) {
   border-bottom: 1px solid var(--line);
 }
 
+.table-card {
+  margin: 0 16px 18px;
+  overflow: hidden;
+}
+
+.table-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.table-head strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 17px;
+}
+
 .panel-label {
   color: var(--muted);
   font-size: 11px;
@@ -357,6 +378,49 @@ button.primary:hover:not(:disabled) {
   font-weight: 800;
 }
 
+.table-preview {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  background: #fbfcf7;
+}
+
+.table-preview .quiet {
+  display: block;
+  color: var(--muted);
+  font-weight: 800;
+  padding: 12px;
+}
+
+.copy-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.copy-table th,
+.copy-table td {
+  border: 1px solid #d6ded8;
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.copy-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #edf3ee;
+  color: #111;
+  font-weight: 950;
+}
+
+.copy-table td {
+  color: #17231c;
+  background: #ffffff;
+}
+
 @media (max-width: 920px) {
   .topbar {
     align-items: flex-start;
@@ -374,6 +438,10 @@ button.primary:hover:not(:disabled) {
   .simple-flow {
     grid-template-columns: 1fr;
     padding: 12px;
+  }
+
+  .table-card {
+    margin: 0 12px 14px;
   }
 
   .drawing-pane {
@@ -403,7 +471,8 @@ button.primary:hover:not(:disabled) {
   }
 
   .topbar,
-  .upload-card {
+  .upload-card,
+  .table-card {
     display: none !important;
   }
 

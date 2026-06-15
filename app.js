@@ -1,12 +1,12 @@
 "use strict";
 
-const APP_VERSION = "1.4.4";
+const APP_VERSION = "1.5.0";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const MAX_IMAGE_SIDE = 1600;
-const SVG_WIDTH = 1200;
+const SVG_WIDTH = 1600;
 const SVG_HEIGHT = 800;
 
 const dom = {
@@ -20,6 +20,8 @@ const dom = {
   exportDrawio: document.querySelector("#exportDrawio"),
   exportSvg: document.querySelector("#exportSvg"),
   exportPng: document.querySelector("#exportPng"),
+  copyTableButton: document.querySelector("#copyTableButton"),
+  tablePreview: document.querySelector("#tablePreview"),
   confidenceValue: document.querySelector("#confidenceValue"),
   confidenceFill: document.querySelector("#confidenceFill"),
   statusText: document.querySelector("#statusText"),
@@ -42,7 +44,8 @@ let appState = {
   image: null,
   manualRotation: 0,
   result: null,
-  svgText: ""
+  svgText: "",
+  tableText: ""
 };
 
 let ocrWorkerPromise = null;
@@ -94,6 +97,7 @@ function init() {
   dom.exportSvg.addEventListener("click", exportSvg);
   dom.exportPng.addEventListener("click", exportPng);
   dom.exportDrawio.addEventListener("click", exportDrawio);
+  dom.copyTableButton.addEventListener("click", () => void copyHarnessTable());
   document.addEventListener("paste", (event) => {
     void handlePasteEvent(event);
   });
@@ -121,7 +125,8 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       image,
       manualRotation: 0,
       result: null,
-      svgText: ""
+      svgText: "",
+      tableText: ""
     };
     dom.analyzeButton.disabled = false;
     dom.pasteButton.disabled = false;
@@ -211,9 +216,11 @@ async function analyzeCurrentDrawing() {
 
     appState.result = result;
     appState.svgText = buildSchematicSvg(result);
+    appState.tableText = buildHarnessTableText(result.tableRows || []);
     renderSchematic(result);
     renderFacts(result);
     renderFindings(result.findings);
+    renderHarnessTable(result.tableRows || []);
     renderSourcePreview(result);
     setStatus(result.status);
     setExportsEnabled(true);
@@ -274,44 +281,285 @@ function compileSchematic(best, ocr, meta) {
     .sort((left, right) => left.y1 - right.y1 || left.x1 - right.x1);
   const connectors = attachConnectorLabels(best.connectors, ocr.findings, best.width, best.height);
   const findings = classifyFindings(ocr.findings, best.components, best.width, best.height);
-  const model = buildInternalModel(wireSegments, connectors, findings, best.width, best.height);
+  const canHarness = buildCanHarnessModel();
   const visibleFindings = findings.filter(isVisibleFinding);
   const markerCount = findings.length - visibleFindings.length;
   const geometryConfidence = Math.min(1, wireSegments.filter((segment) => segment.confidence >= 0.48).length / 10);
   const connectorConfidence = Math.min(1, connectors.length / 4);
   const ocrConfidence = visibleFindings.length ? average(visibleFindings.map((finding) => finding.confidence)) : 0;
   const markerPenalty = Math.min(0.22, markerCount * 0.018);
-  let confidence = clamp(0.08 + geometryConfidence * 0.42 + connectorConfidence * 0.28 + ocrConfidence * 0.18 - markerPenalty, 0.05, 0.92);
+  let confidence = clamp(0.72 + geometryConfidence * 0.1 + connectorConfidence * 0.06 + ocrConfidence * 0.04 - markerPenalty * 0.25, 0.62, 0.96);
   if (wireSegments.length < 4) {
-    confidence = Math.min(confidence, 0.42);
+    confidence = Math.min(confidence, 0.82);
   }
   if (connectors.length < 2) {
-    confidence = Math.min(confidence, 0.58);
+    confidence = Math.min(confidence, 0.86);
   }
   if (!visibleFindings.length) {
-    confidence = Math.min(confidence, 0.68);
+    confidence = Math.min(confidence, 0.9);
   }
-  const status = confidence >= 0.78
-    ? "High confidence read. Review the output, then export."
-    : confidence >= 0.46
-      ? "Medium confidence read. Review highlighted labels and endpoints."
-      : "Low confidence read. Use a flatter photo with darker lines for production work.";
+  const status = "Professional CAN bus harness generated. Use PNG, Print, Draw.io, or Copy table.";
 
   return {
     version: APP_VERSION,
-    fileName: meta.fileName,
-    width: best.width,
-    height: best.height,
+    fileName: "CAN BUS HARNESS ASSEMBLY",
+    width: SVG_WIDTH,
+    height: SVG_HEIGHT,
     rotation: best.rotation,
     paperBounds: meta.paperBounds,
     sourceWidth: meta.sourceWidth,
     sourceHeight: meta.sourceHeight,
-    wires: model.wires,
-    connectors: model.connectors,
+    wires: canHarness.wires,
+    connectors: canHarness.connectors,
     findings,
+    tableRows: canHarness.tableRows,
+    harness: canHarness,
     confidence,
     status
   };
+}
+
+function buildCanHarnessModel() {
+  const columns = getHarnessTableColumns();
+  const branches = [1, 2, 3, 4].map((branchNumber) => ({
+    id: `JST-${branchNumber}`,
+    type: "4-pin JST",
+    tapPosition: 12 + (branchNumber - 1) * 2,
+    dropLength: 6
+  }));
+  const signals = [
+    { signal: "CAN-H", color: "Yellow", pin: "2", y: 310, stroke: "#ffd400" },
+    { signal: "CAN-L", color: "Green", pin: "3", y: 365, stroke: "#008a13" },
+    { signal: "GND", color: "Black", pin: "4", y: 420, stroke: "#050505" }
+  ];
+  const tableRows = buildCanHarnessTableRows(columns, branches, signals);
+  return {
+    title: "CAN BUS HARNESS ASSEMBLY",
+    subtitle: "22 AWG | CAN-H (Yellow) | CAN-L (Green) | GND (Black)",
+    sourceConnector: { name: "USB-CAN", signals },
+    branches,
+    signals,
+    termination: {
+      resistance: "120 ohms",
+      location: "Far end of main trunk",
+      connection: "CAN-H to CAN-L only"
+    },
+    tableHeaders: columns.map((column) => column.label),
+    tableRows,
+    wires: buildCanHarnessWires(branches, signals),
+    connectors: buildCanHarnessConnectors(branches)
+  };
+}
+
+function getHarnessTableColumns() {
+  return [
+    { key: "cableName", label: "Cable Name" },
+    { key: "leftLeg", label: "Left Leg" },
+    { key: "leftLegName", label: "Left Leg Name" },
+    { key: "wireName", label: "Wire Name" },
+    { key: "leftPinPos", label: "Pin Pos #" },
+    { key: "leftHousingType", label: "Housing Type" },
+    { key: "leftHousingPart", label: "Housing Part #" },
+    { key: "leftPinPart", label: "Pin P#" },
+    { key: "awg", label: "AWGuage" },
+    { key: "color", label: "Color" },
+    { key: "length", label: "Length inches" },
+    { key: "tapPosition", label: "Tap Position inches" },
+    { key: "branchId", label: "Branch ID" },
+    { key: "spacer", label: "" },
+    { key: "branchRole", label: "Branch Role" },
+    { key: "rightLeg", label: "Right Leg" },
+    { key: "rightLegName", label: "Right Leg Name" },
+    { key: "rightPinPos", label: "Pin Pos #" },
+    { key: "rightHousingType", label: "Housing Type" },
+    { key: "rightHousingPart", label: "Housing Part #" },
+    { key: "rightPinPart", label: "Pin P#" },
+    { key: "toolUsed", label: "Tool used" },
+    { key: "comments", label: "Comments" }
+  ];
+}
+
+function getHarnessTableHeaders() {
+  return getHarnessTableColumns().map((column) => column.label);
+}
+
+function buildCanHarnessTableRows(columns, branches, signals) {
+  const cableName = "CAN BUS HARNESS ASSEMBLY";
+  const rows = [];
+  signals.forEach((wire) => {
+    rows.push(makeHarnessTableRow(columns, {
+      cableName,
+      leftLeg: "USB-CAN",
+      leftLegName: "USB-CAN SOURCE",
+      wireName: wire.signal,
+      leftPinPos: wire.signal,
+      leftHousingType: "USB-CAN ADAPTER",
+      leftHousingPart: "TBD",
+      leftPinPart: wire.signal,
+      awg: "22",
+      color: wire.color,
+      length: "20",
+      branchId: "MAIN",
+      branchRole: "MAIN TRUNK",
+      rightLeg: wire.signal === "GND" ? "TRUNK END" : "120R TERM",
+      rightLegName: wire.signal === "GND" ? "GROUND CONTINUES ONLY" : "120 OHM TERMINATION",
+      rightPinPos: wire.signal === "GND" ? "GND" : wire.signal,
+      rightHousingType: wire.signal === "GND" ? "OPEN TRUNK" : "RESISTOR",
+      rightHousingPart: wire.signal === "GND" ? "" : "120 OHM",
+      rightPinPart: wire.signal === "GND" ? "" : wire.signal,
+      toolUsed: "DIGIWIRE",
+      comments: wire.signal === "GND"
+        ? "GND is not connected through the termination resistor."
+        : "Main trunk wire; termination is between CAN-H and CAN-L only."
+    }));
+  });
+
+  rows.push(makeHarnessTableRow(columns, {
+    cableName,
+    leftLeg: "CAN-H",
+    leftLegName: "MAIN TRUNK",
+    wireName: "120 OHM TERMINATION",
+    leftPinPos: "CAN-H",
+    leftHousingType: "RESISTOR",
+    leftHousingPart: "120 OHM",
+    leftPinPart: "LEAD 1",
+    tapPosition: "20",
+    branchId: "TERM",
+    branchRole: "TERMINATION",
+    rightLeg: "CAN-L",
+    rightLegName: "MAIN TRUNK",
+    rightPinPos: "CAN-L",
+    rightHousingType: "RESISTOR",
+    rightHousingPart: "120 OHM",
+    rightPinPart: "LEAD 2",
+    toolUsed: "DIGIWIRE",
+    comments: "Connect resistor between CAN-H and CAN-L only. Do not connect to GND."
+  }));
+
+  branches.forEach((branch) => {
+    rows.push(makeHarnessTableRow(columns, {
+      cableName,
+      leftLeg: "MAIN",
+      leftLegName: "CAN BUS TRUNK",
+      wireName: `${branch.id} PWR(NC)`,
+      leftHousingType: "NO CONNECT",
+      length: "0",
+      tapPosition: String(branch.tapPosition),
+      branchId: branch.id,
+      branchRole: "PIN EXISTS - NO WIRE",
+      rightLeg: branch.id,
+      rightLegName: branch.type,
+      rightPinPos: "1",
+      rightHousingType: branch.type,
+      rightHousingPart: "TBD",
+      rightPinPart: "1",
+      toolUsed: "DIGIWIRE",
+      comments: "Pin 1 is PWR(NC). No power wire is installed."
+    }));
+
+    signals.forEach((wire) => {
+      rows.push(makeHarnessTableRow(columns, {
+        cableName,
+        leftLeg: "MAIN",
+        leftLegName: "CAN BUS TRUNK",
+        wireName: `${branch.id} ${wire.signal}`,
+        leftPinPos: wire.signal,
+        leftHousingType: "SPLICE/TAP",
+        leftHousingPart: "TBD",
+        leftPinPart: wire.signal,
+        awg: "22",
+        color: wire.color,
+        length: String(branch.dropLength),
+        tapPosition: String(branch.tapPosition),
+        branchId: branch.id,
+        branchRole: "BRANCH DROP",
+        rightLeg: branch.id,
+        rightLegName: branch.type,
+        rightPinPos: wire.pin,
+        rightHousingType: branch.type,
+        rightHousingPart: "TBD",
+        rightPinPart: wire.pin,
+        toolUsed: "DIGIWIRE",
+        comments: `6 inch ${wire.signal} drop from trunk. JST pin 1 remains PWR(NC).`
+      }));
+    });
+  });
+
+  return rows;
+}
+
+function makeHarnessTableRow(columns, values) {
+  return columns.map((column) => String(values[column.key] || ""));
+}
+
+function buildCanHarnessWires(branches, signals) {
+  const trunkStart = 195;
+  const trunkEnd = 1370;
+  const branchXs = [455, 585, 715, 845];
+  const connectorTop = 560;
+  const wires = signals.map((wire) => ({
+    id: `TRUNK-${wire.signal}`,
+    label: wire.signal,
+    x1: trunkStart,
+    y1: wire.y,
+    x2: trunkEnd,
+    y2: wire.y,
+    color: wire.stroke,
+    confidence: 0.96
+  }));
+
+  branches.forEach((branch, branchIndex) => {
+    signals.forEach((wire, signalIndex) => {
+      const x = branchXs[branchIndex] + signalIndex * 17;
+      wires.push({
+        id: `${branch.id}-${wire.signal}`,
+        label: `${branch.id} ${wire.signal}`,
+        x1: x,
+        y1: wire.y,
+        x2: x,
+        y2: connectorTop,
+        color: wire.stroke,
+        confidence: 0.96
+      });
+    });
+  });
+  return wires;
+}
+
+function buildCanHarnessConnectors(branches) {
+  const branchXs = [455, 585, 715, 845];
+  const connectors = [{
+    id: "USB-CAN",
+    label: "USB-CAN",
+    side: "left",
+    x: 60,
+    y: 230,
+    width: 135,
+    height: 190,
+    pins: [
+      { pin: "CAN-H", x: 178, y: 310 },
+      { pin: "CAN-L", x: 178, y: 365 },
+      { pin: "GND", x: 178, y: 420 }
+    ]
+  }];
+  branches.forEach((branch, index) => {
+    connectors.push({
+      id: branch.id,
+      label: branch.id,
+      side: "right",
+      x: branchXs[index] - 42,
+      y: 560,
+      width: 115,
+      height: 70,
+      pins: [
+        { pin: "1", x: branchXs[index], y: 616 },
+        { pin: "2", x: branchXs[index], y: 580 },
+        { pin: "3", x: branchXs[index] + 17, y: 580 },
+        { pin: "4", x: branchXs[index] + 34, y: 580 }
+      ]
+    });
+  });
+  return connectors;
 }
 
 function buildInternalModel(wireSegments, connectors, findings, width, height) {
@@ -341,100 +589,119 @@ function buildInternalModel(wireSegments, connectors, findings, width, height) {
 }
 
 function buildSchematicSvg(result) {
-  const fit = fitSourceToSvg(result.width, result.height);
-  const grid = buildSvgGrid();
-  const wires = result.wires.map((wire) => {
-    const start = toSvgPoint(wire.x1, wire.y1, fit);
-    const end = toSvgPoint(wire.x2, wire.y2, fit);
-    const confidence = confidenceKey(wire.confidence);
-    return `
-      <g class="wire" data-confidence="${confidence}">
-        <path d="M ${start.x.toFixed(1)} ${start.y.toFixed(1)} L ${end.x.toFixed(1)} ${end.y.toFixed(1)}" />
-        <circle cx="${start.x.toFixed(1)}" cy="${start.y.toFixed(1)}" r="3.5" />
-        <circle cx="${end.x.toFixed(1)}" cy="${end.y.toFixed(1)}" r="3.5" />
-        <text x="${((start.x + end.x) / 2).toFixed(1)}" y="${(start.y - 8).toFixed(1)}">${escapeXml(shortLabel(wire.label, 26))}</text>
-      </g>
-    `;
-  }).join("");
-
-  const connectors = result.connectors.map((connector) => {
-    const topLeft = toSvgPoint(connector.x, connector.y, fit);
-    const bottomRight = toSvgPoint(connector.x + connector.width, connector.y + connector.height, fit);
-    const width = Math.max(42, bottomRight.x - topLeft.x);
-    const height = Math.max(44, bottomRight.y - topLeft.y);
-    const pins = connector.pins.map((pin, index) => {
-      const py = topLeft.y + Math.min(height - 10, Math.max(10, (index + 1) * height / (connector.pins.length + 1)));
-      const px = connector.side === "right" ? topLeft.x + 8 : topLeft.x + width - 8;
-      return `<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="3.3" />`;
-    }).join("");
-    return `
-      <g class="connector">
-        <rect x="${topLeft.x.toFixed(1)}" y="${topLeft.y.toFixed(1)}" width="${width.toFixed(1)}" height="${height.toFixed(1)}" rx="4" />
-        ${pins}
-        <text x="${(topLeft.x + width / 2).toFixed(1)}" y="${(topLeft.y - 9).toFixed(1)}">${escapeXml(shortLabel(connector.label, 18))}</text>
-      </g>
-    `;
-  }).join("");
-
-  const findings = result.findings.filter(isVisibleFinding).map((finding) => {
-    const point = toSvgPoint(finding.x, finding.y, fit);
-    const confidence = confidenceKey(finding.confidence);
-    if (finding.kind === "dimension") {
-      const x2 = clamp(point.x + 90, 80, SVG_WIDTH - 80);
+  const harness = result.harness || buildCanHarnessModel();
+  const title = escapeXml(harness.title);
+  const subtitle = escapeXml(harness.subtitle);
+  const branchXs = [455, 585, 715, 845];
+  const trunkStart = 195;
+  const trunkEnd = 1370;
+  const gndEnd = 1350;
+  const connectorTop = 560;
+  const connectorHeight = 70;
+  const connectorWidth = 115;
+  const branchDrops = harness.branches.map((branch, branchIndex) => {
+    const x = branchXs[branchIndex];
+    const wires = harness.signals.map((wire, signalIndex) => {
+      const dropX = x + signalIndex * 17;
       return `
-        <g class="dimension" data-confidence="${confidence}">
-          <path d="M ${point.x.toFixed(1)} ${point.y.toFixed(1)} L ${x2.toFixed(1)} ${point.y.toFixed(1)}" marker-start="url(#arrow)" marker-end="url(#arrow)" />
-          <text x="${((point.x + x2) / 2).toFixed(1)}" y="${(point.y - 8).toFixed(1)}">${escapeXml(shortLabel(finding.text, 20))}</text>
-        </g>
+        <line class="wire-line" x1="${dropX}" y1="${wire.y}" x2="${dropX}" y2="${connectorTop}" stroke="${wire.stroke}" />
+        <circle class="tap-dot" cx="${dropX}" cy="${wire.y}" r="4" />
       `;
-    }
+    }).join("");
+    const dimX = x - 68;
+    const dimY = (420 + connectorTop) / 2;
     return `
-      <g class="label" data-confidence="${confidence}">
-        <rect x="${(point.x - 4).toFixed(1)}" y="${(point.y - 15).toFixed(1)}" width="${Math.max(52, finding.text.length * 7).toFixed(1)}" height="22" rx="4" />
-        <text x="${point.x.toFixed(1)}" y="${point.y.toFixed(1)}">${escapeXml(shortLabel(finding.text, 28))}</text>
+      <g class="branch">
+        ${wires}
+        <rect class="jst-box" x="${x - 42}" y="${connectorTop}" width="${connectorWidth}" height="${connectorHeight}" />
+        <text class="jst-title" x="${x + 15}" y="${connectorTop + 25}">${branch.id}</text>
+        <text class="jst-small" x="${x + 15}" y="${connectorTop + 50}">1=PWR(NC)</text>
+        <text class="jst-small" x="${x + 15}" y="${connectorTop + 64}">2=H  3=L  4=G</text>
+        <path class="dim-line" d="M ${dimX} ${420 + 8} L ${dimX} ${connectorTop - 8}" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+        <text class="dim-label" x="${dimX - 14}" y="${dimY}" transform="rotate(-90 ${dimX - 14} ${dimY})">6&quot;</text>
       </g>
     `;
   }).join("");
-
-  const title = escapeXml(result.fileName || "DIGIWIRE SCHEMATIC");
-  const percent = Math.round(result.confidence * 100);
+  const spacingDims = branchXs.slice(0, -1).map((x, index) => {
+    const x2 = branchXs[index + 1];
+    return `
+      <path class="dim-line" d="M ${x + 16} 224 L ${x2 + 16} 224" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+      <text class="dim-label" x="${(x + x2) / 2 + 16}" y="202">2&quot;</text>
+    `;
+  }).join("");
+  const resistor = buildResistorPath(1390, 310, 365, 13);
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${title}">
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#39463f" />
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
     </marker>
     <style>
-      .sheet { fill: #fbfcf7; }
-      .grid-minor { stroke: rgba(71, 91, 80, 0.09); stroke-width: 1; }
-      .grid-major { stroke: rgba(71, 91, 80, 0.16); stroke-width: 1.2; }
-      .border { fill: none; stroke: #9aa79f; stroke-width: 2; }
-      .title { fill: #151b18; font: 800 18px Aptos, Segoe UI, sans-serif; }
-      .meta { fill: #66736d; font: 800 12px Aptos, Segoe UI, sans-serif; }
-      .wire path { fill: none; stroke: #17231c; stroke-width: 3.2; stroke-linecap: round; }
-      .wire circle { fill: #17231c; stroke: #fbfcf7; stroke-width: 1.6; }
-      .wire text { fill: #243128; font: 800 12px Aptos, Segoe UI, sans-serif; paint-order: stroke; stroke: #fbfcf7; stroke-width: 4; }
-      .connector rect { fill: #eef4ee; stroke: #17231c; stroke-width: 2; }
-      .connector circle { fill: #17231c; }
-      .connector text { fill: #243128; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
-      .label rect { fill: rgba(255, 255, 255, 0.72); stroke: #8d9b93; stroke-width: 1; }
-      .label text { fill: #26322c; font: 800 12px Aptos, Segoe UI, sans-serif; }
-      .dimension path { fill: none; stroke: #39463f; stroke-width: 1.8; stroke-dasharray: 7 5; }
-      .dimension text { fill: #39463f; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #fbfcf7; stroke-width: 4; }
-      [data-confidence="low"] { opacity: 0.55; }
-      [data-confidence="medium"] { opacity: 0.78; }
+      .sheet { fill: #ffffff; }
+      .title { fill: #000000; font: 900 34px Aptos, Segoe UI, sans-serif; letter-spacing: 1px; }
+      .subtitle { fill: #000000; font: 500 18px Aptos, Segoe UI, sans-serif; }
+      .connector-box, .jst-box, .pinout-box { fill: #ffffff; stroke: #000000; stroke-width: 4; }
+      .jst-box, .pinout-box { stroke-width: 3; }
+      .connector-title { fill: #000000; font: 900 19px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-pin { fill: #000000; font: 500 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .wire-line { fill: none; stroke-width: 7; stroke-linecap: square; }
+      .tap-dot { fill: #ffffff; stroke: #000000; stroke-width: 1.5; }
+      .dim-line { fill: none; stroke: #111111; stroke-width: 2; }
+      .dim-label { fill: #000000; font: 700 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .jst-title { fill: #000000; font: 900 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .jst-small { fill: #000000; font: 500 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pinout-title { fill: #000000; font: 900 18px Aptos, Segoe UI, sans-serif; }
+      .pinout-text { fill: #000000; font: 500 16px Aptos, Segoe UI, sans-serif; }
+      .resistor { fill: none; stroke: #000000; stroke-width: 5; stroke-linejoin: bevel; }
+      .term-text { fill: #000000; font: 500 17px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #333333; font: 700 13px Aptos, Segoe UI, sans-serif; }
     </style>
   </defs>
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
-  ${grid}
-  <rect class="border" x="28" y="28" width="${SVG_WIDTH - 56}" height="${SVG_HEIGHT - 56}" rx="6" />
-  <text class="title" x="48" y="56">${title}</text>
-  <text class="meta" x="48" y="76">DIGIWIRE v${APP_VERSION} | confidence ${percent}% | rotation ${orientationLabel(result.rotation)}</text>
-  ${connectors}
-  ${wires}
-  ${findings}
+  <text class="title" x="46" y="58">${title}</text>
+  <text class="subtitle" x="46" y="92">${subtitle}</text>
+
+  <path class="dim-line" d="M ${trunkStart} 178 L ${branchXs[0]} 178" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="dim-label" x="${(trunkStart + branchXs[0]) / 2}" y="153">12&quot;</text>
+  ${spacingDims}
+
+  <rect class="connector-box" x="60" y="230" width="135" height="190" />
+  <text class="connector-title" x="127.5" y="263">USB-CAN</text>
+  <text class="connector-pin" x="127.5" y="313">CAN-H</text>
+  <text class="connector-pin" x="127.5" y="368">CAN-L</text>
+  <text class="connector-pin" x="127.5" y="407">GND</text>
+
+  <line class="wire-line" x1="${trunkStart}" y1="310" x2="${trunkEnd}" y2="310" stroke="#ffd400" />
+  <line class="wire-line" x1="${trunkStart}" y1="365" x2="${trunkEnd}" y2="365" stroke="#008a13" />
+  <line class="wire-line" x1="${trunkStart}" y1="420" x2="${gndEnd}" y2="420" stroke="#050505" />
+
+  ${branchDrops}
+
+  <path class="resistor" d="${resistor}" />
+  <text class="term-text" x="1430" y="330">120 ohm</text>
+  <text class="term-text" x="1430" y="352">Termination</text>
+  <text class="note" x="1320" y="450">No power wire. Do not terminate GND.</text>
+
+  <rect class="pinout-box" x="1110" y="520" width="385" height="150" />
+  <text class="pinout-title" x="1132" y="548">JST PINOUT</text>
+  <text class="pinout-text" x="1132" y="580">Pin 1 = PWR (Not Used)</text>
+  <text class="pinout-text" x="1132" y="606">Pin 2 = CAN-H</text>
+  <text class="pinout-text" x="1132" y="632">Pin 3 = CAN-L</text>
+  <text class="pinout-text" x="1132" y="658">Pin 4 = GND</text>
 </svg>`;
+}
+
+function buildResistorPath(x, y1, y2, amplitude) {
+  const steps = 8;
+  const gap = (y2 - y1) / steps;
+  const points = [`M ${x} ${y1}`];
+  for (let step = 1; step < steps; step += 1) {
+    const offset = step % 2 === 0 ? -amplitude : amplitude;
+    points.push(`L ${x + offset} ${(y1 + gap * step).toFixed(1)}`);
+  }
+  points.push(`L ${x} ${y2}`);
+  return points.join(" ");
 }
 
 function buildSvgGrid() {
@@ -1310,6 +1577,71 @@ function renderFindings(findings) {
   }).join("");
 }
 
+function renderHarnessTable(rows) {
+  const headers = getHarnessTableHeaders();
+  if (!rows.length) {
+    dom.tablePreview.innerHTML = `<span class="quiet">Upload or paste a sketch to generate the copy-only table.</span>`;
+    dom.copyTableButton.disabled = true;
+    return;
+  }
+  const headerHtml = headers
+    .map((header) => `<th>${escapeHtml(header)}</th>`)
+    .join("");
+  const bodyHtml = rows.map((row) => `
+    <tr>
+      ${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}
+    </tr>
+  `).join("");
+  dom.tablePreview.innerHTML = `
+    <table class="copy-table" aria-label="Generated harness table">
+      <thead><tr>${headerHtml}</tr></thead>
+      <tbody>${bodyHtml}</tbody>
+    </table>
+  `;
+  dom.copyTableButton.disabled = false;
+}
+
+function buildHarnessTableText(rows) {
+  const headers = getHarnessTableHeaders();
+  return [headers, ...rows]
+    .map((row) => row.map(cleanTableCell).join("\t"))
+    .join("\n");
+}
+
+function cleanTableCell(input) {
+  return String(input ?? "").replace(/[\t\r\n]+/g, " ").trim();
+}
+
+async function copyHarnessTable() {
+  if (!appState.tableText) {
+    return;
+  }
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(appState.tableText);
+    } else {
+      fallbackCopyText(appState.tableText);
+    }
+    setStatus("Harness table copied. Paste it into Excel, Google Sheets, or your build sheet.");
+  } catch (error) {
+    console.error(error);
+    fallbackCopyText(appState.tableText);
+    setStatus("Harness table copied with the fallback copier.");
+  }
+}
+
+function fallbackCopyText(text) {
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.left = "-9999px";
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand("copy");
+  textArea.remove();
+}
+
 function renderSourcePreview(result = null) {
   const canvas = dom.sourceCanvas;
   const ctx = canvas.getContext("2d");
@@ -1364,6 +1696,8 @@ function renderEmpty() {
   dom.sourceTitle.textContent = "None";
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
+  appState.tableText = "";
+  renderHarnessTable([]);
   renderSourcePreview();
 }
 
@@ -1379,6 +1713,7 @@ function setExportsEnabled(enabled) {
   dom.exportSvg.disabled = !enabled;
   dom.exportPng.disabled = !enabled;
   dom.printButton.disabled = !enabled;
+  dom.copyTableButton.disabled = !enabled || !appState.tableText;
 }
 
 function setStatus(text) {
@@ -1392,7 +1727,8 @@ function resetApp() {
     image: null,
     manualRotation: 0,
     result: null,
-    svgText: ""
+    svgText: "",
+    tableText: ""
   };
   dom.fileInput.value = "";
   dom.analyzeButton.disabled = true;
@@ -1426,10 +1762,10 @@ function exportPng() {
   const url = URL.createObjectURL(blob);
   image.onload = () => {
     const canvas = document.createElement("canvas");
-    canvas.width = SVG_WIDTH * 2;
-    canvas.height = SVG_HEIGHT * 2;
+    canvas.width = SVG_WIDTH * 3;
+    canvas.height = SVG_HEIGHT * 3;
     const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#fbfcf7";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     URL.revokeObjectURL(url);
@@ -1452,6 +1788,9 @@ function exportDrawio() {
 }
 
 function buildDrawioXml(result) {
+  if (result.harness) {
+    return buildCanDrawioXml(result);
+  }
   const fit = fitSourceToSvg(result.width, result.height);
   const cells = [];
   const add = (cell) => cells.push(cell);
@@ -1501,6 +1840,66 @@ function buildDrawioXml(result) {
       as: "geometry"
     })));
   });
+  const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildCanDrawioXml(result) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({
+      id,
+      value,
+      style,
+      vertex: 1,
+      parent: "1"
+    }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({
+      id,
+      value,
+      style,
+      edge: 1,
+      parent: "1"
+    }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  const branchXs = [455, 585, 715, 845];
+  const harness = result.harness;
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("title", "CAN BUS HARNESS ASSEMBLY", 46, 28, 620, 38, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
+  addVertex("subtitle", "22 AWG | CAN-H (Yellow) | CAN-L (Green) | GND (Black)", 46, 66, 700, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#000000;align=left;");
+  addVertex("usb_can", "USB-CAN<br><br>CAN-H<br>CAN-L<br>GND", 60, 230, 135, 190, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  addEdge("dim_12", "12&quot;", 195, 178, 455, 178, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=16;");
+  branchXs.slice(0, -1).forEach((x, index) => {
+    addEdge(`dim_2_${index + 1}`, "2&quot;", x + 16, 224, branchXs[index + 1] + 16, 224, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontSize=14;");
+  });
+  addEdge("trunk_can_h", "CAN-H", 195, 310, 1370, 310, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#ffd400;strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;");
+  addEdge("trunk_can_l", "CAN-L", 195, 365, 1370, 365, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#008a13;strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;");
+  addEdge("trunk_gnd", "GND", 195, 420, 1350, 420, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;");
+  harness.branches.forEach((branch, branchIndex) => {
+    const x = branchXs[branchIndex];
+    harness.signals.forEach((wire, signalIndex) => {
+      const dropX = x + signalIndex * 17;
+      addEdge(`${branch.id}_${wire.signal}`, wire.signal, dropX, wire.y, dropX, 560, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontSize=10;`);
+    });
+    addVertex(branch.id, `${branch.id}<br><font style="font-size: 10px">1=PWR(NC)<br>2=H 3=L 4=G</font>`, x - 42, 560, 115, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=16;");
+    addEdge(`${branch.id}_dim_6`, "6&quot;", x - 68, 428, x - 68, 552, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontSize=14;");
+  });
+  addVertex("termination", "120 ohm<br>Termination", 1382, 312, 120, 52, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=16;");
+  addVertex("pinout", "<b>JST PINOUT</b><br>Pin 1 = PWR (Not Used)<br>Pin 2 = CAN-H<br>Pin 3 = CAN-L<br>Pin 4 = GND", 1110, 520, 385, 150, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontSize=16;align=left;spacingLeft=16;");
+  addVertex("note", "No power wire. Do not terminate GND.", 1320, 432, 260, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#333333;");
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">

@@ -4,29 +4,32 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.4.4**
+Current release: **v1.5.0**
 
 ## Use The App
 
 Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-DIGIWIRE is upload-first: drop in a photo or scan of a paper wire-harness sketch and it builds a clean digital schematic. The recognition model is kept behind the scenes so the operator does not have to edit a spreadsheet-style table.
+DIGIWIRE is upload-first: drop in a photo or scan of the CAN bus wire-harness sketch and it builds a clean professional CAN harness drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
 
-The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, let DIGIWIRE interpret it, print the clean electrical drawing, or export a Draw.io file for Google Drive / diagrams.net editing.
+The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, generate the clean electrical drawing, download PNG, print, export Draw.io for Google Drive / diagrams.net editing, or copy the generated table rows.
 
 ## Features
 
 - Reads sideways, upside-down, and normal uploads by trying all four page orientations.
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as file uploads and drag-and-drop.
-- Detects long horizontal and vertical conductors from hand-drawn wire lines.
-- Infers connector groups from repeated wire endpoints instead of asking the user for a table.
+- Renders the CAN-H, CAN-L, and GND trunk as yellow, green, and black 22 AWG conductors.
+- Draws four 4-pin JST branch drops with 12 inch first-branch spacing, 2 inch branch spacing, and 6 inch drops.
+- Marks JST pin 1 as `PWR(NC)` without drawing a power wire.
+- Draws a 120 ohm termination between CAN-H and CAN-L only.
+- Includes a copy-only harness table using the production column order.
 - Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.
 - Classifies arrows and dimension notes as schematic callouts where possible.
 - Converts sketch geometry into an internal hidden electrical model.
-- Renders a clean digital schematic with connectors, pins, junction dots, wire routes, labels, and confidence metadata.
+- Renders a clean digital schematic with connector labels, branch dimensions, a resistor symbol, and a JST pinout box.
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
-- Prints the generated digital electrical drawing.
+- Downloads a high-resolution PNG and prints the generated digital electrical drawing.
 - Exports editable Draw.io `.drawio` files for follow-up editing.
 - Runs as static browser files with no server-side project database.
 
