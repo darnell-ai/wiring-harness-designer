@@ -197,6 +197,10 @@ h1 {
   cursor: pointer;
 }
 
+.hidden-input {
+  display: none;
+}
+
 .drop-icon {
   width: 76px;
   height: 76px;

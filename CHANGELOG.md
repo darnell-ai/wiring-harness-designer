@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.0 - 2026-06-17
+
+- Added an Upload Excel button for prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets.
+- Preserved uploaded sheet headers and rows in the copy-only table so they can be copied back out.
+- Added a sheet-driven drawing mode and Draw.io export for uploaded table rows.
+
 ## v1.5.1 - 2026-06-15
 
 - Removed the visible PNG button from the simple DIGIWIRE action bar.

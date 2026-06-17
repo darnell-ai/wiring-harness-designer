@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v1.5.1</title>
+    <title>DIGIWIRE v1.6.0</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -36,6 +36,7 @@
             <strong>Upload image</strong>
             <span>Photo, scan, or copied screenshot of a hand-drawn wire sheet.</span>
           </section>
+          <input id="sheetInput" class="hidden-input" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
 
           <div class="reader-promise">
             <span>Reads all sides</span>
@@ -52,6 +53,10 @@
             <button id="pasteButton" type="button" title="Paste a copied image from the clipboard">
               <span class="icon">PST</span>
               <span>Paste image</span>
+            </button>
+            <button id="sheetButton" type="button" title="Upload a prefilled Excel, CSV, or tab-delimited sheet">
+              <span class="icon">XLS</span>
+              <span>Upload Excel</span>
             </button>
             <button id="rotateButton" type="button" disabled title="Rotate the uploaded image and read again">
               <span class="icon">ROT</span>
@@ -116,6 +121,6 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="app.js?v=1.5.1" defer></script>
+    <script src="app.js?v=1.6.0" defer></script>
   </body>
 </html>

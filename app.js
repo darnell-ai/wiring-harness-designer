@@ -1,17 +1,20 @@
 "use strict";
 
-const APP_VERSION = "1.5.1";
+const APP_VERSION = "1.6.0";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const DRAWIO_ALLOWED_ORIGINS = new Set([DRAWIO_EMBED_ORIGIN, "https://app.diagrams.net"]);
+const XLSX_READER_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 const MAX_IMAGE_SIDE = 1600;
 const SVG_WIDTH = 1600;
 const SVG_HEIGHT = 800;
 
 const dom = {
   fileInput: document.querySelector("#fileInput"),
+  sheetInput: document.querySelector("#sheetInput"),
+  sheetButton: document.querySelector("#sheetButton"),
   dropZone: document.querySelector("#dropZone"),
   analyzeButton: document.querySelector("#analyzeButton"),
   pasteButton: document.querySelector("#pasteButton"),
@@ -45,13 +48,15 @@ let appState = {
   manualRotation: 0,
   result: null,
   svgText: "",
-  tableText: ""
+  tableText: "",
+  tableHeaders: []
 };
 
 let ocrWorkerPromise = null;
 let ocrWorker = null;
 let ocrUnavailable = false;
 let drawioSession = null;
+let xlsxLoaderPromise = null;
 
 init();
 
@@ -60,6 +65,12 @@ function init() {
     const [file] = dom.fileInput.files || [];
     if (file) {
       void loadDrawingFile(file);
+    }
+  });
+  dom.sheetInput.addEventListener("change", () => {
+    const [file] = dom.sheetInput.files || [];
+    if (file) {
+      void loadHarnessSheetFile(file);
     }
   });
 
@@ -86,6 +97,7 @@ function init() {
 
   dom.analyzeButton.addEventListener("click", () => void analyzeCurrentDrawing());
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
+  dom.sheetButton.addEventListener("click", () => dom.sheetInput.click());
   dom.rotateButton.addEventListener("click", () => {
     if (!appState.image) {
       return;
@@ -127,7 +139,8 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       manualRotation: 0,
       result: null,
       svgText: "",
-      tableText: ""
+      tableText: "",
+      tableHeaders: []
     };
     dom.analyzeButton.disabled = false;
     dom.pasteButton.disabled = false;
@@ -183,6 +196,191 @@ async function handlePasteEvent(event) {
   await loadDrawingFile(file);
 }
 
+async function loadHarnessSheetFile(file) {
+  try {
+    setBusy(true);
+    setStatus("Reading prefilled harness sheet...");
+    await waitForFrame();
+
+    const sheet = await readHarnessSheetFile(file);
+    if (!sheet.rows.length) {
+      setStatus("That sheet did not contain any data rows.");
+      return;
+    }
+
+    const result = compileSheetHarnessResult(sheet, file.name);
+    appState = {
+      fileName: cleanFileName(file.name),
+      dataUrl: "",
+      image: null,
+      manualRotation: 0,
+      result,
+      svgText: buildSchematicSvg(result),
+      tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
+      tableHeaders: result.tableHeaders || sheet.headers
+    };
+    dom.fileInput.value = "";
+    dom.sheetInput.value = "";
+    dom.analyzeButton.disabled = true;
+    dom.rotateButton.disabled = true;
+    dom.sourceTitle.textContent = cleanFileName(file.name);
+    renderSchematic(result);
+    renderFacts(result);
+    renderFindings(result.findings);
+    renderHarnessTable(result.tableRows || [], appState.tableHeaders);
+    renderSourcePreview(result);
+    setExportsEnabled(true);
+    setStatus(`Loaded ${result.tableRows.length} sheet row${result.tableRows.length === 1 ? "" : "s"} from ${file.name}.`);
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "The sheet could not be loaded. Try CSV, TSV, or a standard .xlsx file.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function readHarnessSheetFile(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    await ensureXlsxReader();
+    const workbook = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+    const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: "" });
+    return normalizeSheetMatrix(matrix);
+  }
+  const text = await file.text();
+  return normalizeSheetMatrix(parseDelimitedText(text));
+}
+
+function ensureXlsxReader() {
+  if (window.XLSX?.read && window.XLSX?.utils) {
+    return Promise.resolve();
+  }
+  if (xlsxLoaderPromise) {
+    return xlsxLoaderPromise;
+  }
+  xlsxLoaderPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = XLSX_READER_URL;
+    script.async = true;
+    script.onload = () => window.XLSX?.read ? resolve() : reject(new Error("The Excel reader did not load correctly."));
+    script.onerror = () => reject(new Error("Could not load the Excel reader. Save the sheet as CSV or TSV and upload that file."));
+    document.head.appendChild(script);
+  });
+  return xlsxLoaderPromise;
+}
+
+function parseDelimitedText(text) {
+  const trimmed = String(text || "").replace(/^\uFEFF/, "");
+  const firstLine = trimmed.split(/\r?\n/, 1)[0] || "";
+  const delimiter = (firstLine.match(/\t/g) || []).length >= (firstLine.match(/,/g) || []).length ? "\t" : ",";
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const char = trimmed[index];
+    const next = trimmed[index + 1];
+    if (char === '"') {
+      if (quoted && next === '"') {
+        cell += '"';
+        index += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === delimiter && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") {
+        index += 1;
+      }
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell);
+  rows.push(row);
+  return rows;
+}
+
+function normalizeSheetMatrix(matrix) {
+  const usefulRows = matrix
+    .map((row) => Array.from(row || []).map((cell) => String(cell ?? "").trim()))
+    .filter((row) => row.some((cell) => cell !== ""));
+  if (!usefulRows.length) {
+    return { headers: [], rows: [], objects: [] };
+  }
+  const headers = usefulRows[0].map((header) => normalizeSheetHeaderLabel(header));
+  const rows = usefulRows.slice(1)
+    .map((row) => padRow(row, headers.length))
+    .filter((row) => row.some((cell) => cell !== ""));
+  const objects = rows.map((row) => sheetRowToObject(headers, row));
+  return { headers, rows, objects };
+}
+
+function normalizeSheetHeaderLabel(header) {
+  return String(header || "").replace(/\s+/g, " ").trim();
+}
+
+function padRow(row, length) {
+  const output = row.slice(0, length);
+  while (output.length < length) {
+    output.push("");
+  }
+  return output;
+}
+
+function sheetRowToObject(headers, row) {
+  const output = {};
+  headers.forEach((header, index) => {
+    const key = normalizeSheetKey(header);
+    if (!key && header !== "") {
+      return;
+    }
+    if (key) {
+      output[key] = row[index] || "";
+    }
+  });
+  return output;
+}
+
+function normalizeSheetKey(header) {
+  const normalized = normalizeText(header).replace(/[^A-Z0-9]+/g, "");
+  const map = {
+    CABLENAME: "cableName",
+    LEFTLEG: "leftLeg",
+    LEFTLEGNAME: "leftLegName",
+    WIRENAME: "wireName",
+    LEFTPINPOS: "leftPinPos",
+    PINPOS: "rightPinPos",
+    LEFTHOUSINGTYPE: "leftHousingType",
+    HOUSINGTYPE: "rightHousingType",
+    LEFTHOUSINGPART: "leftHousingPart",
+    HOUSINGPART: "rightHousingPart",
+    LEFTPINP: "leftPinPart",
+    PINP: "rightPinPart",
+    AWGUAGE: "awg",
+    AWGGAUGE: "awg",
+    AWG: "awg",
+    COLOR: "color",
+    LENGTHINCHES: "length",
+    TAPPOSITIONINCHES: "tapPosition",
+    BRANCHID: "branchId",
+    BRANCHROLE: "branchRole",
+    RIGHTLEG: "rightLeg",
+    RIGHTLEGNAME: "rightLegName",
+    TOOLUSED: "toolUsed",
+    COMMENTS: "comments"
+  };
+  return map[normalized] || "";
+}
+
 async function analyzeCurrentDrawing() {
   if (!appState.image) {
     setStatus("Upload or paste an image first.");
@@ -217,11 +415,12 @@ async function analyzeCurrentDrawing() {
 
     appState.result = result;
     appState.svgText = buildSchematicSvg(result);
-    appState.tableText = buildHarnessTableText(result.tableRows || []);
+    appState.tableHeaders = result.tableHeaders || getHarnessTableHeaders();
+    appState.tableText = buildHarnessTableText(result.tableRows || [], appState.tableHeaders);
     renderSchematic(result);
     renderFacts(result);
     renderFindings(result.findings);
-    renderHarnessTable(result.tableRows || []);
+    renderHarnessTable(result.tableRows || [], appState.tableHeaders);
     renderSourcePreview(result);
     setStatus(result.status);
     setExportsEnabled(true);
@@ -358,10 +557,10 @@ function getHarnessTableColumns() {
     { key: "leftLeg", label: "Left Leg" },
     { key: "leftLegName", label: "Left Leg Name" },
     { key: "wireName", label: "Wire Name" },
-    { key: "leftPinPos", label: "Pin Pos #" },
-    { key: "leftHousingType", label: "Housing Type" },
-    { key: "leftHousingPart", label: "Housing Part #" },
-    { key: "leftPinPart", label: "Pin P#" },
+    { key: "leftPinPos", label: "Left Pin Pos #" },
+    { key: "leftHousingType", label: "Left Housing Type" },
+    { key: "leftHousingPart", label: "Left Housing Part #" },
+    { key: "leftPinPart", label: "Left Pin P#" },
     { key: "awg", label: "AWGuage" },
     { key: "color", label: "Color" },
     { key: "length", label: "Length inches" },
@@ -563,6 +762,79 @@ function buildCanHarnessConnectors(branches) {
   return connectors;
 }
 
+function compileSheetHarnessResult(sheet, fileName) {
+  const cableName = firstFilled(sheet.objects, "cableName") || cleanFileName(fileName) || "UPLOADED HARNESS";
+  const drawableRows = sheet.objects
+    .map((row, index) => ({ ...row, rowNumber: index + 2 }))
+    .filter(isDrawableSheetRow)
+    .slice(0, 14);
+  const sheetHarness = {
+    title: `${cableName} HARNESS ASSEMBLY`,
+    subtitle: "Generated from uploaded prefilled harness sheet",
+    cableName,
+    rows: drawableRows,
+    totalRows: sheet.rows.length
+  };
+  return {
+    version: APP_VERSION,
+    fileName: sheetHarness.title,
+    width: SVG_WIDTH,
+    height: SVG_HEIGHT,
+    rotation: 0,
+    paperBounds: null,
+    sourceWidth: 0,
+    sourceHeight: 0,
+    wires: drawableRows.map((row, index) => ({
+      id: `SHEET-W${index + 1}`,
+      label: row.wireName || row.branchRole || `ROW ${row.rowNumber}`,
+      color: sheetColorToStroke(row.color),
+      confidence: 1
+    })),
+    connectors: [],
+    findings: [],
+    tableHeaders: sheet.headers,
+    tableRows: sheet.rows,
+    sheetHarness,
+    confidence: 1,
+    status: "Prefilled harness sheet loaded. Use Print, Draw.io, or Copy table."
+  };
+}
+
+function isDrawableSheetRow(row) {
+  return Boolean(
+    row.wireName ||
+    row.color ||
+    row.branchRole ||
+    row.comments ||
+    row.leftLegName ||
+    row.rightLegName
+  );
+}
+
+function firstFilled(rows, key) {
+  return rows.map((row) => row[key]).find((value) => String(value || "").trim()) || "";
+}
+
+function isNoWireRow(row) {
+  const values = [row.awg, row.color, row.length, row.wireName, row.branchRole].map((value) => normalizeText(value));
+  return values.some((value) => value.includes("N/A") || value.includes("NO CONNECT") || value.includes("NC"));
+}
+
+function sheetColorToStroke(color) {
+  const value = normalizeText(color);
+  if (value.includes("RED")) return "#d62828";
+  if (value.includes("BLACK")) return "#050505";
+  if (value.includes("YELLOW")) return "#ffd400";
+  if (value.includes("GREEN")) return "#008a13";
+  if (value.includes("BLUE")) return "#0b64d8";
+  if (value.includes("WHITE")) return "#d9d9d9";
+  if (value.includes("ORANGE")) return "#f77f00";
+  if (value.includes("BROWN")) return "#7f4f24";
+  if (value.includes("PURPLE") || value.includes("VIOLET")) return "#7b2cbf";
+  if (value.includes("GRAY") || value.includes("GREY") || value.includes("N/A")) return "#777777";
+  return "#4a5560";
+}
+
 function buildInternalModel(wireSegments, connectors, findings, width, height) {
   const rightConnectors = connectors.filter((connector) => connector.side === "right");
   const leftConnectors = connectors.filter((connector) => connector.side === "left");
@@ -590,6 +862,9 @@ function buildInternalModel(wireSegments, connectors, findings, width, height) {
 }
 
 function buildSchematicSvg(result) {
+  if (result.sheetHarness) {
+    return buildSheetHarnessSvg(result);
+  }
   const harness = result.harness || buildCanHarnessModel();
   const title = escapeXml(harness.title);
   const subtitle = escapeXml(harness.subtitle);
@@ -690,6 +965,80 @@ function buildSchematicSvg(result) {
   <text class="pinout-text" x="1132" y="606">Pin 2 = CAN-H</text>
   <text class="pinout-text" x="1132" y="632">Pin 3 = CAN-L</text>
   <text class="pinout-text" x="1132" y="658">Pin 4 = GND</text>
+</svg>`;
+}
+
+function buildSheetHarnessSvg(result) {
+  const sheet = result.sheetHarness;
+  const rows = sheet.rows.length ? sheet.rows : [{
+    wireName: "No drawable rows found",
+    color: "Gray",
+    length: "",
+    leftLegName: "LEFT",
+    rightLegName: "RIGHT",
+    comments: "The uploaded sheet table is still available below."
+  }];
+  const rowSpacing = Math.min(52, Math.max(34, 430 / Math.max(1, rows.length)));
+  const startY = 230;
+  const leftX = 270;
+  const rightX = 1185;
+  const rowLines = rows.map((row, index) => {
+    const y = startY + index * rowSpacing;
+    const color = sheetColorToStroke(row.color);
+    const dashed = isNoWireRow(row) ? ` stroke-dasharray="12 9"` : "";
+    const label = escapeXml(row.wireName || row.branchRole || `ROW ${row.rowNumber}`);
+    const lengthText = row.length ? `${escapeXml(row.length)} in` : "";
+    return `
+      <g class="sheet-row">
+        <line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${color}"${dashed} />
+        <circle class="sheet-pin" cx="${leftX}" cy="${y}" r="4" />
+        <circle class="sheet-pin" cx="${rightX}" cy="${y}" r="4" />
+        <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 10}">${label}</text>
+        <text class="sheet-small" x="${(leftX + rightX) / 2}" y="${y + 22}">${lengthText}</text>
+        <text class="sheet-pin-label" x="${leftX - 20}" y="${y + 5}">${escapeXml(row.leftPinPos || "")}</text>
+        <text class="sheet-pin-label" x="${rightX + 20}" y="${y + 5}">${escapeXml(row.rightPinPos || "")}</text>
+      </g>
+    `;
+  }).join("");
+  const leftTitle = escapeXml(firstFilled(rows, "leftLegName") || firstFilled(rows, "leftLeg") || "LEFT LEG");
+  const rightTitle = escapeXml(firstFilled(rows, "rightLegName") || firstFilled(rows, "rightLeg") || "RIGHT LEG");
+  const notes = rows
+    .map((row) => row.comments)
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((comment, index) => `<text class="sheet-note" x="68" y="${675 + index * 22}">${escapeXml(shortLabel(comment, 150))}</text>`)
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(sheet.title)}">
+  <defs>
+    <style>
+      .sheet { fill: #ffffff; }
+      .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; }
+      .subtitle { fill: #333333; font: 600 17px Aptos, Segoe UI, sans-serif; }
+      .connector-box { fill: #ffffff; stroke: #000000; stroke-width: 4; }
+      .connector-title { fill: #000000; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .sheet-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; }
+      .sheet-pin { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .sheet-wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .sheet-small { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .sheet-pin-label { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .sheet-note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
+      .sheet-note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
+      .meta { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <text class="title" x="46" y="58">${escapeXml(sheet.title)}</text>
+  <text class="subtitle" x="46" y="92">${escapeXml(sheet.subtitle)}</text>
+  <text class="meta" x="46" y="122">Rows loaded: ${sheet.totalRows} | Drawing rows shown: ${rows.length}</text>
+  <rect class="connector-box" x="58" y="178" width="180" height="455" />
+  <text class="connector-title" x="148" y="210">${leftTitle}</text>
+  <rect class="connector-box" x="1220" y="178" width="300" height="455" />
+  <text class="connector-title" x="1370" y="210">${rightTitle}</text>
+  ${rowLines}
+  <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
+  ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
 </svg>`;
 }
 
@@ -1578,8 +1927,7 @@ function renderFindings(findings) {
   }).join("");
 }
 
-function renderHarnessTable(rows) {
-  const headers = getHarnessTableHeaders();
+function renderHarnessTable(rows, headers = getHarnessTableHeaders()) {
   if (!rows.length) {
     dom.tablePreview.innerHTML = `<span class="quiet">Upload or paste a sketch to generate the copy-only table.</span>`;
     dom.copyTableButton.disabled = true;
@@ -1602,8 +1950,7 @@ function renderHarnessTable(rows) {
   dom.copyTableButton.disabled = false;
 }
 
-function buildHarnessTableText(rows) {
-  const headers = getHarnessTableHeaders();
+function buildHarnessTableText(rows, headers = getHarnessTableHeaders()) {
   return [headers, ...rows]
     .map((row) => row.map(cleanTableCell).join("\t"))
     .join("\n");
@@ -1698,6 +2045,7 @@ function renderEmpty() {
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
   appState.tableText = "";
+  appState.tableHeaders = [];
   renderHarnessTable([]);
   renderSourcePreview();
 }
@@ -1705,6 +2053,7 @@ function renderEmpty() {
 function setBusy(isBusy) {
   dom.analyzeButton.disabled = isBusy || !appState.image;
   dom.pasteButton.disabled = isBusy;
+  dom.sheetButton.disabled = isBusy;
   dom.rotateButton.disabled = isBusy || !appState.image;
   dom.resetButton.disabled = isBusy;
 }
@@ -1728,11 +2077,14 @@ function resetApp() {
     manualRotation: 0,
     result: null,
     svgText: "",
-    tableText: ""
+    tableText: "",
+    tableHeaders: []
   };
   dom.fileInput.value = "";
+  dom.sheetInput.value = "";
   dom.analyzeButton.disabled = true;
   dom.pasteButton.disabled = false;
+  dom.sheetButton.disabled = false;
   dom.rotateButton.disabled = true;
   dom.printButton.disabled = true;
   setStatus("Upload or paste an image to start.");
@@ -1846,6 +2198,9 @@ function parseDrawioMessage(data) {
 }
 
 function buildDrawioXml(result) {
+  if (result.sheetHarness) {
+    return buildSheetDrawioXml(result);
+  }
   if (result.harness) {
     return buildCanDrawioXml(result);
   }
@@ -1898,6 +2253,48 @@ function buildDrawioXml(result) {
       as: "geometry"
     })));
   });
+  const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildSheetDrawioXml(result) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  const sheet = result.sheetHarness;
+  const rows = sheet.rows.length ? sheet.rows : [{ wireName: "No drawable rows found", color: "Gray" }];
+  const rowSpacing = Math.min(52, Math.max(34, 430 / Math.max(1, rows.length)));
+  const leftX = 270;
+  const rightX = 1185;
+  const startY = 230;
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("title", sheet.title, 46, 28, 900, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
+  addVertex("subtitle", sheet.subtitle, 46, 72, 720, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
+  addVertex("left_connector", firstFilled(rows, "leftLegName") || firstFilled(rows, "leftLeg") || "LEFT LEG", 58, 178, 180, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  addVertex("right_connector", firstFilled(rows, "rightLegName") || firstFilled(rows, "rightLeg") || "RIGHT LEG", 1220, 178, 300, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  rows.forEach((row, index) => {
+    const y = startY + index * rowSpacing;
+    const stroke = sheetColorToStroke(row.color);
+    const dashed = isNoWireRow(row) ? "dashed=1;dashPattern=12 9;" : "";
+    const label = row.wireName || row.branchRole || `ROW ${row.rowNumber || index + 1}`;
+    addEdge(`sheet_wire_${index + 1}`, label, leftX, y, rightX, y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;${dashed}`);
+  });
+  addVertex("sheet_notes", `Rows loaded: ${sheet.totalRows}<br>Drawing rows shown: ${rows.length}`, 58, 650, 500, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=14;align=left;spacingLeft=12;");
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">

@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.5.1**
+Current release: **v1.6.0**
 
 ## Use The App
 
@@ -12,13 +12,16 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 
 DIGIWIRE is upload-first: drop in a photo or scan of the CAN bus wire-harness sketch and it builds a clean professional CAN harness drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
 
-The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, generate the clean electrical drawing, print, open the editable drawing in Draw.io, or copy the generated table rows.
+The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, or upload a prefilled Excel/CSV/TSV sheet, then generate the clean electrical drawing, print, open the editable drawing in Draw.io, or copy the generated table rows.
 
 ## Features
 
 - Reads sideways, upside-down, and normal uploads by trying all four page orientations.
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as file uploads and drag-and-drop.
+- Accepts prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets through the Upload Excel button.
+- Preserves uploaded sheet headers and rows in the copy-only table.
+- Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Renders the CAN-H, CAN-L, and GND trunk as yellow, green, and black 22 AWG conductors.
 - Draws four 4-pin JST branch drops with 12 inch first-branch spacing, 2 inch branch spacing, and 6 inch drops.
 - Marks JST pin 1 as `PWR(NC)` without drawing a power wire.
