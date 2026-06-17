@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.5 - 2026-06-17
+
+- Added Micro Maestro servo-header intelligence for board-to-Dupont harness drawings.
+- Labels Maestro/Dupont rows as pin 1 GND, pin 2 V+ servo power, and pin 3 SIG based on the Pololu Micro Maestro manual.
+- Normalizes pasted `Meastro`/`mistro` text to `Maestro` in generated drawings and Draw.io exports.
+
 ## v1.6.4 - 2026-06-17
 
 - Added a compact multi-leg board harness layout for sheets like W116.

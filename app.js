@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.4";
+const APP_VERSION = "1.6.5";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1130,9 +1130,9 @@ function buildKiCadHarnessModel(sheet) {
     return null;
   }
   const cableName = firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS";
-  const leftName = firstFilled(rows, "leftLegName") || firstFilled(rows, "leftHousingType") || "LEFT CONNECTOR";
+  const leftName = cleanConnectorName(firstFilled(rows, "leftLegName") || firstFilled(rows, "leftHousingType") || "LEFT CONNECTOR");
   const leftType = firstFilled(rows, "leftHousingType");
-  const rightName = connectorSideName(rows, "right") || "RIGHT CONNECTOR";
+  const rightName = cleanConnectorName(connectorSideName(rows, "right") || "RIGHT CONNECTOR");
   const rightType = firstFilled(rows, "rightHousingType");
   const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
   const awg = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
@@ -1160,7 +1160,8 @@ function buildKiCadHarnessModel(sheet) {
     groupKey: groupKeyForSheetRow(row),
     y: isMultiGroup ? multiGroupWireY(row, groups) : wireStartY + index * wireGap,
     rightLocalPin: isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos,
-    leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos
+    leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
+    maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
   }));
   groups.forEach((group) => {
     group.wires = wires.filter((wire) => wire.groupKey === group.key);
@@ -1321,6 +1322,28 @@ function shortListLabel(values, limit) {
   return `${unique.slice(0, limit).join(" / ")} / ...`;
 }
 
+function cleanConnectorName(name) {
+  return String(name || "")
+    .replace(/\bMEASTRO\b/gi, "Maestro")
+    .replace(/\bMISTRO\b/gi, "Maestro")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function maestroPinRole(row, localPin) {
+  const text = normalizeText(`${row.wireName} ${row.color} ${row.comments} ${localPin}`);
+  if (text.includes("GND") || text.includes("GROUND") || text.includes("BLACK") || text.includes("BROWN") || String(localPin) === "1") {
+    return { code: "GND", label: "Ground", detail: "closest to edge" };
+  }
+  if (text.includes("PWR") || text.includes("POWER") || text.includes("V+") || text.includes("VSRV") || text.includes("RED") || String(localPin) === "2") {
+    return { code: "V+", label: "Servo power", detail: "middle rail" };
+  }
+  if (text.includes("SIG") || text.includes("SIGNAL") || text.includes("WHITE") || text.includes("YELLOW") || text.includes("ORANGE") || String(localPin) === "3") {
+    return { code: "SIG", label: "Signal", detail: "inside board" };
+  }
+  return { code: "SIG", label: "Signal", detail: "inside board" };
+}
+
 function connectorSideName(rows, side) {
   const legName = firstFilled(rows, `${side}LegName`);
   const housingType = firstFilled(rows, `${side}HousingType`);
@@ -1472,6 +1495,7 @@ function buildKiCadMultiGroupSvg(result, model) {
     formatBoardPin(wire)
   ]);
   const noteText = uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 2).join(" | ");
+  const maestroNote = "Micro Maestro servo header: 1=GND edge, 2=V+ servo power, 3=SIG inside board.";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} multi-row board harness drawing">
@@ -1531,7 +1555,7 @@ function buildKiCadMultiGroupSvg(result, model) {
   <text class="connector-heading" x="1340" y="46">RIGHT BOARD</text>
   <text class="connector-sub" x="1340" y="70">${escapeXml(model.rightConnector.name)}</text>
   <text class="connector-sub" x="1340" y="92">${escapeXml(model.rightConnector.type || "DUPONT")}</text>
-  <text class="connector-sub" x="1340" y="114">3 POS HORIZONTAL ROWS</text>
+  <text class="connector-sub" x="1340" y="114">SERVO HEADER ROWS</text>
   <text class="connector-view" x="1340" y="134">(${escapeXml(model.rightConnector.view)})</text>
 
   <line class="dim-ext" x1="355" y1="134" x2="355" y2="176" />
@@ -1549,7 +1573,7 @@ function buildKiCadMultiGroupSvg(result, model) {
     y: 538,
     width: 770,
     title: "WIRING TABLE",
-    headers: ["LEG", "LEFT NAME", "LEFT PIN", "WIRE", "COLOR", "AWG", "LEN", "MAESTRO POS"],
+    headers: ["LEG", "LEFT NAME", "LEFT PIN", "WIRE", "COLOR", "AWG", "LEN", "MAESTRO ROLE"],
     rows: wiringRows,
     colWidths: [52, 126, 70, 110, 78, 54, 64, 116],
     rowHeight: 20,
@@ -1571,8 +1595,9 @@ function buildKiCadMultiGroupSvg(result, model) {
   })}
 
   <text class="note-title" x="835" y="678">NOTES:</text>
-  <text class="note" x="835" y="700">${escapeXml(noteText || "Verify pin orientation before final assembly.")}</text>
-  ${buildKiCadCompactTitleBlockSvg(830, 710, 730, 70, model)}
+  <text class="note" x="835" y="696">${escapeXml(maestroNote)}</text>
+  <text class="note" x="835" y="712">${escapeXml(noteText || "Verify pin orientation before final assembly.")}</text>
+  ${buildKiCadCompactTitleBlockSvg(830, 724, 730, 54, model)}
 </svg>`;
 }
 
@@ -1607,11 +1632,12 @@ function buildKiCadMaestroGridSvg(model) {
   const lastY = model.groups[model.groups.length - 1]?.y ?? firstY;
   const top = firstY - 48;
   const height = lastY - firstY + 96;
+  const labels = maestroHeaderLabels();
   const output = [
     `<rect class="board-body" x="${gridX - 18}" y="${top}" width="164" height="${height}" rx="4" />`,
-    `<text class="grid-label" x="${gridX + 24}" y="${top - 10}">1</text>`,
-    `<text class="grid-label" x="${gridX + 66}" y="${top - 10}">2</text>`,
-    `<text class="grid-label" x="${gridX + 108}" y="${top - 10}">3</text>`
+    `<text class="grid-label" x="${gridX + 14}" y="${top - 26}">EDGE</text>`,
+    `<text class="grid-label" x="${gridX + 108}" y="${top - 26}">INSIDE</text>`,
+    ...labels.map((label, index) => `<text class="grid-label" x="${gridX + index * 42 + 14}" y="${top - 10}">${label.pin} ${label.code}</text>`)
   ];
   model.groups.forEach((group) => {
     output.push(`<text class="group-label" x="${gridX - 58}" y="${group.y + 4}">${escapeXml(group.name)}</text>`);
@@ -1620,7 +1646,7 @@ function buildKiCadMaestroGridSvg(model) {
       const hasWire = group.wires.some((wire) => wire.rightLocalPin === String(pin));
       output.push(`<rect class="${hasWire ? "cavity" : "nc-cavity"}" x="${x}" y="${group.y - 18}" width="28" height="36" rx="4" />`);
       output.push(`<rect class="cavity-hole" x="${x + 9}" y="${group.y - 8}" width="10" height="16" rx="2" />`);
-      output.push(`<text class="grid-label" x="${x + 14}" y="${group.y + 34}">${pin}</text>`);
+      output.push(`<text class="grid-label" x="${x + 14}" y="${group.y + 34}">${labels[index].code}${hasWire ? "" : " NC"}</text>`);
     });
   });
   return output.join("");
@@ -1629,13 +1655,14 @@ function buildKiCadMaestroGridSvg(model) {
 function buildKiCadMultiWireSvg(wire) {
   const color = wire.stroke;
   const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
+  const wireRole = wire.maestroRole?.code ? `${wire.name} ${wire.maestroRole.code}` : wire.name;
   return `
   <rect class="terminal" x="350" y="${wire.y - 11}" width="42" height="22" fill="${color}" />
   <rect class="terminal" x="1136" y="${wire.y - 11}" width="42" height="22" fill="${color}" />
   <line class="wire-line" x1="392" y1="${wire.y}" x2="1136" y2="${wire.y}" stroke="${color}" />
   <path class="terminal-mark" d="M 371 ${wire.y - 5} L 371 ${wire.y + 5} M 366 ${wire.y} L 376 ${wire.y}" />
   <path class="terminal-mark" d="M 1157 ${wire.y - 5} L 1157 ${wire.y + 5} M 1152 ${wire.y} L 1162 ${wire.y}" />
-  <text class="wire-label" x="760" y="${wire.y - 10}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
+  <text class="wire-label" x="760" y="${wire.y - 10}">${escapeXml(wireRole)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
   <text class="${textColorClass}" x="371" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
   <text class="${textColorClass}" x="1157" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
   <text class="pin-label" x="1212" y="${wire.y + 4}">${escapeXml(formatBoardPin(wire))}</text>`;
@@ -1852,10 +1879,11 @@ function scaleColumnWidths(widths, targetWidth) {
 }
 
 function formatBoardPin(wire) {
+  const role = wire.maestroRole?.code ? `${wire.maestroRole.code} ` : "";
   if (wire.rightLocalPin && wire.rightLocalPin !== wire.toPin) {
-    return `${wire.rightLocalPin} (pin ${wire.toPin})`;
+    return `${role}${wire.rightLocalPin} (pin ${wire.toPin})`;
   }
-  return String(wire.toPin || wire.rightLocalPin || "");
+  return `${role}${wire.toPin || wire.rightLocalPin || ""}`.trim();
 }
 
 function uniqueValues(values) {
@@ -1867,6 +1895,14 @@ function uniqueValues(values) {
     }
   });
   return output;
+}
+
+function maestroHeaderLabels() {
+  return [
+    { pin: "1", code: "GND", label: "Ground", detail: "closest to edge" },
+    { pin: "2", code: "V+", label: "Servo power", detail: "middle rail" },
+    { pin: "3", code: "SIG", label: "Signal", detail: "inside board" }
+  ];
 }
 
 function dominantSheetValue(rows, key) {
@@ -3384,7 +3420,7 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
   addVertex("title", model.cableName, 620, 24, 360, 38, "text;html=1;strokeColor=none;fillColor=none;fontSize=34;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("subtitle", model.description, 500, 64, 600, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=20;fontStyle=5;fontColor=#000000;align=center;");
   addVertex("left_heading", `LEFT BOARD<br>${model.leftConnector.name}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 34, 180, 96, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
-  addVertex("right_heading", `RIGHT BOARD<br>${model.rightConnector.name}<br>${model.rightConnector.type || "DUPONT"}<br>3 POS HORIZONTAL ROWS<br>(${model.rightConnector.view})`, 1250, 34, 210, 110, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `RIGHT BOARD<br>${model.rightConnector.name}<br>${model.rightConnector.type || "DUPONT"}<br>SERVO HEADER ROWS<br>1=GND 2=V+ 3=SIG<br>(${model.rightConnector.view})`, 1250, 30, 230, 126, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
   addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 365, 146, 1188, 146, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=14;");
   const firstY = model.groups[0]?.y ?? 205;
   const lastY = model.groups[model.groups.length - 1]?.y ?? firstY;
@@ -3396,7 +3432,8 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
     [1, 2, 3].forEach((pin, pinIndex) => {
       const x = 1268 + pinIndex * 42;
       const hasWire = group.wires.some((wire) => wire.rightLocalPin === String(pin));
-      addVertex(`right_cavity_${group.index}_${pin}`, String(pin), x, group.y - 18, 28, 36, `rounded=1;whiteSpace=wrap;html=1;fillColor=${hasWire ? "#f9f9f9" : "#eeeeee"};strokeColor=${hasWire ? "#000000" : "#777777"};strokeWidth=1;fontStyle=1;fontSize=11;`);
+      const roleLabel = maestroHeaderLabels()[pinIndex].code;
+      addVertex(`right_cavity_${group.index}_${pin}`, `${pin}<br>${roleLabel}${hasWire ? "" : " NC"}`, x, group.y - 18, 28, 42, `rounded=1;whiteSpace=wrap;html=1;fillColor=${hasWire ? "#f9f9f9" : "#eeeeee"};strokeColor=${hasWire ? "#000000" : "#777777"};strokeWidth=1;fontStyle=1;fontSize=10;`);
     });
   });
   model.wires.forEach((wire, index) => {
@@ -3406,12 +3443,13 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
     addVertex(`right_pin_num_${index}`, formatBoardPin(wire), 1190, wire.y - 12, 90, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 350, wire.y - 11, 42, 22, terminalStyle);
     addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1136, wire.y - 11, 42, 22, terminalStyle);
-    addEdge(`wire_${index}`, `${wire.name} (${wire.colorName}) ${wire.awg || ""} AWG`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+    const wireRole = wire.maestroRole?.code ? `${wire.name} ${wire.maestroRole.code}` : wire.name;
+    addEdge(`wire_${index}`, `${wireRole} (${wire.colorName}) ${wire.awg || ""} AWG`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
   });
-  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT NAME", "LEFT PIN", "WIRE", "COLOR", "AWG", "LEN", "MAESTRO POS"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=10;align=center;");
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT NAME", "LEFT PIN", "WIRE", "COLOR", "AWG", "LEN", "MAESTRO ROLE"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=10;align=center;");
   addVertex("bom", buildKiCadDrawioTableText("BILL OF MATERIALS", ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"], buildKiCadBomRows(model)), 830, 538, 730, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;");
-  addVertex("notes", `<b>NOTES:</b><br>${uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 2).join("<br>") || "Verify pin orientation before final assembly."}`, 830, 672, 730, 34, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=left;");
-  addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 830, 710, 730, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
+  addVertex("notes", `<b>NOTES:</b><br>Micro Maestro servo header: 1=GND edge, 2=V+ servo power, 3=SIG inside board.<br>${uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 1).join("<br>") || "Verify pin orientation before final assembly."}`, 830, 672, 730, 48, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=left;");
+  addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 830, 724, 730, 54, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
   const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
