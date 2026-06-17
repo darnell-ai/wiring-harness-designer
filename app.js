@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.6.2";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1042,6 +1042,9 @@ function buildSchematicSvg(result) {
 
 function buildSheetHarnessSvg(result) {
   const sheet = result.sheetHarness;
+  if (isBarrelPowerCableSheet(sheet.rows)) {
+    return buildBarrelPowerCableSvg(result);
+  }
   const rows = sheet.rows.length ? sheet.rows : [{
     wireName: "No drawable rows found",
     color: "Gray",
@@ -1112,6 +1115,134 @@ function buildSheetHarnessSvg(result) {
   <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
   ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
 </svg>`;
+}
+
+function isBarrelPowerCableSheet(rows) {
+  const haystack = rows
+    .map((row) => [
+      row.cableName,
+      row.wireName,
+      row.rightLegName,
+      row.rightHousingType,
+      row.comments
+    ].join(" "))
+    .join(" ");
+  const text = normalizeText(haystack);
+  return text.includes("BARREL") && (text.includes("48V") || text.includes("+48") || text.includes("POWER"));
+}
+
+function buildBarrelPowerCableSvg(result) {
+  const sheet = result.sheetHarness;
+  const rows = sheet.rows;
+  const powerRow = findSheetRow(rows, (row) => {
+    const text = normalizeText(`${row.wireName} ${row.color} ${row.comments}`);
+    return text.includes("+48") || text.includes("POS") || text.includes("RED") || text.includes("CENTER PIN");
+  }) || rows[1] || {};
+  const groundRow = findSheetRow(rows, (row) => {
+    const text = normalizeText(`${row.wireName} ${row.color} ${row.comments}`);
+    return text.includes("GND") || text.includes("GROUND") || text.includes("BLACK") || text.includes("SLEEVE");
+  }) || rows[0] || {};
+  const wrapRow = findSheetRow(rows, (row) => {
+    const text = normalizeText(`${row.wireName} ${row.branchRole} ${row.leftHousingType} ${row.rightHousingType} ${row.comments}`);
+    return text.includes("WRAP") || text.includes("SLEEVE") || text.includes("PROTECTION") || text.includes("HEAT SHRINK");
+  }) || {};
+  const cableName = escapeXml(sheet.cableName || "48V Barrel Power Cable");
+  const leftTitle = escapeXml(firstFilled(rows, "leftLegName") || "48V Source Connector");
+  const sourceType = escapeXml(groundRow.leftHousingType || powerRow.leftHousingType || "2 Pin Connector");
+  const barrelTitle = escapeXml(groundRow.rightLegName || powerRow.rightLegName || "DC Barrel Plug");
+  const wrapLength = escapeXml(wrapRow.length || "8");
+  const groundPin = escapeXml(groundRow.leftPinPos || "1");
+  const powerPin = escapeXml(powerRow.leftPinPos || "2");
+  const gndRight = escapeXml(groundRow.rightPinPos || "Outer Sleeve / Shell");
+  const pwrRight = escapeXml(powerRow.rightPinPos || "Center Pin");
+  const notes = [groundRow.comments, powerRow.comments, wrapRow.comments]
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((note, index) => `<text class="note" x="68" y="${690 + index * 24}">${escapeXml(shortLabel(note, 150))}</text>`)
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${cableName}">
+  <defs>
+    <pattern id="wrapPattern" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(35)">
+      <line x1="0" y1="0" x2="0" y2="14" stroke="#7c8790" stroke-width="2" opacity="0.65" />
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
+    </marker>
+    <style>
+      .sheet { fill: #ffffff; }
+      .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.7px; }
+      .subtitle { fill: #333333; font: 700 17px Aptos, Segoe UI, sans-serif; }
+      .connector-box, .plug-outline { fill: #ffffff; stroke: #000000; stroke-width: 4; }
+      .connector-title { fill: #000000; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-text { fill: #000000; font: 800 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .wire { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .small { fill: #222222; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .callout { fill: #000000; font: 800 13px Aptos, Segoe UI, sans-serif; }
+      .wrap-shell { fill: url(#wrapPattern); stroke: #4f5961; stroke-width: 3; opacity: 0.45; }
+      .wrap-label { fill: #1f2930; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .heat-shrink { fill: #111111; opacity: 0.82; }
+      .barrel-metal { fill: #f8f8f8; stroke: #000000; stroke-width: 4; }
+      .barrel-front { fill: #ffffff; stroke: #000000; stroke-width: 4; }
+      .center-pin { fill: #fff4f4; stroke: #d62828; stroke-width: 4; }
+      .shell-contact { fill: none; stroke: #050505; stroke-width: 6; stroke-linecap: round; }
+      .dim-line { fill: none; stroke: #111111; stroke-width: 2; }
+      .dim-label { fill: #000000; font: 800 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <text class="title" x="46" y="58">${cableName} HARNESS ASSEMBLY</text>
+  <text class="subtitle" x="46" y="92">2 conductor 48V barrel power cable | wire wrap sleeve around both conductors</text>
+
+  <rect class="connector-box" x="62" y="235" width="220" height="230" rx="6" />
+  <text class="connector-title" x="172" y="270">${leftTitle}</text>
+  <text class="small" x="172" y="296">${sourceType}</text>
+  <text class="pin-text" x="126" y="340">Pin ${groundPin}</text>
+  <text class="pin-text" x="126" y="408">Pin ${powerPin}</text>
+
+  <rect class="wrap-shell" x="318" y="296" width="760" height="142" rx="54" />
+  <rect class="heat-shrink" x="318" y="292" width="24" height="150" rx="8" />
+  <rect class="heat-shrink" x="1054" y="292" width="24" height="150" rx="8" />
+  <text class="wrap-label" x="698" y="286">Expandable wire wrap sleeve around GND and +48V</text>
+  <path class="dim-line" d="M 360 462 L 1036 462" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="dim-label" x="698" y="488">${wrapLength} in wrap section</text>
+  <text class="small" x="330" y="458">Heat shrink</text>
+  <text class="small" x="1066" y="458">Heat shrink</text>
+
+  <path class="wire" d="M 282 340 L 1124 340 L 1188 315 L 1235 315" stroke="#050505" />
+  <path class="wire" d="M 282 408 L 1124 408 L 1188 375 L 1235 375" stroke="#d62828" />
+  <circle class="barrel-front" cx="282" cy="340" r="5" />
+  <circle class="barrel-front" cx="282" cy="408" r="5" />
+  <text class="wire-label" x="628" y="330">GND / BLACK</text>
+  <text class="wire-label" x="628" y="432">+48V / RED</text>
+
+  <rect class="barrel-metal" x="1185" y="282" width="95" height="126" rx="20" />
+  <rect class="barrel-metal" x="1268" y="252" width="225" height="186" rx="36" />
+  <ellipse class="barrel-front" cx="1492" cy="345" rx="34" ry="93" />
+  <ellipse class="center-pin" cx="1492" cy="345" rx="12" ry="35" />
+  <path class="shell-contact" d="M 1295 295 L 1458 295" />
+  <path class="shell-contact" d="M 1295 395 L 1458 395" />
+  <text class="connector-title" x="1380" y="238">${barrelTitle}</text>
+  <text class="callout" x="1276" y="476">Outer sleeve / shell = GND (${gndRight})</text>
+  <text class="callout" x="1276" y="500">Center pin = +48V (${pwrRight})</text>
+
+  <text class="note-title" x="68" y="660">BUILD NOTES</text>
+  ${notes}
+</svg>`;
+}
+
+function findSheetRow(rows, predicate) {
+  return rows.find((row) => {
+    try {
+      return predicate(row);
+    } catch {
+      return false;
+    }
+  }) || null;
 }
 
 function buildResistorPath(x, y1, y2, amplitude) {
@@ -2345,6 +2476,9 @@ function buildDrawioXml(result) {
 }
 
 function buildSheetDrawioXml(result) {
+  if (isBarrelPowerCableSheet(result.sheetHarness.rows)) {
+    return buildBarrelPowerDrawioXml(result);
+  }
   const cells = [];
   const add = (cell) => cells.push(cell);
   const addVertex = (id, value, x, y, width, height, style) => {
@@ -2373,6 +2507,52 @@ function buildSheetDrawioXml(result) {
     addEdge(`sheet_wire_${index + 1}`, label, leftX, y, rightX, y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;${dashed}`);
   });
   addVertex("sheet_notes", `Rows loaded: ${sheet.totalRows}<br>Drawing rows shown: ${rows.length}`, 58, 650, 500, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=14;align=left;spacingLeft=12;");
+  const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildBarrelPowerDrawioXml(result) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  const rows = result.sheetHarness.rows;
+  const powerRow = findSheetRow(rows, (row) => normalizeText(`${row.wireName} ${row.color} ${row.comments}`).includes("+48") || normalizeText(row.color).includes("RED")) || {};
+  const groundRow = findSheetRow(rows, (row) => normalizeText(`${row.wireName} ${row.color} ${row.comments}`).includes("GND") || normalizeText(row.color).includes("BLACK")) || {};
+  const wrapRow = findSheetRow(rows, (row) => normalizeText(`${row.wireName} ${row.branchRole} ${row.comments}`).includes("WRAP")) || {};
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("title", `${result.sheetHarness.cableName} HARNESS ASSEMBLY`, 46, 28, 980, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
+  addVertex("subtitle", "2 conductor 48V barrel power cable | wire wrap sleeve around both conductors", 46, 72, 820, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
+  addVertex("source", `${firstFilled(rows, "leftLegName") || "48V Source Connector"}<br><font style="font-size:12px">${groundRow.leftHousingType || powerRow.leftHousingType || "2 Pin Connector"}</font><br><br>Pin ${groundRow.leftPinPos || "1"} GND<br>Pin ${powerRow.leftPinPos || "2"} +48V`, 62, 235, 220, 230, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  addVertex("wrap", "Expandable wire wrap sleeve around GND and +48V", 318, 296, 760, 142, "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#e8ecef;strokeColor=#4f5961;strokeWidth=3;dashed=1;dashPattern=8 6;fontStyle=1;fontSize=14;fontColor=#1f2930;");
+  addVertex("heat_left", "Heat shrink", 318, 292, 36, 150, "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#000000;strokeWidth=2;fontColor=#ffffff;fontSize=11;verticalLabelPosition=middle;verticalAlign=middle;");
+  addVertex("heat_right", "Heat shrink", 1042, 292, 36, 150, "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#000000;strokeWidth=2;fontColor=#ffffff;fontSize=11;verticalLabelPosition=middle;verticalAlign=middle;");
+  addEdge("gnd_wire", "GND / BLACK", 282, 340, 1235, 315, "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#050505;strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;");
+  addEdge("pwr_wire", "+48V / RED", 282, 408, 1235, 375, "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#d62828;strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;");
+  addVertex("strain_relief", "", 1185, 282, 95, 126, "rounded=1;arcSize=32;whiteSpace=wrap;html=1;fillColor=#f8f8f8;strokeColor=#000000;strokeWidth=4;");
+  addVertex("barrel_body", "DC Barrel Plug<br><font style=\"font-size:12px\">Outer sleeve/shell = GND<br>Center pin = +48V</font>", 1268, 252, 225, 186, "rounded=1;arcSize=35;whiteSpace=wrap;html=1;fillColor=#f8f8f8;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  addVertex("barrel_tip", "", 1460, 292, 64, 106, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;");
+  addVertex("center_pin", "", 1480, 315, 24, 60, "ellipse;whiteSpace=wrap;html=1;fillColor=#fff4f4;strokeColor=#d62828;strokeWidth=4;");
+  addVertex("wrap_length", `${wrapRow.length || "8"} in wrap section`, 520, 462, 350, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;");
+  const noteLines = [groundRow.comments, powerRow.comments, wrapRow.comments]
+    .filter(Boolean)
+    .map((note) => escapeHtml(shortLabel(note, 150)))
+    .join("<br>");
+  addVertex("notes", `<b>BUILD NOTES</b><br>${noteLines}`, 68, 650, 920, 100, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=left;spacingLeft=12;");
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">

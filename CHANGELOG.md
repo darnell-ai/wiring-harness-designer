@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.2 - 2026-06-17
+
+- Added a dedicated DC barrel power cable renderer for pasted/uploaded barrel connector sheets.
+- Draws wire wrap as a sleeve around GND and power conductors with heat-shrink bands at both ends.
+- Draws the barrel plug as a cylindrical connector with center pin for power and outer sleeve/shell for ground, including Draw.io export support.
+
 ## v1.6.1 - 2026-06-17
 
 - Added a Paste table button for loading copied Excel/Sheets rows without saving a file.
