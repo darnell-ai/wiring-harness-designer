@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.0";
+const APP_VERSION = "1.6.1";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -15,6 +15,11 @@ const dom = {
   fileInput: document.querySelector("#fileInput"),
   sheetInput: document.querySelector("#sheetInput"),
   sheetButton: document.querySelector("#sheetButton"),
+  tablePasteButton: document.querySelector("#tablePasteButton"),
+  pasteTablePanel: document.querySelector("#pasteTablePanel"),
+  tablePasteInput: document.querySelector("#tablePasteInput"),
+  loadPastedTableButton: document.querySelector("#loadPastedTableButton"),
+  closePasteTableButton: document.querySelector("#closePasteTableButton"),
   dropZone: document.querySelector("#dropZone"),
   analyzeButton: document.querySelector("#analyzeButton"),
   pasteButton: document.querySelector("#pasteButton"),
@@ -98,6 +103,9 @@ function init() {
   dom.analyzeButton.addEventListener("click", () => void analyzeCurrentDrawing());
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
   dom.sheetButton.addEventListener("click", () => dom.sheetInput.click());
+  dom.tablePasteButton.addEventListener("click", () => void openPasteTablePanel());
+  dom.loadPastedTableButton.addEventListener("click", () => void loadPastedHarnessTable());
+  dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
   dom.rotateButton.addEventListener("click", () => {
     if (!appState.image) {
       return;
@@ -208,28 +216,7 @@ async function loadHarnessSheetFile(file) {
       return;
     }
 
-    const result = compileSheetHarnessResult(sheet, file.name);
-    appState = {
-      fileName: cleanFileName(file.name),
-      dataUrl: "",
-      image: null,
-      manualRotation: 0,
-      result,
-      svgText: buildSchematicSvg(result),
-      tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
-      tableHeaders: result.tableHeaders || sheet.headers
-    };
-    dom.fileInput.value = "";
-    dom.sheetInput.value = "";
-    dom.analyzeButton.disabled = true;
-    dom.rotateButton.disabled = true;
-    dom.sourceTitle.textContent = cleanFileName(file.name);
-    renderSchematic(result);
-    renderFacts(result);
-    renderFindings(result.findings);
-    renderHarnessTable(result.tableRows || [], appState.tableHeaders);
-    renderSourcePreview(result);
-    setExportsEnabled(true);
+    const result = applyHarnessSheet(sheet, file.name);
     setStatus(`Loaded ${result.tableRows.length} sheet row${result.tableRows.length === 1 ? "" : "s"} from ${file.name}.`);
   } catch (error) {
     console.error(error);
@@ -251,6 +238,87 @@ async function readHarnessSheetFile(file) {
   }
   const text = await file.text();
   return normalizeSheetMatrix(parseDelimitedText(text));
+}
+
+function applyHarnessSheet(sheet, sourceName) {
+  const result = compileSheetHarnessResult(sheet, sourceName);
+  appState = {
+    fileName: cleanFileName(sourceName),
+    dataUrl: "",
+    image: null,
+    manualRotation: 0,
+    result,
+    svgText: buildSchematicSvg(result),
+    tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
+    tableHeaders: result.tableHeaders || sheet.headers
+  };
+  dom.fileInput.value = "";
+  dom.sheetInput.value = "";
+  dom.analyzeButton.disabled = true;
+  dom.rotateButton.disabled = true;
+  dom.sourceTitle.textContent = cleanFileName(sourceName);
+  renderSchematic(result);
+  renderFacts(result);
+  renderFindings(result.findings);
+  renderHarnessTable(result.tableRows || [], appState.tableHeaders);
+  renderSourcePreview(result);
+  setExportsEnabled(true);
+  return result;
+}
+
+async function openPasteTablePanel() {
+  dom.pasteTablePanel.hidden = false;
+  setStatus("Paste rows copied from Excel, Google Sheets, or a tab-delimited table, then click Load pasted table.");
+  await waitForFrame();
+  dom.tablePasteInput.focus();
+  if (!dom.tablePasteInput.value.trim() && navigator.clipboard?.readText) {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (looksLikeDelimitedTable(text)) {
+        dom.tablePasteInput.value = text;
+        dom.tablePasteInput.select();
+      }
+    } catch {
+      // Clipboard text permission is optional; the textarea still supports manual paste.
+    }
+  }
+}
+
+function closePasteTablePanel() {
+  dom.pasteTablePanel.hidden = true;
+}
+
+async function loadPastedHarnessTable() {
+  const text = dom.tablePasteInput.value.trim();
+  if (!text) {
+    setStatus("Paste the copied table rows first, then click Load pasted table.");
+    dom.tablePasteInput.focus();
+    return;
+  }
+
+  try {
+    setBusy(true);
+    setStatus("Reading pasted harness table...");
+    await waitForFrame();
+    const sheet = normalizeSheetMatrix(parseDelimitedText(text));
+    if (!sheet.rows.length) {
+      setStatus("The pasted table needs a header row and at least one data row.");
+      return;
+    }
+    const result = applyHarnessSheet(sheet, "Pasted Harness Table");
+    closePasteTablePanel();
+    setStatus(`Loaded ${result.tableRows.length} pasted row${result.tableRows.length === 1 ? "" : "s"}.`);
+  } catch (error) {
+    console.error(error);
+    setStatus("The pasted table could not be read. Copy the header row and data rows together, then try again.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function looksLikeDelimitedTable(text) {
+  const value = String(text || "");
+  return value.includes("\t") && /\r?\n/.test(value);
 }
 
 function ensureXlsxReader() {
@@ -359,12 +427,16 @@ function normalizeSheetKey(header) {
     WIRENAME: "wireName",
     LEFTPINPOS: "leftPinPos",
     PINPOS: "rightPinPos",
+    RIGHTPINPOS: "rightPinPos",
     LEFTHOUSINGTYPE: "leftHousingType",
     HOUSINGTYPE: "rightHousingType",
+    RIGHTHOUSINGTYPE: "rightHousingType",
     LEFTHOUSINGPART: "leftHousingPart",
     HOUSINGPART: "rightHousingPart",
+    RIGHTHOUSINGPART: "rightHousingPart",
     LEFTPINP: "leftPinPart",
     PINP: "rightPinPart",
+    RIGHTPINP: "rightPinPart",
     AWGUAGE: "awg",
     AWGGAUGE: "awg",
     AWG: "awg",
@@ -1929,7 +2001,7 @@ function renderFindings(findings) {
 
 function renderHarnessTable(rows, headers = getHarnessTableHeaders()) {
   if (!rows.length) {
-    dom.tablePreview.innerHTML = `<span class="quiet">Upload or paste a sketch to generate the copy-only table.</span>`;
+    dom.tablePreview.innerHTML = `<span class="quiet">Upload Excel or paste table rows to generate the copy-only table.</span>`;
     dom.copyTableButton.disabled = true;
     return;
   }
@@ -2054,6 +2126,8 @@ function setBusy(isBusy) {
   dom.analyzeButton.disabled = isBusy || !appState.image;
   dom.pasteButton.disabled = isBusy;
   dom.sheetButton.disabled = isBusy;
+  dom.tablePasteButton.disabled = isBusy;
+  dom.loadPastedTableButton.disabled = isBusy;
   dom.rotateButton.disabled = isBusy || !appState.image;
   dom.resetButton.disabled = isBusy;
 }
@@ -2085,9 +2159,13 @@ function resetApp() {
   dom.analyzeButton.disabled = true;
   dom.pasteButton.disabled = false;
   dom.sheetButton.disabled = false;
+  dom.tablePasteButton.disabled = false;
+  dom.loadPastedTableButton.disabled = false;
+  dom.pasteTablePanel.hidden = true;
+  dom.tablePasteInput.value = "";
   dom.rotateButton.disabled = true;
   dom.printButton.disabled = true;
-  setStatus("Upload or paste an image to start.");
+  setStatus("Upload an image, upload Excel, or paste table rows to start.");
   renderEmpty();
 }
 

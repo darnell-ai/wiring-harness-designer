@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.1 - 2026-06-17
+
+- Added a Paste table button for loading copied Excel/Sheets rows without saving a file.
+- Reused the sheet drawing, Draw.io, and copy-only table flow for pasted tab-delimited rows.
+- Added support for the explicit right-side table headers used by barrel cable sheets.
+
 ## v1.6.0 - 2026-06-17
 
 - Added an Upload Excel button for prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets.

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v1.6.0</title>
+    <title>DIGIWIRE v1.6.1</title>
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -34,7 +34,7 @@
             <input id="fileInput" type="file" accept="image/*">
             <div class="drop-icon">IMG</div>
             <strong>Upload image</strong>
-            <span>Photo, scan, or copied screenshot of a hand-drawn wire sheet.</span>
+            <span>Photo, scan, copied screenshot, Excel file, or pasted table rows.</span>
           </section>
           <input id="sheetInput" class="hidden-input" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
 
@@ -58,6 +58,10 @@
               <span class="icon">XLS</span>
               <span>Upload Excel</span>
             </button>
+            <button id="tablePasteButton" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
+              <span class="icon">TAB</span>
+              <span>Paste table</span>
+            </button>
             <button id="rotateButton" type="button" disabled title="Rotate the uploaded image and read again">
               <span class="icon">ROT</span>
               <span>Rotate</span>
@@ -68,7 +72,22 @@
             </button>
           </div>
 
-          <p id="statusText" class="status-text">Upload or paste an image to start.</p>
+          <section id="pasteTablePanel" class="paste-table-panel" hidden>
+            <label for="tablePasteInput">Paste Excel / Sheets rows here</label>
+            <textarea id="tablePasteInput" rows="8" spellcheck="false" placeholder="Cable Name&#9;Left Leg&#9;Left Leg Name&#9;Wire Name&#10;48V Barrel Power Cable&#9;Left&#9;48V Source Connector&#9;GND"></textarea>
+            <div class="paste-table-actions">
+              <button id="loadPastedTableButton" class="primary" type="button">
+                <span class="icon">RUN</span>
+                <span>Load pasted table</span>
+              </button>
+              <button id="closePasteTableButton" type="button">
+                <span class="icon">X</span>
+                <span>Close</span>
+              </button>
+            </div>
+          </section>
+
+          <p id="statusText" class="status-text">Upload an image, upload Excel, or paste table rows to start.</p>
         </section>
 
         <section class="drawing-pane">
@@ -100,7 +119,7 @@
           </button>
         </div>
         <div id="tablePreview" class="table-preview">
-          <span class="quiet">Upload or paste a sketch to generate the copy-only table.</span>
+          <span class="quiet">Upload Excel or paste table rows to generate the copy-only table.</span>
         </div>
       </section>
 
@@ -121,6 +140,6 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="app.js?v=1.6.0" defer></script>
+    <script src="app.js?v=1.6.1" defer></script>
   </body>
 </html>
