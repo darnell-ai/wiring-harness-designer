@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.4 - 2026-06-17
+
+- Added a compact multi-leg board harness layout for sheets like W116.
+- Draws Maestro/Dupont connector faces as repeated horizontal 1-2-3 pin rows instead of one cluttered vertical connector.
+- Skips repeated pasted header rows and moves compact wiring/BOM/title blocks below the drawing area so the harness stays visible.
+
 ## v1.6.3 - 2026-06-17
 
 - Added a KiCad-style manufacturing drawing renderer for pasted/uploaded connector-to-connector cable sheets.

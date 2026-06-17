@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.3**
+Current release: **v1.6.4**
 
 ## Use The App
 
@@ -25,6 +25,7 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Recognizes DC barrel power cable sheets and draws the barrel plug, center pin, outer sleeve/shell, heat-shrink ends, and wire-wrap sleeve around the conductors.
 - Recognizes straight connector-to-connector cable sheets and renders KiCad-style manufacturing drawings with connector face views, pin numbers, wire labels, wiring table, BOM, notes, and title block.
+- Recognizes multi-leg board-to-Dupont sheets and draws compact board harnesses with horizontal 1-2-3 Maestro/Dupont pin rows.
 - Renders the CAN-H, CAN-L, and GND trunk as yellow, green, and black 22 AWG conductors.
 - Draws four 4-pin JST branch drops with 12 inch first-branch spacing, 2 inch branch spacing, and 6 inch drops.
 - Marks JST pin 1 as `PWR(NC)` without drawing a power wire.
