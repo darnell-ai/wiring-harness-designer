@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.2";
+const APP_VERSION = "1.6.3";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1045,6 +1045,10 @@ function buildSheetHarnessSvg(result) {
   if (isBarrelPowerCableSheet(sheet.rows)) {
     return buildBarrelPowerCableSvg(result);
   }
+  const kicadModel = buildKiCadHarnessModel(sheet);
+  if (kicadModel) {
+    return buildKiCadHarnessSvg(result, kicadModel);
+  }
   const rows = sheet.rows.length ? sheet.rows : [{
     wireName: "No drawable rows found",
     color: "Gray",
@@ -1115,6 +1119,446 @@ function buildSheetHarnessSvg(result) {
   <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
   ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
 </svg>`;
+}
+
+function buildKiCadHarnessModel(sheet) {
+  const rows = getKiCadWireRows(sheet.rows);
+  if (rows.length < 2) {
+    return null;
+  }
+  const cableName = firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS";
+  const leftName = firstFilled(rows, "leftLegName") || firstFilled(rows, "leftHousingType") || "LEFT CONNECTOR";
+  const leftType = firstFilled(rows, "leftHousingType");
+  const rightName = connectorSideName(rows, "right") || "RIGHT CONNECTOR";
+  const rightType = firstFilled(rows, "rightHousingType");
+  const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
+  const awg = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
+  const description = `${leftName} TO ${rightName}`.replace(/\s+/g, " ").trim();
+  const wireStartY = 208;
+  const wireGap = rows.length <= 4 ? 66 : 52;
+  const wires = rows.map((row, index) => ({
+    row,
+    name: row.wireName || `WIRE ${index + 1}`,
+    colorName: normalizeColorName(row.color),
+    stroke: sheetColorToStroke(row.color),
+    awg: row.awg || awg,
+    length: row.length || length,
+    fromPin: row.leftPinPos || String(index + 1),
+    toPin: row.rightPinPos || String(index + 1),
+    leftHousingPart: row.leftHousingPart || "",
+    leftPinPart: row.leftPinPart || "",
+    rightHousingPart: row.rightHousingPart || "",
+    rightPinPart: row.rightPinPart || "",
+    y: wireStartY + index * wireGap
+  }));
+
+  return {
+    cableName,
+    description,
+    length,
+    awg,
+    wires,
+    leftConnector: {
+      name: leftName,
+      type: leftType && normalizeText(leftType) !== normalizeText(leftName) ? leftType : "",
+      positionText: `${rows.length} POSITION`,
+      view: "FRONT VIEW"
+    },
+    rightConnector: {
+      name: rightName,
+      type: rightType && !normalizeText(rightName).includes(normalizeText(rightType)) ? rightType : "",
+      positionText: `${rows.length} POSITION`,
+      view: "FRONT VIEW"
+    }
+  };
+}
+
+function getKiCadWireRows(rows) {
+  return rows.filter((row) => {
+    const wireName = normalizeText(row.wireName);
+    const leftPin = normalizeText(row.leftPinPos);
+    const rightPin = normalizeText(row.rightPinPos);
+    const branchRole = normalizeText(row.branchRole);
+    const rowText = normalizeText([
+      row.wireName,
+      row.color,
+      row.awg,
+      row.length,
+      row.leftLegName,
+      row.leftHousingType,
+      row.rightLegName,
+      row.rightHousingType
+    ].join(" "));
+    if (!wireName || !leftPin || !rightPin) {
+      return false;
+    }
+    if (isNoWireRow(row) || branchRole.includes("PROTECTION") || branchRole.includes("WRAP") || branchRole.includes("SLEEVE")) {
+      return false;
+    }
+    if (!row.color && !row.awg && !row.length) {
+      return false;
+    }
+    return rowText.length > wireName.length + leftPin.length + rightPin.length;
+  });
+}
+
+function connectorSideName(rows, side) {
+  const legName = firstFilled(rows, `${side}LegName`);
+  const housingType = firstFilled(rows, `${side}HousingType`);
+  if (side === "right" && legName && housingType) {
+    const typeText = normalizeText(housingType);
+    if (["PCB", "PLUG", "JACK", "BARREL"].includes(typeText)) {
+      return `${legName} ${housingType}`.replace(/\s+/g, " ").trim();
+    }
+  }
+  return legName || housingType;
+}
+
+function buildKiCadHarnessSvg(result, model) {
+  const leftFace = buildKiCadConnectorFaceSvg(170, model.wires, model.leftConnector, "left");
+  const rightFace = buildKiCadConnectorFaceSvg(1300, model.wires, model.rightConnector, "right");
+  const wireSvg = model.wires.map((wire) => buildKiCadWireSvg(wire)).join("");
+  const wiringRows = model.wires.map((wire) => [
+    wire.fromPin,
+    wire.name,
+    { text: wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
+    wire.awg || model.awg || "",
+    formatLengthInches(wire.length || model.length),
+    wire.toPin
+  ]);
+  const bomRows = buildKiCadBomRows(model);
+  const notes = buildKiCadNotes(model)
+    .map((note, index) => `<text class="note" x="36" y="${696 + index * 18}">${index + 1}. ${escapeXml(note)}</text>`)
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} KiCad style harness drawing">
+  <defs>
+    <marker id="kicadArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+    </marker>
+    <style>
+      .page { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 2; }
+      .title { fill: #000000; font: 900 38px Aptos, Segoe UI, sans-serif; text-anchor: middle; letter-spacing: 1px; }
+      .subtitle { fill: #000000; font: 900 24px Aptos, Segoe UI, sans-serif; text-anchor: middle; text-decoration: underline; letter-spacing: 0.8px; }
+      .connector-heading { fill: #000000; font: 900 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-sub { fill: #000000; font: 800 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-view { fill: #000000; font: 800 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-body-left { fill: #d7d7d7; stroke: #000000; stroke-width: 2; }
+      .connector-body-right { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .connector-shadow { fill: #595959; stroke: #000000; stroke-width: 1.4; }
+      .cavity { fill: #f9f9f9; stroke: #000000; stroke-width: 1.5; }
+      .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
+      .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .wire-line { fill: none; stroke-width: 8; stroke-linecap: square; }
+      .terminal { stroke: #000000; stroke-width: 1.8; }
+      .terminal-mark { stroke: #000000; stroke-width: 1.2; fill: none; }
+      .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .dimension { fill: none; stroke: #000000; stroke-width: 1.8; marker-start: url(#kicadArrow); marker-end: url(#kicadArrow); }
+      .dim-ext { stroke: #000000; stroke-width: 1.2; }
+      .dim-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 1.4; }
+      .table-grid { stroke: #000000; stroke-width: 1; }
+      .table-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-red { fill: #ff0000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .spec-label { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; }
+      .spec-value { fill: #000000; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .note-title { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #000000; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .legend-line { stroke-width: 8; stroke-linecap: round; }
+      .title-block-label { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; }
+      .title-block-text { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .title-block-small { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="10" y="10" width="1580" height="780" />
+
+  <text class="title" x="800" y="52">${escapeXml(model.cableName)}</text>
+  <text class="subtitle" x="800" y="84">${escapeXml(model.description)}</text>
+
+  <text class="connector-heading" x="220" y="46">LEFT CONNECTOR</text>
+  <text class="connector-sub" x="220" y="72">${escapeXml(model.leftConnector.name)}</text>
+  ${model.leftConnector.type ? `<text class="connector-sub" x="220" y="96">${escapeXml(model.leftConnector.type)}</text>` : ""}
+  <text class="connector-sub" x="220" y="120">${escapeXml(model.leftConnector.positionText)}</text>
+  <text class="connector-view" x="220" y="144">(${escapeXml(model.leftConnector.view)})</text>
+
+  <text class="connector-heading" x="1360" y="46">RIGHT CONNECTOR</text>
+  <text class="connector-sub" x="1360" y="72">${escapeXml(model.rightConnector.name)}</text>
+  ${model.rightConnector.type ? `<text class="connector-sub" x="1360" y="96">${escapeXml(model.rightConnector.type)}</text>` : ""}
+  <text class="connector-sub" x="1360" y="120">${escapeXml(model.rightConnector.positionText)}</text>
+  <text class="connector-view" x="1360" y="144">(${escapeXml(model.rightConnector.view)})</text>
+
+  <line class="dim-ext" x1="372" y1="138" x2="372" y2="186" />
+  <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
+  <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
+  <text class="dim-text" x="796" y="132">${escapeXml(formatLengthInches(model.length))} in +/-0.25</text>
+  <text class="dim-text" x="796" y="154" dy="22">OVERALL LENGTH</text>
+
+  ${leftFace}
+  ${rightFace}
+  ${wireSvg}
+
+  ${buildSvgTable({
+    x: 30,
+    y: 498,
+    width: 560,
+    title: "WIRING TABLE",
+    headers: ["LEFT PIN", "SIGNAL NAME", "COLOR", "AWG", "LENGTH\n(in)", "RIGHT\nPIN"],
+    rows: wiringRows,
+    colWidths: [92, 142, 84, 62, 82, 98],
+    rowHeight: 33
+  })}
+
+  ${buildKiCadSpecsSvg(620, 498, 340, 166, model)}
+
+  ${buildSvgTable({
+    x: 990,
+    y: 498,
+    width: 570,
+    title: "BILL OF MATERIALS",
+    headers: ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"],
+    rows: bomRows,
+    colWidths: [60, 60, 250, 200],
+    rowHeight: 30
+  })}
+
+  <text class="note-title" x="36" y="680">NOTES:</text>
+  ${notes}
+
+  ${buildWireLegendSvg(548, 680, 260, 82, model)}
+  ${buildKiCadTitleBlockSvg(840, 674, 720, 106, model)}
+</svg>`;
+}
+
+function buildKiCadConnectorFaceSvg(x, wires, connector, side) {
+  const top = Math.max(162, wires[0].y - 42);
+  const bottom = wires[wires.length - 1].y + 42;
+  const height = bottom - top;
+  const bodyClass = side === "left" ? "connector-body-left" : "connector-body-right";
+  const body = [
+    `<rect class="${bodyClass}" x="${x}" y="${top}" width="88" height="${height}" rx="5" />`,
+    `<rect class="connector-shadow" x="${side === "left" ? x + 70 : x - 10}" y="${top + 8}" width="18" height="${height - 16}" rx="4" opacity="${side === "left" ? "0.9" : "0.18"}" />`,
+    `<rect class="${bodyClass}" x="${x + 14}" y="${top - 14}" width="28" height="16" rx="3" />`,
+    `<rect class="${bodyClass}" x="${x + 14}" y="${bottom - 2}" width="28" height="16" rx="3" />`
+  ];
+  wires.forEach((wire) => {
+    body.push(`<rect class="cavity" x="${x + 16}" y="${wire.y - 24}" width="50" height="48" rx="4" />`);
+    body.push(`<rect class="cavity" x="${x + 24}" y="${wire.y - 16}" width="34" height="32" rx="5" />`);
+    body.push(`<rect class="cavity-hole" x="${x + 35}" y="${wire.y - 9}" width="14" height="18" rx="3" />`);
+    if (side === "left") {
+      body.push(`<text class="pin-side" x="96" y="${wire.y + 5}">PIN ${escapeXml(wire.fromPin)}</text>`);
+      body.push(`<text class="pin-label" x="348" y="${wire.y + 5}">${escapeXml(wire.fromPin)}</text>`);
+    } else {
+      body.push(`<text class="pin-label" x="1238" y="${wire.y + 5}">${escapeXml(wire.toPin)}</text>`);
+      body.push(`<text class="pin-side" x="1464" y="${wire.y + 5}">PIN ${escapeXml(wire.toPin)}</text>`);
+    }
+  });
+  return body.join("");
+}
+
+function buildKiCadWireSvg(wire) {
+  const color = wire.stroke;
+  const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
+  return `
+  <rect class="terminal" x="370" y="${wire.y - 16}" width="56" height="32" fill="${color}" />
+  <rect class="terminal" x="1164" y="${wire.y - 16}" width="56" height="32" fill="${color}" />
+  <line class="wire-line" x1="426" y1="${wire.y}" x2="1164" y2="${wire.y}" stroke="${color}" />
+  <path class="terminal-mark" d="M 393 ${wire.y - 7} L 393 ${wire.y + 7} M 386 ${wire.y} L 400 ${wire.y}" />
+  <path class="terminal-mark" d="M 1192 ${wire.y - 7} L 1192 ${wire.y + 7} M 1185 ${wire.y} L 1199 ${wire.y}" />
+  <text class="wire-label" x="796" y="${wire.y - 14}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
+  <text class="${textColorClass}" x="398" y="${wire.y + 5}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
+  <text class="${textColorClass}" x="1192" y="${wire.y + 5}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+}
+
+function buildKiCadSpecsSvg(x, y, width, height, model) {
+  const specs = [
+    ["WIRE GAUGE:", `${model.awg || "TBD"} AWG`],
+    ["CONDUCTOR:", "STRANDED TINNED COPPER"],
+    ["INSULATION:", "PVC, 105C, 300V"],
+    ["LENGTH TOLERANCE:", "+/-0.25 in"],
+    ["TEMPERATURE RANGE:", "-20C TO 105C"],
+    ["VOLTAGE RATING:", "300V"],
+    ["ROHS COMPLIANT:", "YES"],
+    ["BRANCHES:", "NONE"],
+    ["TAP POSITION:", "NONE"]
+  ];
+  const rows = specs.map((spec, index) => `
+    <text class="spec-label" x="${x + 12}" y="${y + 57 + index * 18}">${escapeXml(spec[0])}</text>
+    <text class="spec-value" x="${x + 178}" y="${y + 57 + index * 18}">${escapeXml(spec[1])}</text>`).join("");
+  return `
+  <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+  <line class="table-grid" x1="${x}" y1="${y + 36}" x2="${x + width}" y2="${y + 36}" />
+  <text class="table-title" x="${x + width / 2}" y="${y + 24}">SPECIFICATIONS</text>
+  ${rows}`;
+}
+
+function buildKiCadBomRows(model) {
+  const firstWire = model.wires[0] || {};
+  const groundWire = model.wires.find((wire) => normalizeText(wire.name).includes("GND") || wire.colorName === "BLACK");
+  const primaryHousingPart = firstFilled(model.wires.map((wire) => wire.row), "leftHousingPart") || "TBD";
+  const groundHousingPart = groundWire?.leftHousingPart && groundWire.leftHousingPart !== primaryHousingPart ? groundWire.leftHousingPart : "";
+  const contactPart = firstFilled(model.wires.map((wire) => wire.row), "leftPinPart") || "TBD";
+  const rightPart = firstFilled(model.wires.map((wire) => wire.row), "rightHousingPart") || "SEE PCB ASSEMBLY\nFOR PART NUMBER";
+  const rows = [
+    ["1", "1", `${model.leftConnector.type || model.leftConnector.name} HOUSING\n${model.leftConnector.positionText}`, primaryHousingPart],
+    ["2", String(model.wires.length), `${model.leftConnector.type || "CONNECTOR"} CONTACT\n${model.awg || firstWire.awg || ""}-20 AWG`, contactPart]
+  ];
+  if (groundHousingPart) {
+    rows.push(["3", "1", `${model.leftConnector.type || model.leftConnector.name} GROUND HOUSING\n${model.leftConnector.positionText}`, groundHousingPart]);
+  }
+  rows.push([String(rows.length + 1), "1", `${model.rightConnector.name} CONNECTOR\n${model.rightConnector.positionText}`, rightPart]);
+  return rows.slice(0, 4);
+}
+
+function buildKiCadNotes(model) {
+  const comments = model.wires.map((wire) => wire.row.comments).filter(Boolean);
+  if (comments.length) {
+    return comments.slice(0, 5).map((comment) => shortLabel(comment, 90));
+  }
+  return [
+    `ALL WIRES TO BE ${model.awg || "SPECIFIED"} AWG, PVC INSULATED.`,
+    `CRIMP CONTACTS USING APPROPRIATE ${model.leftConnector.type || model.leftConnector.name} CRIMP TOOL.`,
+    "VERIFY CONTINUITY AND CORRECT PIN ORIENTATION.",
+    `ALL WIRES TO BE CUT TO ${formatLengthInches(model.length)} +/-0.25 in.`,
+    "NO SPLICES OR BRANCHES PERMITTED.",
+    `LABEL CABLE AS "${model.cableName}" USING HEAT SHRINK OR TAG.`
+  ];
+}
+
+function buildWireLegendSvg(x, y, width, height, model) {
+  const colors = [];
+  model.wires.forEach((wire) => {
+    if (!colors.some((item) => item.name === wire.colorName)) {
+      colors.push({ name: wire.colorName, stroke: wire.stroke, meaning: wire.colorName === "BLACK" ? "GROUND" : "POWER" });
+    }
+  });
+  const rows = colors.slice(0, 2).map((color, index) => {
+    const rowY = y + 36 + index * 34;
+    return `
+      <line class="legend-line" x1="${x + 28}" y1="${rowY}" x2="${x + 78}" y2="${rowY}" stroke="${color.stroke}" />
+      <text class="table-text" x="${x + 118}" y="${rowY + 4}">${escapeXml(color.name)}</text>
+      <text class="table-text" x="${x + 154}" y="${rowY + 4}">=</text>
+      <text class="table-text" x="${x + 205}" y="${rowY + 4}">${escapeXml(color.meaning)}</text>`;
+  }).join("");
+  return `
+  <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+  <text class="table-title" x="${x + width / 2}" y="${y + 22}">WIRE COLOR LEGEND</text>
+  ${rows}`;
+}
+
+function buildKiCadTitleBlockSvg(x, y, width, height, model) {
+  const midX = x + width * 0.52;
+  const rightX = x + width * 0.78;
+  return `
+  <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+  <line class="table-grid" x1="${midX}" y1="${y}" x2="${midX}" y2="${y + height}" />
+  <line class="table-grid" x1="${rightX}" y1="${y}" x2="${rightX}" y2="${y + height}" />
+  <line class="table-grid" x1="${x}" y1="${y + 56}" x2="${x + width}" y2="${y + 56}" />
+  <line class="table-grid" x1="${x + 125}" y1="${y + 56}" x2="${x + 125}" y2="${y + height}" />
+  <line class="table-grid" x1="${x + 250}" y1="${y + 56}" x2="${x + 250}" y2="${y + height}" />
+  <text class="title-block-label" x="${x + 14}" y="${y + 18}">DESCRIPTION:</text>
+  <text class="title-block-text" x="${x + 285}" y="${y + 34}">${escapeXml(model.cableName)} CABLE ASSEMBLY</text>
+  <text class="title-block-small" x="${x + 285}" y="${y + 54}">${escapeXml(model.description)}</text>
+  <text class="title-block-label" x="${midX + 12}" y="${y + 18}">DRAWN BY:</text>
+  <text class="title-block-small" x="${midX + 140}" y="${y + 34}">DIGIWIRE</text>
+  <text class="title-block-label" x="${rightX + 12}" y="${y + 18}">REV:</text>
+  <text class="title-block-text" x="${rightX + 150}" y="${y + 38}">A</text>
+  <text class="title-block-label" x="${x + 12}" y="${y + 72}">SHEET:</text>
+  <text class="title-block-text" x="${x + 66}" y="${y + 96}">1 OF 1</text>
+  <text class="title-block-label" x="${x + 138}" y="${y + 72}">SCALE:</text>
+  <text class="title-block-text" x="${x + 190}" y="${y + 96}">NONE</text>
+  <text class="title-block-label" x="${x + 263}" y="${y + 72}">UNITS:</text>
+  <text class="title-block-text" x="${x + 332}" y="${y + 96}">INCH</text>
+  <text class="title-block-label" x="${midX + 14}" y="${y + 72}">DWG NO.</text>
+  <text class="title-block-text" x="${midX + 170}" y="${y + 96}">${escapeXml(model.cableName)}</text>`;
+}
+
+function buildSvgTable({ x, y, width, title, headers, rows, colWidths, rowHeight = 32 }) {
+  const titleHeight = 34;
+  const headerHeight = 34;
+  const height = titleHeight + headerHeight + rows.length * rowHeight;
+  const scaledWidths = scaleColumnWidths(colWidths, width);
+  const colXs = [x];
+  scaledWidths.forEach((colWidth) => colXs.push(colXs[colXs.length - 1] + colWidth));
+  const output = [
+    `<rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />`,
+    `<line class="table-grid" x1="${x}" y1="${y + titleHeight}" x2="${x + width}" y2="${y + titleHeight}" />`,
+    `<line class="table-grid" x1="${x}" y1="${y + titleHeight + headerHeight}" x2="${x + width}" y2="${y + titleHeight + headerHeight}" />`,
+    `<text class="table-title" x="${x + width / 2}" y="${y + 23}">${escapeXml(title)}</text>`
+  ];
+  colXs.slice(1, -1).forEach((colX) => {
+    output.push(`<line class="table-grid" x1="${colX}" y1="${y + titleHeight}" x2="${colX}" y2="${y + height}" />`);
+  });
+  rows.forEach((_, index) => {
+    const rowY = y + titleHeight + headerHeight + (index + 1) * rowHeight;
+    output.push(`<line class="table-grid" x1="${x}" y1="${rowY}" x2="${x + width}" y2="${rowY}" />`);
+  });
+  headers.forEach((header, index) => {
+    output.push(svgTableCellText(header, colXs[index], y + titleHeight, scaledWidths[index], headerHeight, "table-head"));
+  });
+  rows.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      const cellObject = typeof cell === "object" && cell !== null ? cell : { text: cell };
+      output.push(svgTableCellText(cellObject.text, colXs[colIndex], y + titleHeight + headerHeight + rowIndex * rowHeight, scaledWidths[colIndex], rowHeight, cellObject.className || "table-text"));
+    });
+  });
+  return output.join("");
+}
+
+function svgTableCellText(value, x, y, width, height, className) {
+  const lines = String(value ?? "").split("\n").filter((line) => line !== "");
+  const safeLines = lines.length ? lines : [""];
+  const lineHeight = 12;
+  const startY = y + height / 2 - ((safeLines.length - 1) * lineHeight) / 2 + 4;
+  const tspans = safeLines.map((line, index) => `<tspan x="${x + width / 2}" dy="${index ? lineHeight : 0}">${escapeXml(line)}</tspan>`).join("");
+  return `<text class="${className}" x="${x + width / 2}" y="${startY}">${tspans}</text>`;
+}
+
+function scaleColumnWidths(widths, targetWidth) {
+  const total = widths.reduce((sum, width) => sum + width, 0) || targetWidth;
+  return widths.map((width, index) => index === widths.length - 1
+    ? targetWidth - widths.slice(0, -1).reduce((sum, current) => sum + Math.round(current * targetWidth / total), 0)
+    : Math.round(width * targetWidth / total));
+}
+
+function dominantSheetValue(rows, key) {
+  const counts = new Map();
+  rows.forEach((row) => {
+    const value = String(row[key] || "").trim();
+    const normalized = normalizeText(value);
+    if (!value || normalized === "NONE" || normalized === "N/A" || normalized === "TBD") {
+      return;
+    }
+    counts.set(value, (counts.get(value) || 0) + 1);
+  });
+  return Array.from(counts.entries()).sort((left, right) => right[1] - left[1])[0]?.[0] || "";
+}
+
+function normalizeColorName(color) {
+  const value = normalizeText(color);
+  if (value.includes("RED")) return "RED";
+  if (value.includes("BLACK")) return "BLACK";
+  if (value.includes("YELLOW")) return "YELLOW";
+  if (value.includes("GREEN")) return "GREEN";
+  if (value.includes("BLUE")) return "BLUE";
+  if (value.includes("WHITE")) return "WHITE";
+  if (value.includes("ORANGE")) return "ORANGE";
+  if (value.includes("BROWN")) return "BROWN";
+  if (value.includes("PURPLE") || value.includes("VIOLET")) return "VIOLET";
+  return color ? value : "WIRE";
+}
+
+function formatLengthInches(length) {
+  const value = Number(String(length || "").replace(/[^0-9.]+/g, ""));
+  if (!Number.isFinite(value)) {
+    return String(length || "TBD");
+  }
+  return value.toFixed(2);
 }
 
 function isBarrelPowerCableSheet(rows) {
@@ -2479,6 +2923,10 @@ function buildSheetDrawioXml(result) {
   if (isBarrelPowerCableSheet(result.sheetHarness.rows)) {
     return buildBarrelPowerDrawioXml(result);
   }
+  const kicadModel = buildKiCadHarnessModel(result.sheetHarness);
+  if (kicadModel) {
+    return buildKiCadHarnessDrawioXml(result, kicadModel);
+  }
   const cells = [];
   const add = (cell) => cells.push(cell);
   const addVertex = (id, value, x, y, width, height, style) => {
@@ -2518,6 +2966,67 @@ function buildSheetDrawioXml(result) {
     </mxGraphModel>
   </diagram>
 </mxfile>`;
+}
+
+function buildKiCadHarnessDrawioXml(result, model) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
+  addVertex("title", model.cableName, 650, 22, 300, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=38;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("subtitle", model.description, 560, 64, 480, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=5;fontColor=#000000;align=center;");
+  addVertex("left_heading", `LEFT CONNECTOR<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `RIGHT CONNECTOR<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;");
+  addVertex("left_face", model.leftConnector.name, 170, Math.max(162, model.wires[0].y - 42), 88, model.wires[model.wires.length - 1].y - model.wires[0].y + 84, "rounded=1;whiteSpace=wrap;html=1;fillColor=#d7d7d7;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
+  addVertex("right_face", model.rightConnector.name, 1300, Math.max(162, model.wires[0].y - 42), 88, model.wires[model.wires.length - 1].y - model.wires[0].y + 84, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
+  model.wires.forEach((wire, index) => {
+    const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
+    addVertex(`left_pin_${index}`, `PIN ${wire.fromPin}`, 45, wire.y - 14, 100, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`right_pin_num_${index}`, wire.toPin, 1218, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`right_pin_${index}`, `PIN ${wire.toPin}`, 1412, wire.y - 14, 105, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
+    addVertex(`right_cavity_${index}`, "", 1324, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
+    addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 370, wire.y - 16, 56, 32, terminalStyle);
+    addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1164, wire.y - 16, 56, 32, terminalStyle);
+    addEdge(`wire_${index}`, `${wire.name} (${wire.colorName}) ${wire.awg || ""} AWG`, 426, wire.y, 1164, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;fontStyle=1;fontSize=15;`);
+  });
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEFT PIN", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT PIN"], model.wires.map((wire) => [wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, wire.toPin])), 30, 498, 560, 160, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
+  addVertex("specs", buildKiCadDrawioTableText("SPECIFICATIONS", ["FIELD", "VALUE"], [
+    ["WIRE GAUGE", `${model.awg || "TBD"} AWG`],
+    ["LENGTH TOLERANCE", "+/-0.25 in"],
+    ["BRANCHES", "NONE"],
+    ["TAP POSITION", "NONE"]
+  ]), 620, 498, 340, 166, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=left;spacingLeft=10;");
+  addVertex("bom", buildKiCadDrawioTableText("BILL OF MATERIALS", ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"], buildKiCadBomRows(model)), 990, 498, 570, 160, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
+  addVertex("notes", `<b>NOTES:</b><br>${buildKiCadNotes(model).map((note, index) => `${index + 1}. ${note}`).join("<br>")}`, 30, 674, 500, 106, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=12;align=left;");
+  addVertex("legend", "WIRE COLOR LEGEND<br>RED = POWER<br>BLACK = GROUND", 548, 680, 260, 82, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=13;fontStyle=1;align=center;");
+  addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br><br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 840, 674, 720, 106, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=13;align=center;");
+  const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildKiCadDrawioTableText(title, headers, rows) {
+  const header = headers.join(" | ");
+  const body = rows.map((row) => row.map((cell) => String(cell ?? "").replace(/\n/g, " ")).join(" | ")).join("<br>");
+  return `<b>${title}</b><br>${header}<br>${body}`;
 }
 
 function buildBarrelPowerDrawioXml(result) {

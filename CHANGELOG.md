@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.3 - 2026-06-17
+
+- Added a KiCad-style manufacturing drawing renderer for pasted/uploaded connector-to-connector cable sheets.
+- Draws front-view connector faces, pin numbers, straight horizontal conductors, overall length dimension, wiring table, BOM, notes, legend, and title block.
+- Added matching Draw.io export support for the KiCad-style harness drawing.
+
 ## v1.6.2 - 2026-06-17
 
 - Added a dedicated DC barrel power cable renderer for pasted/uploaded barrel connector sheets.
