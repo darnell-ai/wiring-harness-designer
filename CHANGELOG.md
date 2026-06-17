@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.6 - 2026-06-17
+
+- Changed uploaded sketch handling from CAN-first to multi-cable-first.
+- Added a generic cable / wire harness drawing path for non-CAN sketches with straight conductors, left/right connectors, verification notes, copy table rows, and Draw.io export.
+- Kept the professional CAN bus template, but only when CAN-specific evidence is detected in the sketch.
+- Updated the app label and documentation so DIGIWIRE is presented as a general cable reader, not a CAN-only harness generator.
+
 ## v1.6.5 - 2026-06-17
 
 - Added Micro Maestro servo-header intelligence for board-to-Dupont harness drawings.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.5";
+const APP_VERSION = "1.6.6";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -553,8 +553,11 @@ function compileSchematic(best, ocr, meta) {
     .sort((left, right) => left.y1 - right.y1 || left.x1 - right.x1);
   const connectors = attachConnectorLabels(best.connectors, ocr.findings, best.width, best.height);
   const findings = classifyFindings(ocr.findings, best.components, best.width, best.height);
-  const canHarness = buildCanHarnessModel();
   const visibleFindings = findings.filter(isVisibleFinding);
+  const internalModel = buildInternalModel(wireSegments, connectors, visibleFindings, best.width, best.height);
+  const harness = shouldUseCanHarnessTemplate(visibleFindings, wireSegments, connectors)
+    ? buildCanHarnessModel()
+    : buildGenericImageHarnessModel(internalModel, meta);
   const markerCount = findings.length - visibleFindings.length;
   const geometryConfidence = Math.min(1, wireSegments.filter((segment) => segment.confidence >= 0.48).length / 10);
   const connectorConfidence = Math.min(1, connectors.length / 4);
@@ -570,22 +573,28 @@ function compileSchematic(best, ocr, meta) {
   if (!visibleFindings.length) {
     confidence = Math.min(confidence, 0.9);
   }
-  const status = "Professional CAN bus harness generated. Use Print, Draw.io, or Copy table.";
+  if (harness.type === "generic" && wireSegments.length < 2) {
+    confidence = Math.min(confidence, 0.74);
+  }
+  const status = harness.type === "can"
+    ? "Professional CAN bus harness generated. Use Print, Draw.io, or Copy table."
+    : "Generic cable drawing generated from the sketch. Use Print, Draw.io, or Copy table.";
 
   return {
     version: APP_VERSION,
-    fileName: "CAN BUS HARNESS ASSEMBLY",
+    fileName: harness.title,
     width: SVG_WIDTH,
     height: SVG_HEIGHT,
     rotation: best.rotation,
     paperBounds: meta.paperBounds,
     sourceWidth: meta.sourceWidth,
     sourceHeight: meta.sourceHeight,
-    wires: canHarness.wires,
-    connectors: canHarness.connectors,
+    wires: harness.wires,
+    connectors: harness.connectors,
     findings,
-    tableRows: canHarness.tableRows,
-    harness: canHarness,
+    tableHeaders: harness.tableHeaders,
+    tableRows: harness.tableRows,
+    harness,
     confidence,
     status
   };
@@ -606,6 +615,7 @@ function buildCanHarnessModel() {
   ];
   const tableRows = buildCanHarnessTableRows(columns, branches, signals);
   return {
+    type: "can",
     title: "CAN BUS HARNESS ASSEMBLY",
     subtitle: "22 AWG | CAN-H (Yellow) | CAN-L (Green) | GND (Black)",
     sourceConnector: { name: "USB-CAN", signals },
@@ -621,6 +631,117 @@ function buildCanHarnessModel() {
     wires: buildCanHarnessWires(branches, signals),
     connectors: buildCanHarnessConnectors(branches)
   };
+}
+
+function shouldUseCanHarnessTemplate(findings, wireSegments, connectors) {
+  const text = normalizeText(findings.map((finding) => finding.text).join(" "));
+  const hasCanWords = /\bCAN\b|CAN[-\s]?[HL]\b|USB[-\s]?CAN|CANBUS/.test(text);
+  const hasCanTermination = /120\s*(OHM|OHMS|R|Ω)/.test(text) && /(CAN|TERMIN|RESIST|OHM|Ω)/.test(text);
+  const hasJstCanPattern = /JST/.test(text) && /(CAN|PWR|NC|GND)/.test(text);
+  const hasThreeTrunkSketch = wireSegments.length >= 3 && connectors.length >= 3 && /(H|L|GND|GROUND)/.test(text) && hasCanTermination;
+  return hasCanWords || hasCanTermination || hasJstCanPattern || hasThreeTrunkSketch;
+}
+
+function buildGenericImageHarnessModel(internalModel, meta = {}) {
+  const columns = getHarnessTableColumns();
+  const detectedWires = internalModel.wires
+    .filter((wire) => Number.isFinite(wire.x1) && Number.isFinite(wire.x2))
+    .sort((left, right) => left.y1 - right.y1 || left.x1 - right.x1)
+    .slice(0, 12);
+  const wires = detectedWires.length ? detectedWires : [{
+    id: "W01",
+    label: "WIRE 1",
+    source: "LEFT",
+    target: "RIGHT",
+    confidence: 0.45
+  }];
+  const title = cleanFileName(meta.fileName || "DIGIWIRE CABLE DRAWING") || "DIGIWIRE CABLE DRAWING";
+  const leftConnectorName = bestGenericConnectorName(internalModel.connectors, "left", "LEFT CONNECTOR");
+  const rightConnectorName = bestGenericConnectorName(internalModel.connectors, "right", "RIGHT CONNECTOR");
+  const modeledWires = wires.map((wire, index) => {
+    const label = cleanGenericWireLabel(wire.label, index);
+    const colorName = inferGenericWireColor(label);
+    return {
+      ...wire,
+      id: wire.id || `W${String(index + 1).padStart(2, "0")}`,
+      label,
+      colorName: colorName || "",
+      stroke: colorName ? sheetColorToStroke(colorName) : "#17231c",
+      awg: "",
+      length: "",
+      leftPin: String(index + 1),
+      rightPin: String(index + 1),
+      source: leftConnectorName,
+      target: rightConnectorName
+    };
+  });
+  const tableRows = modeledWires.map((wire, index) => makeHarnessTableRow(columns, {
+    cableName: title,
+    leftLeg: "LEFT",
+    leftLegName: leftConnectorName,
+    wireName: wire.label,
+    leftPinPos: wire.leftPin,
+    leftHousingType: leftConnectorName,
+    leftHousingPart: "VERIFY",
+    leftPinPart: wire.leftPin,
+    awg: wire.awg || "VERIFY",
+    color: wire.colorName || "VERIFY",
+    length: wire.length || "VERIFY",
+    branchId: "MAIN",
+    branchRole: "CONDUCTOR",
+    rightLeg: "RIGHT",
+    rightLegName: rightConnectorName,
+    rightPinPos: wire.rightPin,
+    rightHousingType: rightConnectorName,
+    rightHousingPart: "VERIFY",
+    rightPinPart: wire.rightPin,
+    toolUsed: "DIGIWIRE",
+    comments: index === 0
+      ? "Generated from uploaded sketch. Verify pins, colors, gauge, and length before manufacturing."
+      : "Generated from uploaded sketch; verify before build."
+  }));
+  return {
+    type: "generic",
+    title,
+    subtitle: "General cable / wire harness drawing generated from uploaded sketch",
+    leftConnectorName,
+    rightConnectorName,
+    wires: modeledWires,
+    connectors: internalModel.connectors,
+    tableHeaders: columns.map((column) => column.label),
+    tableRows
+  };
+}
+
+function bestGenericConnectorName(connectors, side, fallback) {
+  const candidates = connectors
+    .filter((connector) => connector.side === side)
+    .map((connector) => connector.label || connector.id || "")
+    .filter((label) => label && !/^C\d+$/i.test(label));
+  return cleanConnectorName(shortLabel(candidates[0] || fallback, 36));
+}
+
+function cleanGenericWireLabel(label, index) {
+  const cleaned = shortLabel(String(label || "").replace(/\s+/g, " ").trim(), 42);
+  const normalized = normalizeText(cleaned);
+  if (!cleaned || normalized === "MARK" || normalized === "MARKUP" || normalized === "X") {
+    return `WIRE ${index + 1}`;
+  }
+  return cleaned;
+}
+
+function inferGenericWireColor(label) {
+  const text = normalizeText(label);
+  if (text.includes("BLACK") || text.includes("GND") || text.includes("GROUND")) return "BLACK";
+  if (text.includes("RED") || text.includes("+") || text.includes("PWR") || text.includes("POWER")) return "RED";
+  if (text.includes("YELLOW")) return "YELLOW";
+  if (text.includes("GREEN")) return "GREEN";
+  if (text.includes("WHITE")) return "WHITE";
+  if (text.includes("BLUE")) return "BLUE";
+  if (text.includes("ORANGE")) return "ORANGE";
+  if (text.includes("BROWN")) return "BROWN";
+  if (text.includes("GRAY") || text.includes("GREY")) return "GRAY";
+  return "";
 }
 
 function getHarnessTableColumns() {
@@ -941,6 +1062,9 @@ function buildSchematicSvg(result) {
     return buildSheetHarnessSvg(result);
   }
   const harness = result.harness || buildCanHarnessModel();
+  if (harness.type === "generic") {
+    return buildGenericImageHarnessSvg(result);
+  }
   const title = escapeXml(harness.title);
   const subtitle = escapeXml(harness.subtitle);
   const branchXs = [455, 585, 715, 845];
@@ -1040,6 +1164,137 @@ function buildSchematicSvg(result) {
   <text class="pinout-text" x="1132" y="606">Pin 2 = CAN-H</text>
   <text class="pinout-text" x="1132" y="632">Pin 3 = CAN-L</text>
   <text class="pinout-text" x="1132" y="658">Pin 4 = GND</text>
+</svg>`;
+}
+
+function buildGenericImageHarnessSvg(result) {
+  const harness = result.harness;
+  const wires = harness.wires.length ? harness.wires : [{
+    id: "W01",
+    label: "WIRE 1",
+    colorName: "",
+    stroke: "#17231c",
+    leftPin: "1",
+    rightPin: "1"
+  }];
+  const rowSpacing = Math.min(58, Math.max(34, 350 / Math.max(1, wires.length)));
+  const firstWireY = 205;
+  const leftX = 360;
+  const rightX = 1235;
+  const leftConnectorX = 105;
+  const rightConnectorX = 1325;
+  const connectorHeight = Math.max(150, (wires.length - 1) * rowSpacing + 105);
+  const connectorY = Math.max(145, firstWireY - 52);
+  const wireRows = wires.map((wire, index) => {
+    const y = firstWireY + index * rowSpacing;
+    const stroke = wire.stroke || sheetColorToStroke(wire.colorName);
+    const fontColor = normalizeText(wire.colorName) === "BLACK" ? "#ffffff" : "#000000";
+    const labelParts = [wire.label, wire.colorName ? `(${wire.colorName})` : "", wire.awg ? `${wire.awg} AWG` : ""].filter(Boolean);
+    return `
+      <g class="generic-wire-row">
+        <text class="pin-side-label" x="${leftX - 92}" y="${y + 5}">PIN ${escapeXml(wire.leftPin || String(index + 1))}</text>
+        <text class="pin-side-label" x="${rightX + 92}" y="${y + 5}">PIN ${escapeXml(wire.rightPin || String(index + 1))}</text>
+        <rect class="terminal" x="${leftX - 58}" y="${y - 15}" width="54" height="30" fill="${stroke}" />
+        <rect class="terminal" x="${rightX + 4}" y="${y - 15}" width="54" height="30" fill="${stroke}" />
+        <text class="terminal-mark" x="${leftX - 31}" y="${y + 5}" fill="${fontColor}">${escapeXml(wire.leftPin || String(index + 1))}</text>
+        <text class="terminal-mark" x="${rightX + 31}" y="${y + 5}" fill="${fontColor}">${escapeXml(wire.rightPin || String(index + 1))}</text>
+        <line class="generic-wire" x1="${leftX - 4}" y1="${y}" x2="${rightX + 4}" y2="${y}" stroke="${stroke}" />
+        <text class="wire-label" x="${(leftX + rightX) / 2}" y="${y - 13}">${escapeXml(labelParts.join(" "))}</text>
+      </g>
+    `;
+  }).join("");
+  const tableRows = wires.slice(0, 8).map((wire) => [
+    wire.leftPin || "",
+    shortLabel(wire.label || "", 18),
+    wire.colorName || "VERIFY",
+    wire.awg || "VERIFY",
+    wire.length || "VERIFY",
+    wire.rightPin || ""
+  ]);
+  const notesY = 690;
+  const title = escapeXml(harness.title);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${title}">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+    </marker>
+    <style>
+      .sheet { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 2; }
+      .title { fill: #000000; font: 900 34px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; text-anchor: middle; }
+      .subtitle { fill: #000000; font: 700 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-title { fill: #000000; font: 900 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-small { fill: #000000; font: 700 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-box { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+      .connector-face { fill: #f8f8f8; stroke: #000000; stroke-width: 2; }
+      .generic-wire { fill: none; stroke-width: 7; stroke-linecap: square; }
+      .terminal { stroke: #000000; stroke-width: 2; }
+      .terminal-mark { font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-side-label { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .dim-line { fill: none; stroke: #000000; stroke-width: 2; }
+      .dim-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .note-title { fill: #000000; font: 900 14px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #000000; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .table-grid { stroke: #000000; stroke-width: 1; }
+      .table-title { fill: #000000; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .title-block-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; }
+      .title-block-text { fill: #000000; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="14" y="14" width="1572" height="772" />
+  <text class="title" x="800" y="58">${title}</text>
+  <text class="subtitle" x="800" y="92">${escapeXml(harness.subtitle)}</text>
+
+  <text class="connector-title" x="220" y="92">LEFT CONNECTOR</text>
+  <text class="connector-small" x="220" y="116">${escapeXml(harness.leftConnectorName)}</text>
+  <rect class="connector-box" x="${leftConnectorX}" y="${connectorY}" width="170" height="${connectorHeight}" />
+  <rect class="connector-face" x="${leftConnectorX + 38}" y="${connectorY + 26}" width="94" height="${connectorHeight - 52}" rx="8" />
+
+  <text class="connector-title" x="1410" y="92">RIGHT CONNECTOR</text>
+  <text class="connector-small" x="1410" y="116">${escapeXml(harness.rightConnectorName)}</text>
+  <rect class="connector-box" x="${rightConnectorX}" y="${connectorY}" width="170" height="${connectorHeight}" />
+  <rect class="connector-face" x="${rightConnectorX + 38}" y="${connectorY + 26}" width="94" height="${connectorHeight - 52}" rx="8" />
+
+  <path class="dim-line" d="M ${leftX - 20} 145 L ${rightX + 20} 145" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="dim-label" x="${(leftX + rightX) / 2}" y="128">OVERALL LENGTH - VERIFY FROM SOURCE DRAWING</text>
+
+  ${wireRows}
+
+  ${buildSvgTable({
+    x: 34,
+    y: 520,
+    width: 690,
+    title: "WIRING TABLE",
+    headers: ["LEFT PIN", "WIRE", "COLOR", "AWG", "LENGTH", "RIGHT PIN"],
+    rows: tableRows,
+    colWidths: [90, 210, 100, 80, 110, 100],
+    rowHeight: 24,
+    titleHeight: 28,
+    headerHeight: 28
+  })}
+
+  <text class="note-title" x="760" y="${notesY}">DIGIWIRE NOTES</text>
+  <text class="note" x="760" y="${notesY + 22}">Generated as a general cable / wire harness drawing. This is not locked to CAN bus.</text>
+  <text class="note" x="760" y="${notesY + 42}">Verify connector style, pin numbers, color, gauge, polarity, and length before manufacturing.</text>
+  <text class="note" x="760" y="${notesY + 62}">Use Draw.io for manual cleanup when the source sketch has ambiguous marks.</text>
+
+  <rect class="table-outline" x="1055" y="650" width="505" height="96" />
+  <line class="table-grid" x1="1055" y1="682" x2="1560" y2="682" />
+  <line class="table-grid" x1="1270" y1="650" x2="1270" y2="746" />
+  <line class="table-grid" x1="1415" y1="650" x2="1415" y2="746" />
+  <text class="title-block-label" x="1070" y="674">DESCRIPTION:</text>
+  <text class="title-block-text" x="1260" y="720">${title}</text>
+  <text class="title-block-label" x="1285" y="674">DRAWN BY:</text>
+  <text class="title-block-text" x="1342" y="720">DIGIWIRE</text>
+  <text class="title-block-label" x="1430" y="674">REV:</text>
+  <text class="title-block-text" x="1488" y="720">A</text>
 </svg>`;
 }
 
@@ -3233,8 +3488,11 @@ function buildDrawioXml(result) {
   if (result.sheetHarness) {
     return buildSheetDrawioXml(result);
   }
-  if (result.harness) {
+  if (result.harness?.type === "can") {
     return buildCanDrawioXml(result);
+  }
+  if (result.harness?.type === "generic") {
+    return buildGenericImageDrawioXml(result);
   }
   const fit = fitSourceToSvg(result.width, result.height);
   const cells = [];
@@ -3286,6 +3544,73 @@ function buildDrawioXml(result) {
     })));
   });
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildGenericImageDrawioXml(result) {
+  const harness = result.harness;
+  const wires = harness.wires.length ? harness.wires : [{
+    id: "W01",
+    label: "WIRE 1",
+    colorName: "",
+    stroke: "#17231c",
+    leftPin: "1",
+    rightPin: "1"
+  }];
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  const rowSpacing = Math.min(58, Math.max(34, 350 / Math.max(1, wires.length)));
+  const firstWireY = 205;
+  const leftX = 360;
+  const rightX = 1235;
+  const connectorHeight = Math.max(150, (wires.length - 1) * rowSpacing + 105);
+  const connectorY = Math.max(145, firstWireY - 52);
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 14, 14, 1572, 772, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
+  addVertex("title", harness.title, 480, 30, 640, 36, "text;html=1;strokeColor=none;fillColor=none;fontSize=32;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("subtitle", harness.subtitle, 390, 72, 820, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("left_heading", `LEFT CONNECTOR<br>${escapeHtml(harness.leftConnectorName)}`, 125, 72, 190, 58, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `RIGHT CONNECTOR<br>${escapeHtml(harness.rightConnectorName)}`, 1290, 72, 240, 58, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("left_connector", escapeHtml(harness.leftConnectorName), 105, connectorY, 170, connectorHeight, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=14;");
+  addVertex("right_connector", escapeHtml(harness.rightConnectorName), 1325, connectorY, 170, connectorHeight, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=14;");
+  addEdge("overall_length", "OVERALL LENGTH - VERIFY FROM SOURCE DRAWING", leftX - 20, 145, rightX + 20, 145, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=13;");
+  wires.forEach((wire, index) => {
+    const y = firstWireY + index * rowSpacing;
+    const stroke = wire.stroke || sheetColorToStroke(wire.colorName);
+    const labelParts = [wire.label, wire.colorName ? `(${wire.colorName})` : "", wire.awg ? `${wire.awg} AWG` : ""].filter(Boolean);
+    addVertex(`left_pin_${index}`, `PIN ${escapeHtml(wire.leftPin || String(index + 1))}`, leftX - 140, y - 14, 90, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`right_pin_${index}`, `PIN ${escapeHtml(wire.rightPin || String(index + 1))}`, rightX + 55, y - 14, 90, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`left_term_${index}`, escapeHtml(wire.leftPin || String(index + 1)), leftX - 58, y - 15, 54, 30, `rounded=0;whiteSpace=wrap;html=1;fillColor=${stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontSize=12;fontColor=${normalizeText(wire.colorName) === "BLACK" ? "#ffffff" : "#000000"};`);
+    addVertex(`right_term_${index}`, escapeHtml(wire.rightPin || String(index + 1)), rightX + 4, y - 15, 54, 30, `rounded=0;whiteSpace=wrap;html=1;fillColor=${stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontSize=12;fontColor=${normalizeText(wire.colorName) === "BLACK" ? "#ffffff" : "#000000"};`);
+    addEdge(`wire_${index}`, escapeHtml(labelParts.join(" ")), leftX - 4, y, rightX + 4, y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+  });
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEFT PIN", "WIRE", "COLOR", "AWG", "LENGTH", "RIGHT PIN"], wires.slice(0, 8).map((wire, index) => [
+    wire.leftPin || String(index + 1),
+    wire.label || `WIRE ${index + 1}`,
+    wire.colorName || "VERIFY",
+    wire.awg || "VERIFY",
+    wire.length || "VERIFY",
+    wire.rightPin || String(index + 1)
+  ])), 34, 520, 690, 168, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;");
+  addVertex("notes", "DIGIWIRE NOTES<br>General cable / wire harness drawing. Not locked to CAN bus.<br>Verify connector style, pin numbers, color, gauge, polarity, and length before manufacturing.", 760, 670, 620, 66, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=12;fontStyle=1;align=left;");
+  addVertex("title_block", `DESCRIPTION:<br><b>${escapeHtml(harness.title)}</b><br>DRAWN BY: DIGIWIRE | REV A`, 1055, 650, 505, 96, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=13;align=center;");
+  const diagram = escapeXml(result.fileName || harness.title || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
   <diagram id="${drawioId(diagram)}" name="${diagram}">

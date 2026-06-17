@@ -4,13 +4,13 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.5**
+Current release: **v1.6.6**
 
 ## Use The App
 
 Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-DIGIWIRE is upload-first: drop in a photo or scan of the CAN bus wire-harness sketch and it builds a clean professional CAN harness drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
+DIGIWIRE is upload-first: drop in a photo, scan, pasted screenshot, Excel sheet, or copied table for a cable or wire harness and it builds a clean professional electrical drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
 
 The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, upload a prefilled Excel/CSV/TSV sheet, or paste copied table rows, then generate the clean electrical drawing, print, open the editable drawing in Draw.io, or copy the generated table rows.
 
@@ -22,20 +22,19 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Accepts prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets through the Upload Excel button.
 - Accepts pasted tab-delimited rows copied from Excel, Google Sheets, or a text table through the Paste table button.
 - Preserves uploaded sheet headers and rows in the copy-only table.
+- Generates a general cable drawing from uploaded sketches instead of assuming every image is a CAN harness.
+- Uses the CAN bus template only when the sketch has CAN-specific evidence such as CAN-H/CAN-L, USB-CAN, JST branch notes, or 120 ohm termination.
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Recognizes DC barrel power cable sheets and draws the barrel plug, center pin, outer sleeve/shell, heat-shrink ends, and wire-wrap sleeve around the conductors.
 - Recognizes straight connector-to-connector cable sheets and renders KiCad-style manufacturing drawings with connector face views, pin numbers, wire labels, wiring table, BOM, notes, and title block.
 - Recognizes multi-leg board-to-Dupont sheets and draws compact board harnesses with horizontal 1-2-3 Maestro/Dupont pin rows.
 - Applies Micro Maestro servo-header roles so Maestro/Dupont drawings label pin 1 as GND, pin 2 as V+ servo power, and pin 3 as SIG.
-- Renders the CAN-H, CAN-L, and GND trunk as yellow, green, and black 22 AWG conductors.
-- Draws four 4-pin JST branch drops with 12 inch first-branch spacing, 2 inch branch spacing, and 6 inch drops.
-- Marks JST pin 1 as `PWR(NC)` without drawing a power wire.
-- Draws a 120 ohm termination between CAN-H and CAN-L only.
+- Supports the original CAN bus sketch style with CAN-H, CAN-L, GND, JST drops, no-connect PWR pins, and 120 ohm termination when detected.
 - Includes a copy-only harness table using the production column order.
 - Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.
 - Classifies arrows and dimension notes as schematic callouts where possible.
 - Converts sketch geometry into an internal hidden electrical model.
-- Renders a clean digital schematic with connector labels, branch dimensions, a resistor symbol, and a JST pinout box.
+- Renders a clean digital schematic with connector labels, conductor labels, dimensions, notes, and the matching cable-specific drawing style.
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
 - Prints the generated digital electrical drawing.
 - Opens a Draw.io popup and loads the editable diagram for follow-up editing.
