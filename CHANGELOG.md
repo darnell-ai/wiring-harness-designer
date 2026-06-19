@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.15 - 2026-06-19
+
+- Changed embedded Draw.io Save into an immediate `.drawio` browser download of the edited drawing.
+- Disabled Draw.io autosave callbacks so downloads happen from the operator's explicit Save action.
+- Corrected reusable Micro-Fit side-lock mating faces to place the lock tab centered below the housing.
+- Rotated side-lock pin-pair geometry so pin 1 is above pin 2 on two-position housings, matching the shop reference; larger even-position housings extend sideways in the same two-row orientation.
+- Updated the dedicated J43 side-lock SVG and Draw.io artwork to use the same bottom-lock convention.
+
 ## v1.6.14 - 2026-06-19
 
 - Made the uploaded production sheet the universal harness definition instead of treating cable names such as W114 or W115 as product types.

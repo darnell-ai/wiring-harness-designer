@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.14";
+const APP_VERSION = "1.6.15";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -2957,7 +2957,8 @@ function buildPowerBoardIsolatorSheetSvg(result, model) {
   <text class="board-text" x="72" y="489">MICRO-FIT J43</text>
   <text class="board-text" x="72" y="522">${escapeXml(model.microFitHousing)}</text>
   <rect class="microfit-body" x="252" y="402" width="66" height="104" rx="7" />
-  <rect class="microfit-lock" x="234" y="426" width="18" height="56" rx="4" />
+  <rect class="microfit-lock" x="265" y="506" width="40" height="32" rx="4" />
+  <text x="285" y="527" fill="#ffffff" font-family="Aptos, Segoe UI, sans-serif" font-size="9" font-weight="900" text-anchor="middle">LOCK</text>
   <rect class="microfit-cavity" x="270" y="413" width="34" height="28" rx="4" stroke="${model.targetPins.get("2")?.stroke || "#0b64d8"}" />
   <rect class="microfit-cavity" x="270" y="467" width="34" height="28" rx="4" stroke="${model.targetPins.get("3")?.stroke || "#dddddd"}" />
   <text class="pin-number" x="260" y="432">1</text>
@@ -3427,6 +3428,22 @@ function datasheetConnectorGeometry(connector, side) {
     const height = rows * moduleHeight + Math.max(0, rows - 1) * gap;
     return { centerX, x: centerX - width / 2, y: top + 34, width, height, columns, rows, moduleWidth, moduleHeight, gap };
   }
+  if (connector.key === "microFitSide") {
+    const columns = Math.ceil(connector.positions / 2);
+    const width = clamp(columns * 31 + 50, 82, 298);
+    const height = 116;
+    return {
+      centerX,
+      x: centerX - width / 2,
+      y: top + 30,
+      width,
+      height,
+      dual: true,
+      sideLock: true,
+      physicalRows: 2,
+      columns
+    };
+  }
   const dual = connector.definition.rows === 2;
   const physicalRows = dual ? Math.ceil(connector.positions / 2) : connector.positions;
   const width = dual ? 122 : 96;
@@ -3454,6 +3471,17 @@ function datasheetConnectorPinPoint(connector, pin, side) {
     return {
       x: geometry.x + column * (geometry.moduleWidth + geometry.gap) + geometry.moduleWidth / 2,
       y: geometry.y + row * (geometry.moduleHeight + geometry.gap) + geometry.moduleHeight / 2
+    };
+  }
+  if (geometry.sideLock) {
+    const columnIndex = Math.floor((numeric - 1) / 2);
+    const rowIndex = (numeric - 1) % 2;
+    const columnGap = (geometry.width - 50) / Math.max(1, geometry.columns - 1);
+    return {
+      x: geometry.columns === 1
+        ? geometry.centerX
+        : geometry.x + 25 + columnIndex * columnGap,
+      y: geometry.y + 31 + rowIndex * 54
     };
   }
   const rowIndex = geometry.dual ? Math.floor((numeric - 1) / 2) : numeric - 1;
@@ -3546,8 +3574,9 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
     if (connector.key === "microFitFront") {
       output.push(`<path class="microfit-lock" d="M ${geometry.x + 24} ${geometry.y} L ${geometry.x + 36} ${geometry.y - 18} H ${geometry.x + geometry.width - 20} L ${geometry.x + geometry.width - 10} ${geometry.y} Z" />`);
     } else if (connector.key === "microFitSide") {
-      const latchX = side === "left" ? geometry.x - 20 : geometry.x + geometry.width;
-      output.push(`<rect class="microfit-lock" x="${latchX}" y="${geometry.y + 22}" width="20" height="${Math.min(72, geometry.height - 44)}" rx="4" />`);
+      output.push(`
+        <rect class="microfit-lock" x="${geometry.centerX - 20}" y="${geometry.y + geometry.height}" width="40" height="34" rx="4" />
+        <text class="ds-lock-label" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">LOCK</text>`);
     } else if (connector.key === "miniFitJr") {
       output.push(`<path class="minifit-latch" d="M ${geometry.centerX - 22} ${geometry.y} L ${geometry.centerX - 12} ${geometry.y - 20} H ${geometry.centerX + 25} L ${geometry.centerX + 34} ${geometry.y} Z" />`);
     }
@@ -3562,7 +3591,8 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
     output.push(`<path class="circuit-one-marker" d="M ${geometry.x + 8} ${geometry.y + 8} L ${geometry.x + 18} ${geometry.y + 8} L ${geometry.x + 8} ${geometry.y + 18} Z" />`);
   }
   if (connector.key !== "teCpc1714") {
-    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">MATING FACE - CIRCUIT 1 MARKED</text>`);
+    const captionOffset = connector.key === "microFitSide" ? 56 : 22;
+    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + captionOffset}">MATING FACE - CIRCUIT 1 MARKED</text>`);
   }
   output.push("</g>");
   return output.join("");
@@ -3632,6 +3662,7 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       .microfit-body { fill: #25292c; stroke: #050505; stroke-width: 3; }
       .minifit-body { fill: #ded9c9; stroke: #111111; stroke-width: 3; }
       .microfit-lock { fill: #353a3d; stroke: #050505; stroke-width: 2.5; }
+      .ds-lock-label { fill: #ffffff; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .minifit-latch { fill: #c8c1ad; stroke: #111111; stroke-width: 2.5; }
       .ds-cavity { fill: #090a0a; }
       .ds-cavity-hole { fill: #313638; stroke: #d9dddf; stroke-width: 0.8; }
@@ -5923,7 +5954,7 @@ function handleDrawioMessage(event) {
   if (message.event === "init" && !drawioSession.loaded) {
     drawioSession.popup.postMessage(JSON.stringify({
       action: "load",
-      autosave: 1,
+      autosave: 0,
       title: drawioSession.title,
       xml: drawioSession.xml
     }), event.origin);
@@ -5933,7 +5964,8 @@ function handleDrawioMessage(event) {
   }
   if (message.event === "save") {
     drawioSession.xml = message.xml || drawioSession.xml;
-    setStatus("Draw.io sent an updated drawing back to DIGIWIRE.");
+    downloadText(drawioSession.title, drawioSession.xml, "application/vnd.jgraph.mxfile");
+    setStatus(`Downloaded the edited Draw.io file as ${drawioSession.title}.`);
     return;
   }
   if (message.event === "exit") {
@@ -6511,7 +6543,7 @@ function buildPowerBoardIsolatorSheetDrawioXml(result, model) {
   addVertex("leg2_title", "LEG 2 - POWER BOARD I2C J43", 48, 340, 270, 30, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=16;fontStyle=1;fontColor=#173a8a;align=center;");
   addVertex("leg2_board", `<b>POWER BOARD (BOTTOM)</b><br><br>I2C J43<br>2 POS SIDE-LOCK MICRO-FIT<br>${escapeHtml(model.microFitHousing)}`, 48, 382, 270, 164, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=12;fontStyle=1;align=left;spacingLeft=22;");
   addVertex("j43_body", "", 252, 402, 66, 104, "rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#25292c;strokeColor=#050505;strokeWidth=3;");
-  addVertex("j43_lock", "LOCK", 226, 426, 26, 56, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#353a3d;strokeColor=#050505;strokeWidth=2;fontColor=#ffffff;fontSize=7;fontStyle=1;");
+  addVertex("j43_lock", "LOCK", 265, 506, 40, 32, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#353a3d;strokeColor=#050505;strokeWidth=2;fontColor=#ffffff;fontSize=8;fontStyle=1;");
   const sda = model.wires.find((wire) => wire.name === "SDA");
   const scl = model.wires.find((wire) => wire.name === "SCL");
   addVertex("j43_pin_1", "1", 270, 413, 34, 28, `rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#090a0a;strokeColor=${sda?.stroke || "#0b64d8"};strokeWidth=3;fontColor=#ffffff;fontFamily=Courier New;fontStyle=1;`);
@@ -6790,6 +6822,17 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
       geometry.height,
       `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=#050505;strokeWidth=3;`
     );
+    if (connector.key === "microFitSide") {
+      addVertex(
+        `${side}_side_lock`,
+        "LOCK",
+        geometry.centerX - 20,
+        geometry.y + geometry.height,
+        40,
+        34,
+        "rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#353a3d;strokeColor=#050505;strokeWidth=2;fontColor=#ffffff;fontStyle=1;fontSize=8;"
+      );
+    }
     for (let pin = 1; pin <= connector.positions; pin += 1) {
       const point = datasheetConnectorPinPoint(connector, pin, side);
       const active = connector.activePins.get(String(pin));
@@ -6810,7 +6853,7 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
       ? `${connector.faceStyle.toUpperCase()} ${connector.contactType.toUpperCase()} MATING FACE${connector.contactType === "socket" ? " - MIRRORED" : ""}`
       : "MATING FACE - CIRCUIT 1 MARKED",
     geometry.centerX - 120,
-    geometry.y + geometry.height + 8,
+    geometry.y + geometry.height + (connector.key === "microFitSide" ? 42 : 8),
     240,
     22,
     "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#3d4448;align=center;"

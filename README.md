@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.14**
+Current release: **v1.6.15**
 
 ## Use The App
 
@@ -40,6 +40,7 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Automatically draws expandable braided sleeving around conductor bundles with heat-shrink collars at both ends on every cable drawing and Draw.io export.
 - Recognizes the 43645-0200 to 90143-0040 Molex connector pair from its housing data and draws the actual Micro-Fit 3.0 two-circuit mating face plus the complete C-Grid III 2-by-20 cavity grid, with connected cavities highlighted.
 - Recognizes Molex Micro-Fit 3.0 front-lock 43645 housings from 2 through 12 circuits and side-lock 43025 housings from 2 through 16 even-numbered circuits.
+- Draws side-lock Micro-Fit mating faces with pin 1 above pin 2 and the lock tab centered below the housing; larger even-position housings extend sideways in the same two-row orientation.
 - Recognizes Molex Mini-Fit Jr. 5557 dual-row housings from 2 through 16 even-numbered circuits, including the dedicated 16 AWG and 24-18 AWG female terminal/tool selections.
 - Recognizes Anderson Powerpole PP15/45 modular assemblies through 16 poles, colors each housing from the wire color, and lists the related housing, contact, and crimp-tool part numbers.
 - Recognizes the TE Connectivity CPC Series 1 shell-size 17-14 reverse-sex pair: `206043-1` square-flange socket receptacle and mating `206044-1` pin plug.
@@ -60,6 +61,7 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
 - Prints the generated digital electrical drawing.
 - Opens a Draw.io popup and loads the editable diagram for follow-up editing.
+- Downloads the edited `.drawio` file immediately when Save is clicked inside the embedded Draw.io editor.
 - Adds at least eight evenly distributed editable Draw.io waypoints to every electrical wire, including straight runs, while preserving existing routed corners.
 - Runs as static browser files with no server-side project database.
 
