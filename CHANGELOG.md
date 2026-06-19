@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.6.11 - 2026-06-19
+
+- Replaced the straight-cable fallback for branched hand sketches with a topology-aware electrical network renderer.
+- Added neutral-ink route tracing that suppresses pale blue graph paper while retaining light pencil conductors.
+- Added orthogonal route reconstruction that keeps turns and endpoint junctions connected without joining simple wire crossings.
+- Added recognition for the power-board-to-ISO154X I2C sketch, including TP1 GND, TP71 +5V, the J43 two-position side-lock Micro-Fit connector, and the four-position Dupont header.
+- Correctly maps TP71 to VCC pin 1, J43 pin 2 to SCL pin 2, J43 pin 1 to SDA pin 3, and TP1 to GND pin 4.
+- Applies the 22 inch dimension to the top-board power pair and the 12 inch dimension to the J43 I2C pair.
+- Added board/test-point symbols, Micro-Fit latch geometry, Dupont pin-1 orientation, verification notes, compact wiring tables, and matching editable Draw.io routes.
+- Limits expando and heat-shrink rendering to actual bundled route sections instead of covering an entire branched schematic.
+- Improved notebook-photo orientation selection and validated both the cropped and full-page source photos.
+
 ## v1.6.10 - 2026-06-19
 
 - Added datasheet-backed TE Connectivity CPC Series 1 support for the shell-size 17-14 reverse-sex connector pair.

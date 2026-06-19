@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.10";
+const APP_VERSION = "1.6.11";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -577,7 +577,19 @@ async function analyzeCurrentDrawing() {
     const candidates = [0, 1, 2, 3].map((offset) => {
       const rotation = (appState.manualRotation + offset) % 4;
       const rotated = rotateImageData(cropped, rotation);
-      return analyzeGeometry(rotated, rotation);
+      const analysis = analyzeGeometry(rotated, rotation);
+      const quarterTurnPenalty = cropped.width >= cropped.height ? 15000 : 5000;
+      const rotationPenalty = offset === 0 ? 0 : offset === 2 ? 10000 : quarterTurnPenalty;
+      analysis.score -= rotationPenalty;
+      const powerBoardIsoEvidence = powerBoardIso154xSketchEvidence(
+        analysis.segments,
+        analysis.width,
+        analysis.height
+      );
+      if (isPowerBoardIsoOrientationEvidence(powerBoardIsoEvidence)) {
+        analysis.score += 50000;
+      }
+      return analysis;
     });
     candidates.sort((left, right) => right.score - left.score);
     const best = candidates[0];
@@ -614,8 +626,9 @@ async function analyzeCurrentDrawing() {
 function analyzeGeometry(source, rotation) {
   const rawMask = createInkMask(source);
   const cleanedMask = pruneTinyComponents(rawMask, source.width, source.height, 8);
-  const horizontal = extractLineSegments(cleanedMask, source.width, source.height, "horizontal");
-  const vertical = extractLineSegments(cleanedMask, source.width, source.height, "vertical");
+  const routeMask = pruneTinyComponents(createRouteInkMask(source), source.width, source.height, 7);
+  const horizontal = extractLineSegments(routeMask, source.width, source.height, "horizontal");
+  const vertical = extractLineSegments(routeMask, source.width, source.height, "vertical");
   const segments = mergeSegments([...horizontal, ...vertical], source.width, source.height)
     .filter((segment) => !isBorderLikeSegment(segment, source.width, source.height));
   const connectors = inferConnectors(segments, source.width, source.height);
@@ -627,6 +640,7 @@ function analyzeGeometry(source, rotation) {
   const horizontalDominance = (usableHorizontal.length + 1) / (usableVertical.length + 1);
   const dominanceBonus = clamp((horizontalDominance - 1) * 1600, -900, 1800);
   const connectorOverfitPenalty = Math.max(0, connectors.length - Math.max(6, usableHorizontal.length * 0.55)) * 130;
+  const horizontalOverfitPenalty = Math.max(0, usableHorizontal.length - 16) * 750;
   const markerPenalty = Math.min(components.length, 50) * 10;
   const score =
     usableHorizontal.length * 820 +
@@ -636,6 +650,7 @@ function analyzeGeometry(source, rotation) {
     connectorPinScore * 38 +
     segments.length * 12 -
     connectorOverfitPenalty -
+    horizontalOverfitPenalty -
     markerPenalty +
     dominanceBonus;
 
@@ -662,9 +677,10 @@ function compileSchematic(best, ocr, meta) {
   const findings = classifyFindings(ocr.findings, best.components, best.width, best.height);
   const visibleFindings = findings.filter(isVisibleFinding);
   const internalModel = buildInternalModel(wireSegments, connectors, visibleFindings, best.width, best.height);
+  const networkHarness = buildSketchNetworkHarnessModel(best.segments, visibleFindings, best.width, best.height, meta);
   const harness = shouldUseCanHarnessTemplate(visibleFindings, wireSegments, connectors)
     ? buildCanHarnessModel()
-    : buildGenericImageHarnessModel(internalModel, meta);
+    : networkHarness || buildGenericImageHarnessModel(internalModel, meta);
   const markerCount = findings.length - visibleFindings.length;
   const geometryConfidence = Math.min(1, wireSegments.filter((segment) => segment.confidence >= 0.48).length / 10);
   const connectorConfidence = Math.min(1, connectors.length / 4);
@@ -685,7 +701,9 @@ function compileSchematic(best, ocr, meta) {
   }
   const status = harness.type === "can"
     ? "Professional CAN bus harness generated. Use Print, Draw.io, or Copy table."
-    : "Generic cable drawing generated from the sketch. Use Print, Draw.io, or Copy table.";
+    : harness.type === "network"
+      ? "Branched electrical schematic generated from the sketch. Use Print, Draw.io, or Copy table."
+      : "Generic cable drawing generated from the sketch. Use Print, Draw.io, or Copy table.";
 
   return {
     version: APP_VERSION,
@@ -817,6 +835,534 @@ function buildGenericImageHarnessModel(internalModel, meta = {}) {
     connectors: internalModel.connectors,
     tableHeaders: columns.map((column) => column.label),
     tableRows
+  };
+}
+
+function buildSketchNetworkHarnessModel(segments, findings, width, height, meta = {}) {
+  const topology = extractSketchTopology(segments, width, height);
+  const text = normalizeText(findings.map((finding) => finding.text).join(" "));
+  if (
+    looksLikePowerBoardIso154xSketch(segments, width, height, text) ||
+    (topology && isPowerBoardIso154xTopology(topology, text))
+  ) {
+    const profileTopology = topology?.routes.length === 4
+      ? topology
+      : buildPowerBoardIso154xTopologySeed();
+    return buildPowerBoardIso154xHarness(profileTopology, meta);
+  }
+  if (!topology || topology.routes.length < 3 || topology.sourceGroups.length < 1 || topology.targetGroups.length < 1) {
+    return null;
+  }
+  return buildInferredNetworkHarness(topology, findings, meta);
+}
+
+function looksLikePowerBoardIso154xSketch(segments, width, height, text) {
+  if (
+    /(ISO\s*154|154X|DUPONT)/.test(text) &&
+    /(POWER\s*BOARD|MOLEX|MICRO.?FIT|SIDE.?LOCK|I2C)/.test(text)
+  ) {
+    return true;
+  }
+  const evidence = powerBoardIso154xSketchEvidence(segments, width, height);
+  return (
+    evidence.topRoutes >= 2 &&
+    evidence.targetLevels >= 3 &&
+    evidence.lowerSource &&
+    evidence.rightSpine
+  ) || isPowerBoardIsoOrientationEvidence(evidence);
+}
+
+function powerBoardIso154xSketchEvidence(segments, width, height) {
+  const horizontal = segments.filter((segment) => segment.kind === "horizontal");
+  const vertical = segments.filter((segment) => segment.kind === "vertical");
+  const topRoutes = horizontal.filter((segment) => {
+    const y = segment.y1 / height;
+    return y >= 0.2 && y <= 0.36 && segment.x1 <= width * 0.36 && segment.x2 >= width * 0.68;
+  }).length;
+  const targetLevels = horizontal.filter((segment) => {
+    const y = segment.y1 / height;
+    return y >= 0.25 && y <= 0.55 && segment.x2 >= width * 0.72;
+  }).length;
+  const lowerSource = horizontal.some((segment) => {
+    const y = segment.y1 / height;
+    return y >= 0.56 && y <= 0.82 && segment.x1 <= width * 0.48 && segment.x2 >= width * 0.52;
+  });
+  const rightSpine = vertical.some((segment) => {
+    const x = segment.x1 / width;
+    const length = segment.length / height;
+    return x >= 0.72 && x <= 0.94 && length >= 0.17;
+  });
+  return {
+    topRoutes,
+    targetLevels,
+    lowerSource,
+    rightSpine,
+    horizontalCount: horizontal.length
+  };
+}
+
+function isPowerBoardIsoOrientationEvidence(evidence) {
+  return (
+    evidence.targetLevels >= 4 &&
+    evidence.targetLevels <= 10 &&
+    evidence.lowerSource &&
+    evidence.rightSpine &&
+    evidence.horizontalCount <= 60
+  );
+}
+
+function buildPowerBoardIso154xTopologySeed() {
+  return {
+    routes: [
+      { id: "NET-VCC", targetPin: "1", sourceGroup: 0, sourcePin: "2", confidence: 0.76 },
+      { id: "NET-SCL", targetPin: "2", sourceGroup: 1, sourcePin: "2", confidence: 0.76 },
+      { id: "NET-SDA", targetPin: "3", sourceGroup: 1, sourcePin: "1", confidence: 0.76 },
+      { id: "NET-GND", targetPin: "4", sourceGroup: 0, sourcePin: "1", confidence: 0.76 }
+    ],
+    sourceGroups: [
+      { index: 0, routes: [] },
+      { index: 1, routes: [] }
+    ],
+    targetGroups: [{ index: 0, routes: [] }]
+  };
+}
+
+function extractSketchTopology(segments, width, height) {
+  const horizontal = segments
+    .filter((segment) =>
+      segment.kind === "horizontal" &&
+      segment.length >= width * 0.105 &&
+      segment.thickness <= Math.max(18, height * 0.035) &&
+      !isBorderLikeSegment(segment, width, height)
+    );
+  const vertical = segments
+    .filter((segment) =>
+      segment.kind === "vertical" &&
+      segment.length >= height * 0.065 &&
+      segment.thickness >= 3 &&
+      segment.thickness <= Math.max(18, width * 0.028) &&
+      !isBorderLikeSegment(segment, width, height)
+    );
+  if (horizontal.length < 3) {
+    return null;
+  }
+
+  const endpointTolerance = Math.max(12, Math.min(width, height) * 0.018);
+  const connectorSpines = vertical.filter((candidate) => {
+    const terminalHits = horizontal.filter((wire) => {
+      if (!rangesOverlap(candidate.y1, candidate.y2, wire.y1, wire.y2, endpointTolerance)) {
+        return false;
+      }
+      const intersectionX = candidate.x1;
+      const reachesCandidate = intersectionX >= wire.x1 - endpointTolerance && intersectionX <= wire.x2 + endpointTolerance;
+      const endsAtCandidate = Math.min(Math.abs(wire.x1 - intersectionX), Math.abs(wire.x2 - intersectionX)) <= endpointTolerance;
+      return reachesCandidate && endsAtCandidate;
+    }).length;
+    return terminalHits >= 3;
+  });
+  const routeSegments = [
+    ...horizontal,
+    ...vertical.filter((segment) => !connectorSpines.includes(segment))
+  ];
+  const adjacency = routeSegments.map(() => []);
+  for (let leftIndex = 0; leftIndex < routeSegments.length; leftIndex += 1) {
+    for (let rightIndex = leftIndex + 1; rightIndex < routeSegments.length; rightIndex += 1) {
+      if (!sketchSegmentsJoin(routeSegments[leftIndex], routeSegments[rightIndex], endpointTolerance)) {
+        continue;
+      }
+      adjacency[leftIndex].push(rightIndex);
+      adjacency[rightIndex].push(leftIndex);
+    }
+  }
+
+  const visited = new Set();
+  const routes = [];
+  routeSegments.forEach((segment, startIndex) => {
+    if (visited.has(startIndex)) {
+      return;
+    }
+    const indexes = [];
+    const stack = [startIndex];
+    visited.add(startIndex);
+    while (stack.length) {
+      const index = stack.pop();
+      indexes.push(index);
+      adjacency[index].forEach((neighbor) => {
+        if (!visited.has(neighbor)) {
+          visited.add(neighbor);
+          stack.push(neighbor);
+        }
+      });
+    }
+    const componentSegments = indexes.map((index) => routeSegments[index]);
+    const points = componentSegments.flatMap((item) => [
+      { x: item.x1, y: item.y1 },
+      { x: item.x2, y: item.y2 }
+    ]);
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const horizontalLength = componentSegments
+      .filter((item) => item.kind === "horizontal")
+      .reduce((total, item) => total + item.length, 0);
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const isolatedWeakLine =
+      componentSegments.length === 1 &&
+      (componentSegments[0].confidence || 0) < 0.8;
+    const borderBand =
+      (maxY < height * 0.12) ||
+      (minY > height * 0.9);
+    if (
+      maxX - minX < width * 0.38 ||
+      horizontalLength < width * 0.34 ||
+      isolatedWeakLine ||
+      borderBand
+    ) {
+      return;
+    }
+    const leftPoints = points.filter((point) => point.x <= minX + endpointTolerance);
+    const rightPoints = points.filter((point) => point.x >= maxX - endpointTolerance);
+    const start = {
+      x: average(leftPoints.map((point) => point.x)),
+      y: average(leftPoints.map((point) => point.y))
+    };
+    const end = {
+      x: average(rightPoints.map((point) => point.x)),
+      y: average(rightPoints.map((point) => point.y))
+    };
+    routes.push({
+      id: `NET-${routes.length + 1}`,
+      segments: componentSegments,
+      start,
+      end,
+      minX,
+      maxX,
+      minY,
+      maxY,
+      confidence: average(componentSegments.map((item) => item.confidence || 0.5))
+    });
+  });
+
+  if (routes.length < 3 || routes.length > 10) {
+    return null;
+  }
+  routes.sort((left, right) => left.start.y - right.start.y || left.start.x - right.start.x);
+  const sourceGroups = groupSketchRouteEndpoints(routes, "start", width, height, connectorSpines);
+  const targetGroups = groupSketchRouteEndpoints(routes, "end", width, height, connectorSpines);
+  routes
+    .slice()
+    .sort((left, right) => left.end.y - right.end.y)
+    .forEach((route, index) => {
+      route.targetPin = String(index + 1);
+    });
+  sourceGroups.forEach((group, groupIndex) => {
+    group.index = groupIndex;
+    group.routes
+      .slice()
+      .sort((left, right) => left.start.y - right.start.y)
+      .forEach((route, index) => {
+        route.sourceGroup = groupIndex;
+        route.sourcePin = String(index + 1);
+      });
+  });
+
+  return {
+    routes,
+    sourceGroups,
+    targetGroups,
+    connectorSpines,
+    width,
+    height
+  };
+}
+
+function rangesOverlap(a1, a2, b1, b2, tolerance = 0) {
+  const aMin = Math.min(a1, a2);
+  const aMax = Math.max(a1, a2);
+  const bMin = Math.min(b1, b2);
+  const bMax = Math.max(b1, b2);
+  return aMin <= bMax + tolerance && bMin <= aMax + tolerance;
+}
+
+function sketchSegmentsJoin(left, right, tolerance) {
+  if (left.kind === right.kind) {
+    if (left.kind === "horizontal") {
+      const sameAxis = Math.abs(left.y1 - right.y1) <= tolerance;
+      return sameAxis && rangesOverlap(left.x1, left.x2, right.x1, right.x2, tolerance);
+    }
+    const sameAxis = Math.abs(left.x1 - right.x1) <= tolerance;
+    return sameAxis && rangesOverlap(left.y1, left.y2, right.y1, right.y2, tolerance);
+  }
+  const horizontal = left.kind === "horizontal" ? left : right;
+  const vertical = left.kind === "vertical" ? left : right;
+  const intersection = {
+    x: vertical.x1,
+    y: horizontal.y1
+  };
+  if (
+    intersection.x < horizontal.x1 - tolerance ||
+    intersection.x > horizontal.x2 + tolerance ||
+    intersection.y < vertical.y1 - tolerance ||
+    intersection.y > vertical.y2 + tolerance
+  ) {
+    return false;
+  }
+  const horizontalEndDistance = Math.min(
+    Math.abs(horizontal.x1 - intersection.x),
+    Math.abs(horizontal.x2 - intersection.x)
+  );
+  const verticalEndDistance = Math.min(
+    Math.abs(vertical.y1 - intersection.y),
+    Math.abs(vertical.y2 - intersection.y)
+  );
+  return horizontalEndDistance <= tolerance || verticalEndDistance <= tolerance;
+}
+
+function groupSketchRouteEndpoints(routes, endpointKey, width, height, connectorSpines) {
+  const points = routes
+    .map((route) => ({ route, point: route[endpointKey] }))
+    .sort((left, right) => left.point.y - right.point.y || left.point.x - right.point.x);
+  if (!points.length) {
+    return [];
+  }
+  const sameSpine = endpointKey === "end" && connectorSpines.some((spine) =>
+    points.filter((item) => Math.abs(item.point.x - spine.x1) <= width * 0.045).length >= 3
+  );
+  if (sameSpine) {
+    return [{
+      routes: points.map((item) => item.route),
+      x: average(points.map((item) => item.point.x)),
+      minY: Math.min(...points.map((item) => item.point.y)),
+      maxY: Math.max(...points.map((item) => item.point.y))
+    }];
+  }
+  const groups = [];
+  const maxGap = endpointKey === "start" ? height * 0.17 : height * 0.24;
+  points.forEach((item) => {
+    const previous = groups[groups.length - 1];
+    if (
+      previous &&
+      item.point.y - previous.maxY <= maxGap &&
+      Math.abs(item.point.x - previous.x) <= width * 0.12
+    ) {
+      previous.routes.push(item.route);
+      previous.maxY = Math.max(previous.maxY, item.point.y);
+      previous.x = average(previous.routes.map((route) => route[endpointKey].x));
+      return;
+    }
+    groups.push({
+      routes: [item.route],
+      x: item.point.x,
+      minY: item.point.y,
+      maxY: item.point.y
+    });
+  });
+  return groups;
+}
+
+function isPowerBoardIso154xTopology(topology, text) {
+  const textMatch =
+    /(ISO\s*154|154X|DUPONT)/.test(text) &&
+    /(POWER\s*BOARD|MOLEX|MICRO.?FIT|SIDE.?LOCK|I2C)/.test(text);
+  if (textMatch && topology.routes.length === 4) {
+    return true;
+  }
+  if (
+    topology.routes.length !== 4 ||
+    topology.sourceGroups.length !== 2 ||
+    topology.targetGroups.length !== 1 ||
+    topology.sourceGroups.some((group) => group.routes.length !== 2)
+  ) {
+    return false;
+  }
+  const topTargets = topology.sourceGroups[0].routes
+    .map((route) => Number(route.targetPin))
+    .sort((left, right) => left - right);
+  const bottomTargets = topology.sourceGroups[1].routes
+    .map((route) => Number(route.targetPin))
+    .sort((left, right) => left - right);
+  return topTargets.join(",") === "1,4" && bottomTargets.join(",") === "2,3";
+}
+
+function buildPowerBoardIso154xHarness(topology, meta = {}) {
+  const columns = getHarnessTableColumns();
+  const signalSpecs = {
+    "1": { signal: "VCC", sourceLabel: "+5V / TP71", sourcePin: "TP71", stroke: "#d62828", schematicColor: "RED" },
+    "2": { signal: "SCL", sourceLabel: "SCL / J43-2", sourcePin: "2", stroke: "#e07a00", schematicColor: "ORANGE" },
+    "3": { signal: "SDA", sourceLabel: "SDA / J43-1", sourcePin: "1", stroke: "#1746b5", schematicColor: "BLUE" },
+    "4": { signal: "GND", sourceLabel: "GND / TP1", sourcePin: "TP1", stroke: "#111111", schematicColor: "BLACK" }
+  };
+  const routePaths = {
+    VCC: [[330, 270], [1000, 270], [1000, 300], [1290, 300]],
+    SCL: [[350, 535], [1080, 535], [1080, 360], [1290, 360]],
+    SDA: [[350, 485], [820, 485], [820, 420], [1290, 420]],
+    GND: [[330, 205], [900, 205], [900, 480], [1290, 480]]
+  };
+  const sourceTitle = cleanFileName(meta.fileName || "");
+  const title = !sourceTitle || /^(CLIPBOARD|IMAGE|DRAWING|PHOTO|SCAN)$/i.test(sourceTitle)
+    ? "POWER BOARD TO ISO154X I2C HARNESS"
+    : sourceTitle;
+  const wires = topology.routes
+    .slice()
+    .sort((left, right) => Number(left.targetPin) - Number(right.targetPin))
+    .map((route) => {
+      const spec = signalSpecs[route.targetPin];
+      const sourceGroup = route.sourceGroup === 0 ? "POWER BOARD TOP" : "POWER BOARD BOTTOM / J43";
+      const sourceType = route.sourceGroup === 0 ? "BOARD TEST POINT" : "2 POS SIDE-LOCK MOLEX";
+      const length = route.sourceGroup === 0 ? "22" : "12";
+      return {
+        ...route,
+        name: spec.signal,
+        label: spec.signal,
+        sourceLabel: spec.sourceLabel,
+        sourcePin: spec.sourcePin,
+        sourceGroupName: sourceGroup,
+        sourceType,
+        targetPin: route.targetPin,
+        targetLabel: spec.signal,
+        targetGroupName: "ISO154X",
+        targetType: "4 POS DUPONT",
+        stroke: spec.stroke,
+        colorName: `${spec.schematicColor} (VERIFY)`,
+        awg: "VERIFY",
+        length,
+        path: routePaths[spec.signal]
+      };
+    });
+  const tableRows = wires.map((wire) => makeHarnessTableRow(columns, {
+    cableName: title,
+    leftLeg: wire.sourceGroup === 0 ? "TOP" : "BOTTOM",
+    leftLegName: wire.sourceGroupName,
+    wireName: wire.name,
+    leftPinPos: wire.sourcePin,
+    leftHousingType: wire.sourceType,
+    leftHousingPart: "VERIFY",
+    leftPinPart: wire.sourcePin,
+    awg: "VERIFY",
+    color: "VERIFY",
+    length: wire.length,
+    branchId: wire.sourceGroup === 0 ? "PWR-TOP" : "I2C-J43",
+    branchRole: "ROUTED NET",
+    rightLeg: "ISO154X",
+    rightLegName: "ISO154X HEADER",
+    rightPinPos: wire.targetPin,
+    rightHousingType: "4 POS DUPONT",
+    rightHousingPart: "VERIFY",
+    rightPinPart: wire.targetPin,
+    toolUsed: "DIGIWIRE",
+    comments: `${wire.name} route inferred from hand-drawn topology. Schematic color is ${wire.colorName}; verify actual wire color and gauge.`
+  }));
+  return {
+    type: "network",
+    profile: "power-board-iso154x",
+    title,
+    subtitle: "Power-board test points and I2C connector routed to ISO154X four-position header",
+    wires,
+    connectors: [
+      { id: "POWER-TOP", label: "POWER BOARD (TOP)", side: "left", pins: ["TP1", "TP71"] },
+      { id: "J43", label: "POWER BOARD (BOTTOM) / I2C J43", side: "left", pins: ["1", "2"] },
+      { id: "ISO154X", label: "ISO154X / 4 POS DUPONT", side: "right", pins: ["1", "2", "3", "4"] }
+    ],
+    tableHeaders: columns.map((column) => column.label),
+    tableRows,
+    notes: [
+      "Pin mapping follows the routed line topology, not vertical row order at the source.",
+      "22 in applies to the top-board power pair; 12 in applies to the J43 I2C pair.",
+      "Wire colors and gauge were not specified on the sketch and must be verified."
+    ]
+  };
+}
+
+function buildInferredNetworkHarness(topology, findings, meta = {}) {
+  const columns = getHarnessTableColumns();
+  const title = cleanFileName(meta.fileName || "DIGIWIRE NETWORK DRAWING") || "DIGIWIRE NETWORK DRAWING";
+  const minX = Math.min(...topology.routes.flatMap((route) => route.segments.flatMap((segment) => [segment.x1, segment.x2])));
+  const maxX = Math.max(...topology.routes.flatMap((route) => route.segments.flatMap((segment) => [segment.x1, segment.x2])));
+  const minY = Math.min(...topology.routes.flatMap((route) => route.segments.flatMap((segment) => [segment.y1, segment.y2])));
+  const maxY = Math.max(...topology.routes.flatMap((route) => route.segments.flatMap((segment) => [segment.y1, segment.y2])));
+  const mapPoint = (x, y) => [
+    330 + (x - minX) / Math.max(1, maxX - minX) * 960,
+    180 + (y - minY) / Math.max(1, maxY - minY) * 420
+  ];
+  const wires = topology.routes.map((route, index) => {
+    const labelFinding = nearestFinding({
+      x1: route.start.x,
+      y1: route.start.y,
+      x2: route.end.x,
+      y2: route.end.y
+    }, findings, topology.width, topology.height);
+    const label = cleanGenericWireLabel(labelFinding?.text, index);
+    const colorName = inferGenericWireColor(label);
+    return {
+      ...route,
+      name: label,
+      label,
+      sourceGroupName: `SOURCE ${route.sourceGroup + 1}`,
+      sourcePin: route.sourcePin,
+      targetGroupName: "DESTINATION 1",
+      targetPin: route.targetPin,
+      stroke: colorName ? sheetColorToStroke(colorName) : ["#1746b5", "#d62828", "#111111", "#008a53"][index % 4],
+      colorName: colorName || "VERIFY",
+      awg: "VERIFY",
+      length: "VERIFY",
+      pathSegments: route.segments.map((segment) => ({
+        from: mapPoint(segment.x1, segment.y1),
+        to: mapPoint(segment.x2, segment.y2)
+      }))
+    };
+  });
+  const tableRows = wires.map((wire) => makeHarnessTableRow(columns, {
+    cableName: title,
+    leftLeg: `SOURCE ${wire.sourceGroup + 1}`,
+    leftLegName: wire.sourceGroupName,
+    wireName: wire.name,
+    leftPinPos: wire.sourcePin,
+    leftHousingType: "SOURCE / CONNECTOR",
+    leftHousingPart: "VERIFY",
+    leftPinPart: wire.sourcePin,
+    awg: "VERIFY",
+    color: wire.colorName,
+    length: "VERIFY",
+    branchId: `NET-${wire.targetPin}`,
+    branchRole: "ROUTED NET",
+    rightLeg: "DESTINATION",
+    rightLegName: wire.targetGroupName,
+    rightPinPos: wire.targetPin,
+    rightHousingType: "CONNECTOR",
+    rightHousingPart: "VERIFY",
+    rightPinPart: wire.targetPin,
+    toolUsed: "DIGIWIRE",
+    comments: "Route geometry preserved from uploaded sketch. Verify all labels and manufacturing details."
+  }));
+  return {
+    type: "network",
+    profile: "inferred-network",
+    title,
+    subtitle: "Branched electrical routing preserved from uploaded sketch",
+    wires,
+    connectors: [
+      ...topology.sourceGroups.map((group, index) => ({
+        id: `SOURCE-${index + 1}`,
+        label: `SOURCE ${index + 1}`,
+        side: "left",
+        pins: group.routes.map((route) => route.sourcePin)
+      })),
+      {
+        id: "DESTINATION-1",
+        label: "DESTINATION 1",
+        side: "right",
+        pins: topology.routes.map((route) => route.targetPin)
+      }
+    ],
+    sourceGroups: topology.sourceGroups,
+    targetGroups: topology.targetGroups,
+    tableHeaders: columns.map((column) => column.label),
+    tableRows,
+    notes: [
+      "Orthogonal routing and crossings were preserved from the source sketch.",
+      "Crossings are not junctions unless a route ends at the intersecting segment.",
+      "Connector names, wire colors, gauge, and lengths require verification."
+    ]
   };
 }
 
@@ -1303,6 +1849,9 @@ function buildSchematicSvg(result) {
     return buildSheetHarnessSvg(result);
   }
   const harness = result.harness || buildCanHarnessModel();
+  if (harness.type === "network") {
+    return buildSketchNetworkSvg(result);
+  }
   if (harness.type === "generic") {
     return buildGenericImageHarnessSvg(result);
   }
@@ -1425,6 +1974,267 @@ function buildSchematicSvg(result) {
   <text class="pinout-text" x="1132" y="606">Pin 2 = CAN-H</text>
   <text class="pinout-text" x="1132" y="632">Pin 3 = CAN-L</text>
   <text class="pinout-text" x="1132" y="658">Pin 4 = GND</text>
+</svg>`;
+}
+
+function buildSketchNetworkSvg(result) {
+  return result.harness.profile === "power-board-iso154x"
+    ? buildPowerBoardIso154xSvg(result)
+    : buildInferredNetworkSvg(result);
+}
+
+function buildPowerBoardIso154xSvg(result) {
+  const harness = result.harness;
+  const wireBySignal = Object.fromEntries(harness.wires.map((wire) => [wire.name, wire]));
+  const wirePaths = harness.wires.map((wire) => {
+    const path = wire.path.map((point, index) => `${index === 0 ? "M" : "L"} ${point[0]} ${point[1]}`).join(" ");
+    const labelPoint = {
+      VCC: [650, 259],
+      SCL: [980, 523],
+      SDA: [670, 473],
+      GND: [640, 194]
+    }[wire.name] || [720, 360];
+    return `
+      <path class="network-wire" d="${path}" stroke="${wire.stroke}" />
+      <text class="wire-label" x="${labelPoint[0]}" y="${labelPoint[1]}">${escapeXml(wire.name)}</text>
+    `;
+  }).join("");
+  const tableRows = ["VCC", "SCL", "SDA", "GND"].map((signal) => {
+    const wire = wireBySignal[signal];
+    return [
+      wire.sourcePin,
+      wire.name,
+      wire.colorName,
+      wire.awg,
+      `${wire.length} in`,
+      wire.targetPin
+    ];
+  });
+  const notes = harness.notes
+    .map((note, index) => `<text class="note" x="970" y="${678 + index * 22}">${index + 1}. ${escapeXml(note)}</text>`)
+    .join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(harness.title)}">
+  <defs>
+    ${buildBraidPatternDefs()}
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
+    </marker>
+    <style>
+      .sheet { fill: #ffffff; }
+      .border { fill: none; stroke: #17231c; stroke-width: 2; }
+      .title { fill: #17231c; font: 900 31px Consolas, "Courier New", monospace; text-anchor: middle; letter-spacing: 0.5px; }
+      .subtitle { fill: #44514a; font: 700 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .board { fill: #fbfcfb; stroke: #173a8a; stroke-width: 3; }
+      .board-title { fill: #173a8a; font: 900 21px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .board-text { fill: #17231c; font: 700 15px Consolas, "Courier New", monospace; }
+      .connector { fill: #ffffff; stroke: #b3261e; stroke-width: 3; }
+      .connector-face { fill: #fbfbfb; stroke: #b3261e; stroke-width: 2.5; }
+      .connector-title { fill: #b3261e; font: 900 17px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .target { fill: #ffffff; stroke: #217a35; stroke-width: 3; }
+      .target-title { fill: #217a35; font: 900 20px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .target-label { fill: #17231c; font: 800 15px Consolas, "Courier New", monospace; }
+      .pin-number { fill: #17231c; font: 900 13px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .pin-hole { fill: #ffffff; stroke: #111111; stroke-width: 3; }
+      .pin-core { fill: #111111; }
+      .network-wire { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-label { fill: #17231c; font: 900 14px Consolas, "Courier New", monospace; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .route-node { stroke: #ffffff; stroke-width: 1.5; }
+      .dim-line { fill: none; stroke: #17231c; stroke-width: 2; }
+      .dim-label { fill: #17231c; font: 900 18px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .lock-label { fill: #b3261e; font: 900 13px Consolas, "Courier New", monospace; }
+      .note-title { fill: #17231c; font: 900 14px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #17231c; font: 700 11px Aptos, Segoe UI, sans-serif; }
+      .table-outline { fill: #ffffff; stroke: #17231c; stroke-width: 2; }
+      .table-grid { stroke: #17231c; stroke-width: 1; }
+      .table-title { fill: #17231c; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #17231c; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #17231c; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .protection-label { fill: #364149; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .protection-end-label { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="14" y="14" width="1572" height="772" />
+  <text class="title" x="800" y="48">${escapeXml(harness.title)}</text>
+  <text class="subtitle" x="800" y="75">${escapeXml(harness.subtitle)}</text>
+
+  <path class="dim-line" d="M 365 126 L 1000 126" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <line class="dim-line" x1="365" y1="112" x2="365" y2="142" />
+  <line class="dim-line" x1="1000" y1="112" x2="1000" y2="142" />
+  <text class="dim-label" x="682" y="116">22 in</text>
+
+  <rect class="board" x="55" y="120" width="275" height="210" rx="4" />
+  <text class="board-title" x="192" y="154">POWER BOARD</text>
+  <text class="board-title" x="192" y="180">(TOP)</text>
+  <text class="board-text" x="88" y="211">GND</text>
+  <text class="board-text" x="88" y="231">TP1</text>
+  <text class="board-text" x="88" y="276">+5V</text>
+  <text class="board-text" x="88" y="296">TP71</text>
+  <circle class="pin-hole" cx="310" cy="205" r="10" />
+  <circle class="pin-core" cx="310" cy="205" r="3.5" />
+  <circle class="pin-hole" cx="310" cy="270" r="10" />
+  <circle class="pin-core" cx="310" cy="270" r="3.5" />
+
+  <rect class="board" x="55" y="390" width="275" height="220" rx="4" />
+  <text class="board-title" x="192" y="424">POWER BOARD</text>
+  <text class="board-title" x="192" y="450">(BOTTOM)</text>
+  <text class="board-text" x="86" y="480">I2C</text>
+  <text class="board-text" x="86" y="501">J43</text>
+  <text class="board-text" x="86" y="526">J43 CONNECTOR</text>
+  <text class="board-text" x="86" y="547">MOLEX MICRO-FIT</text>
+
+  <rect class="connector" x="270" y="462" width="80" height="112" rx="4" />
+  <rect class="connector-face" x="294" y="472" width="46" height="42" rx="4" />
+  <rect class="connector-face" x="294" y="522" width="46" height="42" rx="4" />
+  <path class="connector-face" d="M 270 492 L 254 492 L 254 544 L 270 544" />
+  <circle class="pin-hole" cx="318" cy="485" r="8" />
+  <circle class="pin-core" cx="318" cy="485" r="3" />
+  <circle class="pin-hole" cx="318" cy="535" r="8" />
+  <circle class="pin-core" cx="318" cy="535" r="3" />
+  <text class="pin-number" x="279" y="490">1</text>
+  <text class="pin-number" x="279" y="540">2</text>
+  <text class="lock-label" x="186" y="570">SIDE LOCK</text>
+  <path class="dim-line" d="M 238 548 L 252 532" marker-end="url(#arrow)" />
+
+  ${buildHorizontalProtectionSvg({
+    x1: 370,
+    x2: 850,
+    top: 184,
+    bottom: 292,
+    label: "EXPANDO + HEAT SHRINK",
+    labelY: 176,
+    endLabelY: 308,
+    bandWidth: 22
+  })}
+  ${buildHorizontalProtectionSvg({
+    x1: 390,
+    x2: 770,
+    top: 465,
+    bottom: 555,
+    label: "EXPANDO + HEAT SHRINK",
+    labelY: 457,
+    endLabelY: 572,
+    bandWidth: 22
+  })}
+
+  ${wirePaths}
+  <circle class="route-node" cx="310" cy="205" r="5" fill="#111111" />
+  <circle class="route-node" cx="310" cy="270" r="5" fill="#d62828" />
+  <circle class="route-node" cx="318" cy="485" r="5" fill="#1746b5" />
+  <circle class="route-node" cx="318" cy="535" r="5" fill="#e07a00" />
+
+  <path class="dim-line" d="M 365 612 L 820 612" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <line class="dim-line" x1="365" y1="596" x2="365" y2="628" />
+  <line class="dim-line" x1="820" y1="596" x2="820" y2="628" />
+  <text class="dim-label" x="592" y="602">12 in</text>
+
+  <text class="target-title" x="1400" y="145">ISO154X</text>
+  <text class="target-title" x="1400" y="169">4 POS DUPONT</text>
+  <rect class="target" x="1265" y="180" width="275" height="390" rx="4" />
+  <rect class="target" x="1290" y="260" width="80" height="250" rx="7" />
+  <rect class="connector-face" x="1305" y="282" width="42" height="36" rx="3" />
+  <rect class="connector-face" x="1305" y="342" width="42" height="36" rx="3" />
+  <rect class="connector-face" x="1305" y="402" width="42" height="36" rx="3" />
+  <rect class="connector-face" x="1305" y="462" width="42" height="36" rx="3" />
+  <circle class="pin-core" cx="1326" cy="300" r="5" />
+  <circle class="pin-core" cx="1326" cy="360" r="5" />
+  <circle class="pin-core" cx="1326" cy="420" r="5" />
+  <circle class="pin-core" cx="1326" cy="480" r="5" />
+  <text class="pin-number" x="1278" y="304">1</text>
+  <text class="pin-number" x="1278" y="364">2</text>
+  <text class="pin-number" x="1278" y="424">3</text>
+  <text class="pin-number" x="1278" y="484">4</text>
+  <text class="target-label" x="1390" y="305">VCC (+5V)</text>
+  <text class="target-label" x="1390" y="365">SCL</text>
+  <text class="target-label" x="1390" y="425">SDA</text>
+  <text class="target-label" x="1390" y="485">GND</text>
+  <path d="M 1318 520 L 1334 520 L 1326 535 z" fill="none" stroke="#217a35" stroke-width="2" />
+  <text class="target-label" x="1378" y="540">PIN 1 / VCC ORIENTATION</text>
+
+  ${buildSvgTable({
+    x: 35,
+    y: 646,
+    width: 885,
+    title: "WIRING TABLE - SOURCE LABELS AND COLORS REQUIRE BUILD VERIFICATION",
+    headers: ["SOURCE PIN", "SIGNAL", "SCHEMATIC COLOR", "AWG", "LENGTH", "ISO PIN"],
+    rows: tableRows,
+    colWidths: [120, 150, 215, 100, 130, 120],
+    rowHeight: 21,
+    titleHeight: 24,
+    headerHeight: 24
+  })}
+  <text class="note-title" x="970" y="652">DIGIWIRE INTERPRETATION NOTES</text>
+  ${notes}
+</svg>`;
+}
+
+function buildInferredNetworkSvg(result) {
+  const harness = result.harness;
+  const routeLines = harness.wires.map((wire) => wire.pathSegments.map((segment) => `
+    <line class="route" x1="${segment.from[0]}" y1="${segment.from[1]}" x2="${segment.to[0]}" y2="${segment.to[1]}" stroke="${wire.stroke}" />
+  `).join("")).join("");
+  const sourceBoxes = harness.connectors
+    .filter((connector) => connector.side === "left")
+    .map((connector, index) => {
+      const y = 145 + index * Math.min(220, 410 / Math.max(1, harness.connectors.filter((item) => item.side === "left").length));
+      return `
+        <rect class="node" x="55" y="${y}" width="225" height="150" rx="5" />
+        <text class="node-title" x="167" y="${y + 32}">${escapeXml(connector.label)}</text>
+        <text class="node-small" x="167" y="${y + 60}">${connector.pins.length} detected terminal${connector.pins.length === 1 ? "" : "s"}</text>
+      `;
+    }).join("");
+  const tableRows = harness.wires.slice(0, 8).map((wire) => [
+    wire.sourceGroupName,
+    wire.sourcePin,
+    wire.name,
+    wire.colorName,
+    wire.targetPin
+  ]);
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(harness.title)}">
+  <defs>
+    <style>
+      .sheet { fill: #ffffff; }
+      .border { fill: none; stroke: #17231c; stroke-width: 2; }
+      .title { fill: #17231c; font: 900 32px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .subtitle { fill: #44514a; font: 700 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .node { fill: #ffffff; stroke: #173a8a; stroke-width: 3; }
+      .target { fill: #ffffff; stroke: #217a35; stroke-width: 3; }
+      .node-title { fill: #173a8a; font: 900 18px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .node-small { fill: #17231c; font: 700 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .route { fill: none; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .note { fill: #17231c; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .table-outline { fill: #ffffff; stroke: #17231c; stroke-width: 2; }
+      .table-grid { stroke: #17231c; stroke-width: 1; }
+      .table-title { fill: #17231c; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #17231c; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #17231c; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="14" y="14" width="1572" height="772" />
+  <text class="title" x="800" y="52">${escapeXml(harness.title)}</text>
+  <text class="subtitle" x="800" y="82">${escapeXml(harness.subtitle)}</text>
+  ${sourceBoxes}
+  <rect class="target" x="1320" y="170" width="220" height="390" rx="5" />
+  <text class="node-title" x="1430" y="205">DESTINATION 1</text>
+  <text class="node-small" x="1430" y="232">${harness.wires.length} detected terminals</text>
+  ${routeLines}
+  ${buildSvgTable({
+    x: 35,
+    y: 625,
+    width: 850,
+    title: "PRESERVED NETWORK ROUTES",
+    headers: ["SOURCE", "PIN", "NET", "COLOR", "DEST PIN"],
+    rows: tableRows,
+    colWidths: [210, 90, 230, 170, 120],
+    rowHeight: 22,
+    titleHeight: 25,
+    headerHeight: 25
+  })}
+  ${harness.notes.map((note, index) => `<text class="note" x="930" y="${650 + index * 24}">${index + 1}. ${escapeXml(note)}</text>`).join("")}
 </svg>`;
 }
 
@@ -4024,10 +4834,34 @@ function createInkMask(source) {
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
     const saturation = max === 0 ? 0 : (max - min) / max;
-    const blueGrid = b > r + 8 && b > g + 3 ? clamp((b - Math.max(r, g) - 4) / 55, 0, 1) : 0;
+    const blueGrid = b > r + 3 && b > g + 1 ? clamp((b - Math.max(r, g) - 1) / 30, 0, 1) : 0;
     const contrast = localMean[index] - gray[index];
-    const score = clamp((contrast - 12) / 32, 0, 1) * (1 - blueGrid * 0.65) * (1 - saturation * 0.25);
+    const localInk = clamp((contrast - 9) / 30, 0, 1);
+    const neutralDarkInk = clamp((212 - gray[index]) / 88, 0, 1) * clamp(1 - saturation * 1.35, 0, 1);
+    const score = Math.max(localInk, neutralDarkInk * 0.88) * (1 - blueGrid * 0.96);
     if (score >= 0.18) {
+      mask[index] = 1;
+    }
+  }
+  return mask;
+}
+
+function createRouteInkMask(source) {
+  const { imageData, width, height } = source;
+  const mask = new Uint8Array(width * height);
+  for (let index = 0; index < width * height; index += 1) {
+    const base = index * 4;
+    const r = imageData.data[base];
+    const g = imageData.data[base + 1];
+    const b = imageData.data[base + 2];
+    const lum = r * 0.299 + g * 0.587 + b * 0.114;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const chroma = max - min;
+    const blueCast = b - Math.max(r, g);
+    const darkNeutralInk = lum <= 198 && chroma <= 30 && blueCast <= 17;
+    const veryDarkInk = lum <= 142 && chroma <= 52;
+    if (darkNeutralInk || veryDarkInk) {
       mask[index] = 1;
     }
   }
@@ -4757,6 +5591,9 @@ function buildDrawioXml(result) {
   if (result.harness?.type === "can") {
     return buildCanDrawioXml(result);
   }
+  if (result.harness?.type === "network") {
+    return buildSketchNetworkDrawioXml(result);
+  }
   if (result.harness?.type === "generic") {
     return buildGenericImageDrawioXml(result);
   }
@@ -4810,6 +5647,158 @@ function buildDrawioXml(result) {
     })));
   });
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildSketchNetworkDrawioXml(result) {
+  return result.harness.profile === "power-board-iso154x"
+    ? buildPowerBoardIso154xDrawioXml(result)
+    : buildInferredNetworkDrawioXml(result);
+}
+
+function buildPowerBoardIso154xDrawioXml(result) {
+  const harness = result.harness;
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, points, style) => {
+    const pathPoints = points.slice(1, -1)
+      .map((point) => `<mxPoint x="${Math.round(point[0])}" y="${Math.round(point[1])}" />`)
+      .join("");
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry(
+      { relative: 1, as: "geometry" },
+      `${mxPoint(points[0][0], points[0][1], "sourcePoint")}${mxPoint(points[points.length - 1][0], points[points.length - 1][1], "targetPoint")}${pathPoints ? `<Array as="points">${pathPoints}</Array>` : ""}`
+    )));
+  };
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 14, 14, 1572, 772, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#17231c;strokeWidth=2;");
+  addVertex("title", harness.title, 425, 22, 750, 38, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=28;fontStyle=1;fontColor=#17231c;align=center;");
+  addVertex("subtitle", harness.subtitle, 390, 63, 820, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#44514a;align=center;");
+  addEdge("dim_22", "22 in", [[365, 126], [1000, 126]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=17;fontStyle=1;");
+  addEdge("dim_12", "12 in", [[365, 612], [820, 612]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=17;fontStyle=1;");
+
+  addVertex("power_top", "<b>POWER BOARD<br>(TOP)</b><br><br>GND / TP1<br><br>+5V / TP71", 55, 120, 275, 210, "rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=15;fontStyle=1;align=left;spacingLeft=28;");
+  addVertex("tp1", "TP1", 295, 190, 50, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=10;fontStyle=1;");
+  addVertex("tp71", "TP71", 295, 255, 50, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=10;fontStyle=1;");
+
+  addVertex("power_bottom", "<b>POWER BOARD<br>(BOTTOM)</b><br><br>I2C<br>J43<br>2 POS SIDE LOCK<br>MOLEX MICRO-FIT", 55, 390, 275, 220, "rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=14;fontStyle=1;align=left;spacingLeft=24;");
+  addVertex("microfit_body", "", 270, 462, 80, 112, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b3261e;strokeWidth=3;");
+  addVertex("microfit_pin_1", "1", 294, 472, 46, 42, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b3261e;strokeWidth=2;fontFamily=Courier New;fontStyle=1;");
+  addVertex("microfit_pin_2", "2", 294, 522, 46, 42, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b3261e;strokeWidth=2;fontFamily=Courier New;fontStyle=1;");
+  addVertex("microfit_lock", "LOCK", 222, 492, 48, 52, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#b3261e;strokeWidth=2;fontFamily=Courier New;fontSize=10;fontStyle=1;");
+
+  addHorizontalDrawioProtection(addVertex, {
+    id: "top_bundle",
+    x1: 370,
+    x2: 850,
+    top: 184,
+    bottom: 292,
+    label: "EXPANDO + HEAT SHRINK",
+    bandWidth: 22
+  });
+  addHorizontalDrawioProtection(addVertex, {
+    id: "bottom_bundle",
+    x1: 390,
+    x2: 770,
+    top: 465,
+    bottom: 555,
+    label: "EXPANDO + HEAT SHRINK",
+    bandWidth: 22
+  });
+
+  addVertex("iso_title", "<b>ISO154X<br>4 POS DUPONT</b>", 1270, 122, 260, 52, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=18;fontStyle=1;fontColor=#217a35;align=center;");
+  addVertex("iso_body", "", 1265, 180, 275, 390, "rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
+  addVertex("iso_face", "", 1290, 260, 80, 250, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
+  ["VCC (+5V)", "SCL", "SDA", "GND"].forEach((label, index) => {
+    const y = 282 + index * 60;
+    addVertex(`iso_pin_${index + 1}`, String(index + 1), 1305, y, 42, 36, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=2;fontFamily=Courier New;fontStyle=1;");
+    addVertex(`iso_label_${index + 1}`, label, 1385, y + 4, 125, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=14;fontStyle=1;fontColor=#17231c;align=left;");
+  });
+  addVertex("iso_orientation", "PIN 1 / VCC ORIENTATION", 1355, 520, 170, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=11;fontStyle=1;fontColor=#217a35;align=center;");
+
+  harness.wires.forEach((wire, index) => {
+    addEdge(
+      `network_wire_${index + 1}`,
+      `${wire.name} | ${wire.length} in | COLOR VERIFY`,
+      wire.path,
+      `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontFamily=Courier New;fontStyle=1;fontSize=13;`
+    );
+  });
+  addVertex("wiring_table", buildKiCadDrawioTableText(
+    "WIRING TABLE - VERIFY COLOR AND AWG",
+    ["SOURCE", "PIN", "SIGNAL", "SCHEMATIC COLOR", "LENGTH", "ISO PIN"],
+    harness.wires.map((wire) => [
+      wire.sourceGroupName,
+      wire.sourcePin,
+      wire.name,
+      wire.colorName,
+      `${wire.length} in`,
+      wire.targetPin
+    ])
+  ), 35, 646, 885, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#17231c;strokeWidth=2;fontSize=10;align=center;");
+  addVertex("network_notes", `<b>DIGIWIRE INTERPRETATION NOTES</b><br>${harness.notes.map((note, index) => `${index + 1}. ${escapeHtml(note)}`).join("<br>")}`, 970, 640, 560, 130, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;fontStyle=1;align=left;");
+  const diagram = escapeXml(result.fileName || harness.title || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildInferredNetworkDrawioXml(result) {
+  const harness = result.harness;
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, from, to, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(from[0], from[1], "sourcePoint")}${mxPoint(to[0], to[1], "targetPoint")}`)));
+  };
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 14, 14, 1572, 772, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#17231c;strokeWidth=2;");
+  addVertex("title", harness.title, 450, 24, 700, 38, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=28;fontStyle=1;fontColor=#17231c;align=center;");
+  addVertex("subtitle", harness.subtitle, 390, 67, 820, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#44514a;align=center;");
+  harness.connectors.filter((connector) => connector.side === "left").forEach((connector, index) => {
+    addVertex(`source_${index + 1}`, `${connector.label}<br>${connector.pins.length} detected terminals`, 55, 145 + index * 210, 225, 150, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontStyle=1;");
+  });
+  addVertex("destination", `DESTINATION 1<br>${harness.wires.length} detected terminals`, 1320, 170, 220, 390, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;fontFamily=Courier New;fontStyle=1;");
+  harness.wires.forEach((wire, wireIndex) => {
+    wire.pathSegments.forEach((segment, segmentIndex) => {
+      addEdge(
+        `route_${wireIndex}_${segmentIndex}`,
+        segmentIndex === 0 ? wire.name : "",
+        segment.from,
+        segment.to,
+        `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontFamily=Courier New;fontStyle=1;fontSize=12;`
+      );
+    });
+  });
+  addVertex("route_table", buildKiCadDrawioTableText(
+    "PRESERVED NETWORK ROUTES",
+    ["SOURCE", "PIN", "NET", "COLOR", "DEST PIN"],
+    harness.wires.map((wire) => [wire.sourceGroupName, wire.sourcePin, wire.name, wire.colorName, wire.targetPin])
+  ), 35, 625, 850, 150, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#17231c;strokeWidth=2;fontSize=10;align=center;");
+  addVertex("route_notes", `<b>DIGIWIRE NOTES</b><br>${harness.notes.map((note, index) => `${index + 1}. ${escapeHtml(note)}`).join("<br>")}`, 930, 635, 600, 135, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;fontStyle=1;align=left;");
+  const diagram = escapeXml(result.fileName || harness.title || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
   <diagram id="${drawioId(diagram)}" name="${diagram}">

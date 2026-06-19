@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.10**
+Current release: **v1.6.11**
 
 ## Use The App
 
@@ -23,6 +23,12 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Accepts pasted tab-delimited rows copied from Excel, Google Sheets, or a text table through the Paste table button.
 - Preserves uploaded sheet headers and rows in the copy-only table.
 - Generates a general cable drawing from uploaded sketches instead of assuming every image is a CAN harness.
+- Preserves branched hand-drawn electrical topology instead of flattening every sketch into a left-to-right cable.
+- Distinguishes orthogonal turns and T-junctions from unconnected wire crossings, and keeps segment dimensions with the applicable source pair.
+- Recognizes the power-board/I2C sketch pattern with TP1 GND, TP71 +5V, a two-position side-lock Micro-Fit J43 connector, and an ISO154X four-position Dupont header.
+- Routes TP71 to VCC pin 1, J43 pin 2 to SCL pin 2, J43 pin 1 to SDA pin 3, and TP1 to GND pin 4 without inventing junctions.
+- Uses board/test-point symbols and actual connector-face layouts for sketch networks, with compact verification tables and matching editable Draw.io waypoints.
+- Applies expando and heat-shrink only to the bundled portions of branched sketch routes, leaving breakouts and crossed nets readable.
 - Uses the CAN bus template only when the sketch has CAN-specific evidence such as CAN-H/CAN-L, USB-CAN, JST branch notes, or 120 ohm termination.
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Automatically draws expandable braided sleeving around conductor bundles with heat-shrink collars at both ends on every cable drawing and Draw.io export.
