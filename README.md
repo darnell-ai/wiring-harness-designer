@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.12**
+Current release: **v1.6.13**
 
 ## Use The App
 
@@ -57,6 +57,7 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
 - Prints the generated digital electrical drawing.
 - Opens a Draw.io popup and loads the editable diagram for follow-up editing.
+- Adds at least eight evenly distributed editable Draw.io waypoints to every electrical wire, including straight runs, while preserving existing routed corners.
 - Runs as static browser files with no server-side project database.
 
 ## Run Locally

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.12";
+const APP_VERSION = "1.6.13";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -6990,12 +6990,127 @@ function xmlAttrs(attrs) {
 
 function mxCell(attrs, inner = "") {
   const attrText = xmlAttrs(attrs);
-  return inner ? `<mxCell ${attrText}>${inner}</mxCell>` : `<mxCell ${attrText} />`;
+  const outputInner = attrs.edge === 1 && isElectricalDrawioEdgeStyle(attrs.style)
+    ? addDrawioWireWaypoints(inner, 8)
+    : inner;
+  return outputInner ? `<mxCell ${attrText}>${outputInner}</mxCell>` : `<mxCell ${attrText} />`;
 }
 
 function mxGeometry(attrs, inner = "") {
   const attrText = xmlAttrs(attrs);
   return inner ? `<mxGeometry ${attrText}>${inner}</mxGeometry>` : `<mxGeometry ${attrText} />`;
+}
+
+function isElectricalDrawioEdgeStyle(style) {
+  const value = String(style || "");
+  return value.includes("startArrow=none") && value.includes("endArrow=none");
+}
+
+function addDrawioWireWaypoints(geometryXml, minimumWaypoints = 8) {
+  const xml = String(geometryXml || "");
+  const sourceMatch = xml.match(/<mxPoint x="([^"]+)" y="([^"]+)" as="sourcePoint"\s*\/>/);
+  const targetMatch = xml.match(/<mxPoint x="([^"]+)" y="([^"]+)" as="targetPoint"\s*\/>/);
+  if (!sourceMatch || !targetMatch) {
+    return xml;
+  }
+  const existingArray = xml.match(/<Array as="points">([\s\S]*?)<\/Array>/);
+  const existingPoints = existingArray
+    ? Array.from(existingArray[1].matchAll(/<mxPoint x="([^"]+)" y="([^"]+)"\s*\/>/g))
+      .map((match) => ({ x: Number(match[1]), y: Number(match[2]) }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    : [];
+  const route = [
+    { x: Number(sourceMatch[1]), y: Number(sourceMatch[2]) },
+    ...existingPoints,
+    { x: Number(targetMatch[1]), y: Number(targetMatch[2]) }
+  ];
+  if (route.some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+    return xml;
+  }
+  const waypoints = drawioWaypointsAlongRoute(route, minimumWaypoints);
+  const pointsXml = waypoints
+    .map((point) => `<mxPoint x="${formatDrawioCoordinate(point.x)}" y="${formatDrawioCoordinate(point.y)}" />`)
+    .join("");
+  const withoutExisting = xml.replace(/<Array as="points">[\s\S]*?<\/Array>/, "");
+  return withoutExisting.replace("</mxGeometry>", `<Array as="points">${pointsXml}</Array></mxGeometry>`);
+}
+
+function drawioWaypointsAlongRoute(route, minimumWaypoints) {
+  const cleaned = route.filter((point, index) =>
+    index === 0 ||
+    point.x !== route[index - 1].x ||
+    point.y !== route[index - 1].y
+  );
+  if (cleaned.length < 2) {
+    return [];
+  }
+  const segmentLengths = [];
+  const cumulative = [0];
+  for (let index = 1; index < cleaned.length; index += 1) {
+    const previous = cleaned[index - 1];
+    const current = cleaned[index];
+    const length = Math.hypot(current.x - previous.x, current.y - previous.y);
+    segmentLengths.push(length);
+    cumulative.push(cumulative[cumulative.length - 1] + length);
+  }
+  const totalLength = cumulative[cumulative.length - 1];
+  if (totalLength <= 0) {
+    return [];
+  }
+  const items = cleaned.slice(1, -1).map((point, index) => ({
+    x: point.x,
+    y: point.y,
+    distance: cumulative[index + 1],
+    anchor: true
+  }));
+  const targetCount = Math.max(minimumWaypoints, items.length);
+  const initialSamples = targetCount - items.length;
+  for (let sampleIndex = 1; sampleIndex <= initialSamples; sampleIndex += 1) {
+    const distance = totalLength * sampleIndex / (initialSamples + 1);
+    const point = pointAtRouteDistance(cleaned, segmentLengths, cumulative, distance);
+    const duplicate = items.some((item) => Math.hypot(item.x - point.x, item.y - point.y) < 0.5);
+    if (!duplicate) {
+      items.push({ ...point, distance, anchor: false });
+    }
+  }
+  let denominator = targetCount + 2;
+  while (items.length < targetCount) {
+    for (let sampleIndex = 1; sampleIndex < denominator && items.length < targetCount; sampleIndex += 1) {
+      const distance = totalLength * sampleIndex / denominator;
+      const point = pointAtRouteDistance(cleaned, segmentLengths, cumulative, distance);
+      const duplicate = items.some((item) => Math.hypot(item.x - point.x, item.y - point.y) < 0.5);
+      if (!duplicate) {
+        items.push({ ...point, distance, anchor: false });
+      }
+    }
+    denominator += targetCount + 1;
+  }
+  return items
+    .sort((left, right) => left.distance - right.distance || Number(right.anchor) - Number(left.anchor))
+    .map(({ x, y }) => ({ x, y }));
+}
+
+function pointAtRouteDistance(route, segmentLengths, cumulative, distance) {
+  const clampedDistance = clamp(distance, 0, cumulative[cumulative.length - 1]);
+  let segmentIndex = segmentLengths.length - 1;
+  for (let index = 0; index < segmentLengths.length; index += 1) {
+    if (clampedDistance <= cumulative[index + 1]) {
+      segmentIndex = index;
+      break;
+    }
+  }
+  const start = route[segmentIndex];
+  const end = route[segmentIndex + 1];
+  const segmentLength = segmentLengths[segmentIndex] || 1;
+  const progress = (clampedDistance - cumulative[segmentIndex]) / segmentLength;
+  return {
+    x: start.x + (end.x - start.x) * progress,
+    y: start.y + (end.y - start.y) * progress
+  };
+}
+
+function formatDrawioCoordinate(value) {
+  return Number(value.toFixed(2)).toString();
 }
 
 function mxPoint(x, y, as) {

@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.13 - 2026-06-19
+
+- Added a permanent minimum of eight editable Draw.io waypoints to every electrical wire in every drawing family.
+- Straight wires receive eight evenly spaced points so bends can be added by dragging without using context-menu commands.
+- Existing orthogonal corners are preserved and the remaining points are distributed across the full routed path.
+- Dimension arrows and decorative lines are excluded from the waypoint rule.
+- Validated the behavior on W114 split legs, generic cable drawings, and CAN trunks and branch drops.
+
 ## v1.6.12 - 2026-06-19
 
 - Added a dedicated W114 sheet renderer that preserves two independent physical cable legs to the shared Isolator 154X header.
