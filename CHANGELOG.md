@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.6.9 - 2026-06-19
+
+- Added a reusable datasheet-backed connector library for Molex Micro-Fit 3.0, Molex Mini-Fit Jr., and Anderson Powerpole PP15/45.
+- Added scalable mating-face drawings for Micro-Fit 43645 front-lock housings from 2-12 circuits and 43025 side-lock housings from 2-16 even-numbered circuits.
+- Added Mini-Fit Jr. 5557 dual-row mating faces from 2-16 even-numbered circuits with 39-00-0039 and 39-00-0078 terminal/tool selection by wire gauge.
+- Added color-coded Powerpole PP15/45 modular housing drawings, official 1327-series color part numbers, 1331/1332/269-series contact choices, and 1309G8 tooling.
+- Added explicit manufacturing warnings for unsupported combinations, including 16 AWG Micro-Fit and 22 AWG PP15/45.
+- Added compact split wiring tables for harnesses with up to 16 routed conductors and matching editable Draw.io exports.
+
 ## v1.6.8 - 2026-06-19
 
 - Added a datasheet-aware W115 connector drawing for Molex 43645-0200 and 90143-0040 housings.

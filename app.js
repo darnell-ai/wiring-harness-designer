@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.8";
+const APP_VERSION = "1.6.9";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -10,6 +10,82 @@ const XLSX_READER_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full
 const MAX_IMAGE_SIDE = 1600;
 const SVG_WIDTH = 1600;
 const SVG_HEIGHT = 800;
+
+const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
+  microFitFront: Object.freeze({
+    key: "microFitFront",
+    manufacturer: "Molex",
+    family: "Micro-Fit 3.0",
+    style: "front-lock single-row receptacle",
+    series: "43645",
+    pitch: "3.00 mm",
+    rows: 1,
+    minPositions: 2,
+    maxPositions: 12,
+    positionStep: 1,
+    housingPart: (positions) => `43645-${String(positions).padStart(2, "0")}00`,
+    drawingUrl: "https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/436/43645/436450200_sd.pdf?inline"
+  }),
+  microFitSide: Object.freeze({
+    key: "microFitSide",
+    manufacturer: "Molex",
+    family: "Micro-Fit 3.0",
+    style: "side-lock dual-row receptacle",
+    series: "43025",
+    pitch: "3.00 mm",
+    rows: 2,
+    minPositions: 2,
+    maxPositions: 16,
+    positionStep: 2,
+    housingPart: (positions) => `43025-${String(positions).padStart(2, "0")}00`,
+    drawingUrl: "https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/430/43025/430250200_sd.pdf?inline"
+  }),
+  miniFitJr: Object.freeze({
+    key: "miniFitJr",
+    manufacturer: "Molex",
+    family: "Mini-Fit Jr.",
+    style: "dual-row receptacle",
+    series: "5557",
+    pitch: "4.20 mm",
+    rows: 2,
+    minPositions: 2,
+    maxPositions: 16,
+    positionStep: 2,
+    housingPart: (positions) => `39-01-${String(2000 + positions * 10).padStart(4, "0")}`,
+    engineeringPart: (positions) => `5557-${String(positions).padStart(2, "0")}R`,
+    drawingUrl: "https://www.molex.com/en-us/products/part-detail/39012020"
+  }),
+  powerpole1545: Object.freeze({
+    key: "powerpole1545",
+    manufacturer: "Anderson Power",
+    family: "Powerpole PP15/45",
+    style: "stackable genderless single-pole housings",
+    series: "PP15/45",
+    pitch: "modular dovetail",
+    rows: 0,
+    minPositions: 1,
+    maxPositions: 16,
+    positionStep: 1,
+    housingPart: () => "1327 SERIES",
+    drawingUrl: "https://www.andersonpower.com/product-lines/powerpole/"
+  })
+});
+
+const POWERPOLE_HOUSING_PARTS = Object.freeze({
+  RED: "1327",
+  BLACK: "1327G6",
+  GREEN: "1327G5",
+  WHITE: "1327G7",
+  BLUE: "1327G8",
+  YELLOW: "1327G16",
+  ORANGE: "1327G17",
+  GRAY: "1327G18",
+  GREY: "1327G18",
+  BROWN: "1327G21",
+  PINK: "1327G22",
+  VIOLET: "1327G23",
+  PURPLE: "1327G23"
+});
 
 const dom = {
   fileInput: document.querySelector("#fileInput"),
@@ -960,7 +1036,7 @@ function compileSheetHarnessResult(sheet, fileName) {
   const drawableRows = sheet.objects
     .map((row, index) => ({ ...row, rowNumber: index + 2 }))
     .filter(isDrawableSheetRow)
-    .slice(0, 14);
+    .slice(0, 32);
   const sheetHarness = {
     title: `${cableName} HARNESS ASSEMBLY`,
     subtitle: "Generated from uploaded prefilled harness sheet",
@@ -1474,6 +1550,10 @@ function buildSheetHarnessSvg(result) {
   if (isMolexUartJetsonSheet(sheet.rows)) {
     return buildMolexUartJetsonSvg(result);
   }
+  const datasheetModel = buildDatasheetConnectorHarnessModel(sheet);
+  if (datasheetModel) {
+    return buildDatasheetConnectorHarnessSvg(result, datasheetModel);
+  }
   const kicadModel = buildKiCadHarnessModel(sheet);
   if (kicadModel) {
     return buildKiCadHarnessSvg(result, kicadModel);
@@ -1736,6 +1816,597 @@ function buildMolexUartJetsonSvg(result) {
   <text class="sheet-note-title" x="60" y="622">CONNECTOR / BUILD NOTES</text>
   ${noteLines}
 </svg>`;
+}
+
+function buildDatasheetConnectorHarnessModel(sheet) {
+  const sourceRows = getKiCadWireRows(sheet.rows);
+  if (!sourceRows.length) {
+    return null;
+  }
+  const leftResolved = resolveDatasheetConnector(sourceRows, "left");
+  const rightResolved = resolveDatasheetConnector(sourceRows, "right");
+  if (!leftResolved && !rightResolved) {
+    return null;
+  }
+  const rows = sourceRows.slice(0, 16);
+  const gauge = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
+  const left = leftResolved || buildGenericDatasheetConnector(rows, "left");
+  const right = rightResolved || buildGenericDatasheetConnector(rows, "right");
+  const laneTop = 166;
+  const laneBottom = 466;
+  const laneGap = rows.length > 1 ? (laneBottom - laneTop) / (rows.length - 1) : 0;
+  const wires = rows.map((row, index) => ({
+    row,
+    name: row.wireName || `WIRE ${index + 1}`,
+    colorName: normalizeColorName(row.color),
+    stroke: sheetColorToStroke(row.color),
+    awg: row.awg || gauge,
+    length: row.length || dominantSheetValue(rows, "length") || "",
+    fromPin: String(row.leftPinPos || index + 1),
+    toPin: String(row.rightPinPos || index + 1),
+    laneY: laneTop + index * laneGap
+  }));
+  left.activePins = buildDatasheetActivePinMap(wires, "left");
+  right.activePins = buildDatasheetActivePinMap(wires, "right");
+  const warnings = uniqueValues([
+    ...left.warnings,
+    ...right.warnings,
+    sourceRows.length > 16 ? "Only the first 16 routed conductors are shown on this connector-family drawing." : ""
+  ]);
+  return {
+    cableName: firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS",
+    description: `${left.name} TO ${right.name}`,
+    gauge,
+    length: dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "",
+    wires,
+    left,
+    right,
+    warnings
+  };
+}
+
+function resolveDatasheetConnector(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const text = normalizeText(rows.map((row) => [
+    row[`${prefix}LegName`],
+    row[`${prefix}HousingType`],
+    row[`${prefix}HousingPart`],
+    row[`${prefix}PinPart`]
+  ].join(" ")).join(" "));
+  const key = datasheetConnectorKey(text);
+  if (!key) {
+    return null;
+  }
+  const definition = DATASHEET_CONNECTOR_LIBRARY[key];
+  const inferred = inferDatasheetConnectorPositions(rows, side, text, definition);
+  const gauge = Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]);
+  const termination = datasheetTerminationForGauge(key, gauge);
+  const name = cleanConnectorName(
+    firstFilled(rows, `${prefix}LegName`) ||
+    firstFilled(rows, `${prefix}HousingType`) ||
+    `${definition.manufacturer} ${definition.family}`
+  );
+  const warnings = [...inferred.warnings, ...termination.warnings];
+  const powerpoleParts = key === "powerpole1545"
+    ? powerpoleHousingPartsForRows(rows, side)
+    : [];
+  return {
+    key,
+    definition,
+    name,
+    type: firstFilled(rows, `${prefix}HousingType`) || definition.style,
+    positions: inferred.positions,
+    requestedPositions: inferred.requestedPositions,
+    housingPart: key === "powerpole1545"
+      ? powerpoleParts.map((item) => `${item.color} ${item.part}`).join(", ") || definition.housingPart(inferred.positions)
+      : definition.housingPart(inferred.positions),
+    engineeringPart: definition.engineeringPart ? definition.engineeringPart(inferred.positions) : "",
+    contactPart: termination.contactPart,
+    contactDescription: termination.contactDescription,
+    toolPart: termination.toolPart,
+    gauge,
+    powerpoleParts,
+    warnings,
+    recognized: true,
+    side
+  };
+}
+
+function datasheetConnectorKey(text) {
+  if (text.includes("POWERPOLE") || text.includes("POWER POLE") || text.includes("ANDERSON") || /\b1327G?\d*\b/.test(text)) {
+    return "powerpole1545";
+  }
+  if (text.includes("MINI FIT") || text.includes("MINI-FIT") || text.includes("5557") || text.includes("39012")) {
+    return "miniFitJr";
+  }
+  if (text.includes("43025") || text.includes("SIDE LOCK") || text.includes("SIDE-LOCK") || text.includes("SIDE MOLEX")) {
+    return "microFitSide";
+  }
+  if (
+    text.includes("43645") ||
+    text.includes("MICRO FIT") ||
+    text.includes("MICRO-FIT") ||
+    text.includes("FRONT LOCK") ||
+    text.includes("FRONT-LOCK") ||
+    text.includes("FRONT MOLEX") ||
+    text.includes("WM 1845")
+  ) {
+    return "microFitFront";
+  }
+  return "";
+}
+
+function inferDatasheetConnectorPositions(rows, side, text, definition) {
+  const prefix = side === "left" ? "left" : "right";
+  const pins = rows
+    .map((row) => numericPin(row[`${prefix}PinPos`]))
+    .filter(Number.isFinite);
+  const highestPin = pins.length ? Math.max(...pins) : rows.length;
+  const compact = text.replace(/[^A-Z0-9]+/g, "");
+  let requestedPositions = 0;
+  if (definition.key === "microFitFront") {
+    requestedPositions = Number(compact.match(/43645(\d{2})\d{2}/)?.[1] || 0);
+  } else if (definition.key === "microFitSide") {
+    requestedPositions = Number(compact.match(/43025(\d{2})\d{2}/)?.[1] || 0);
+  } else if (definition.key === "miniFitJr") {
+    const skuSuffix = Number(compact.match(/39012(\d{3})/)?.[1] || 0);
+    requestedPositions = skuSuffix ? skuSuffix / 10 : 0;
+  }
+  if (!requestedPositions) {
+    const positionMatch = text.match(/\b(\d{1,2})\s*(?:POS|POSITION|PIN|CIRCUIT)\b/);
+    requestedPositions = Number(positionMatch?.[1] || highestPin || definition.minPositions);
+  }
+  requestedPositions = Math.max(requestedPositions, highestPin, definition.minPositions);
+  let positions = requestedPositions;
+  const warnings = [];
+  if (definition.positionStep === 2 && positions % 2) {
+    positions += 1;
+    warnings.push(`${definition.family} ${definition.style} housings use even circuit counts; ${requestedPositions} was rounded to ${positions}.`);
+  }
+  if (positions > definition.maxPositions) {
+    warnings.push(`${definition.family} ${definition.style} is only supported through ${definition.maxPositions} positions; ${requestedPositions} is not a valid housing in this family.`);
+    positions = definition.maxPositions;
+  }
+  positions = clamp(positions, definition.minPositions, definition.maxPositions);
+  return { positions, requestedPositions, warnings };
+}
+
+function datasheetTerminationForGauge(key, gauge) {
+  const warnings = [];
+  if (!Number.isFinite(gauge)) {
+    return {
+      contactPart: "SELECT BY WIRE GAUGE",
+      contactDescription: "Wire gauge is missing from the uploaded sheet.",
+      toolPart: "VERIFY",
+      warnings
+    };
+  }
+  if (key === "microFitFront" || key === "microFitSide") {
+    if (gauge >= 20 && gauge <= 24) {
+      return {
+        contactPart: "43030-0007 (bag) / 43030-0001 (reel)",
+        contactDescription: "Micro-Fit 3.0 female crimp terminal, 24-20 AWG",
+        toolPart: "63819-0000",
+        warnings
+      };
+    }
+    warnings.push(`Micro-Fit 3.0 contact 43030 does not accept ${gauge} AWG; use 20-24 AWG or change to a larger connector family.`);
+    return {
+      contactPart: `NO APPROVED ${gauge} AWG MICRO-FIT CONTACT`,
+      contactDescription: "Micro-Fit 3.0 43030 terminal range is 24-20 AWG.",
+      toolPart: "NOT APPLICABLE",
+      warnings
+    };
+  }
+  if (key === "miniFitJr") {
+    if (gauge === 16) {
+      return {
+        contactPart: "39-00-0078 (bag) / 39-00-0077 (reel)",
+        contactDescription: "Mini-Fit Jr. female crimp terminal, 16 AWG",
+        toolPart: "200218-2200",
+        warnings
+      };
+    }
+    if (gauge >= 18 && gauge <= 24) {
+      return {
+        contactPart: "39-00-0039 (bag)",
+        contactDescription: "Mini-Fit Jr. female crimp terminal, 24-18 AWG",
+        toolPart: "63819-0901",
+        warnings
+      };
+    }
+    warnings.push(`Mini-Fit Jr. terminal selection is not defined here for ${gauge} AWG; verify the exact terminal and applicator.`);
+    return {
+      contactPart: `VERIFY ${gauge} AWG MINI-FIT TERMINAL`,
+      contactDescription: "Outside the programmed 24-18 AWG and dedicated 16 AWG terminal choices.",
+      toolPart: "VERIFY",
+      warnings
+    };
+  }
+  if (key === "powerpole1545") {
+    if (gauge === 16) {
+      warnings.push("Powerpole 16 AWG overlaps contacts 1331 and 1332; select by conductor diameter and required current rating.");
+      return {
+        contactPart: "1332 (20-16 AWG) / 1331 (16-12 AWG)",
+        contactDescription: "PP15/45 silver-plated closed-barrel contact",
+        toolPart: "1309G8",
+        warnings
+      };
+    }
+    if (gauge >= 17 && gauge <= 20) {
+      return {
+        contactPart: "1332",
+        contactDescription: "PP15/45 silver-plated closed-barrel contact, 20-16 AWG",
+        toolPart: "1309G8",
+        warnings
+      };
+    }
+    if (gauge >= 12 && gauge <= 15) {
+      return {
+        contactPart: "1331",
+        contactDescription: "PP15/45 silver-plated closed-barrel contact, 16-12 AWG",
+        toolPart: "1309G8",
+        warnings
+      };
+    }
+    if (gauge >= 10 && gauge <= 11) {
+      return {
+        contactPart: "269G3 / 261G2",
+        contactDescription: "PP15/45 tin-plated open-barrel contact, 14-10 AWG",
+        toolPart: "1309G8",
+        warnings
+      };
+    }
+    warnings.push(`Standard Powerpole PP15/45 contacts start at 20 AWG; ${gauge} AWG is not approved by the PP15/45 datasheet.`);
+    return {
+      contactPart: `NO STANDARD PP15/45 CONTACT FOR ${gauge} AWG`,
+      contactDescription: "Use 20 AWG minimum or select another Anderson connector/contact system.",
+      toolPart: "NOT APPLICABLE",
+      warnings
+    };
+  }
+  return {
+    contactPart: "VERIFY",
+    contactDescription: "Connector family is not in the datasheet library.",
+    toolPart: "VERIFY",
+    warnings
+  };
+}
+
+function powerpoleHousingPartsForRows(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const counts = new Map();
+  rows.forEach((row) => {
+    if (!row[`${prefix}PinPos`]) {
+      return;
+    }
+    const color = normalizeColorName(row.color);
+    const part = POWERPOLE_HOUSING_PARTS[color] || "1327 SERIES";
+    const key = `${color}|${part}`;
+    const item = counts.get(key) || { color, part, quantity: 0 };
+    item.quantity += 1;
+    counts.set(key, item);
+  });
+  return Array.from(counts.values());
+}
+
+function buildGenericDatasheetConnector(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const pins = rows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
+  const positions = clamp(pins.length ? Math.max(...pins) : rows.length, 1, 16);
+  return {
+    key: "generic",
+    definition: {
+      key: "generic",
+      manufacturer: "",
+      family: "Unspecified connector",
+      style: "generic mating face",
+      pitch: "verify",
+      rows: 1
+    },
+    name: cleanConnectorName(firstFilled(rows, `${prefix}LegName`) || firstFilled(rows, `${prefix}HousingType`) || `${side.toUpperCase()} CONNECTOR`),
+    type: firstFilled(rows, `${prefix}HousingType`) || "Unspecified connector",
+    positions,
+    requestedPositions: positions,
+    housingPart: firstFilled(rows, `${prefix}HousingPart`) || "VERIFY",
+    engineeringPart: "",
+    contactPart: firstFilled(rows, `${prefix}PinPart`) || "VERIFY",
+    contactDescription: "Verify against the connector manufacturer datasheet.",
+    toolPart: firstFilled(rows, "toolUsed") || "VERIFY",
+    gauge: Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]),
+    powerpoleParts: [],
+    warnings: [`${side.toUpperCase()} connector was not recognized; its face is shown generically.`],
+    recognized: false,
+    side
+  };
+}
+
+function buildDatasheetActivePinMap(wires, side) {
+  return new Map(wires.map((wire) => [
+    side === "left" ? wire.fromPin : wire.toPin,
+    { stroke: wire.stroke, colorName: wire.colorName }
+  ]));
+}
+
+function datasheetConnectorGeometry(connector, side) {
+  const centerX = side === "left" ? 220 : 1380;
+  const top = 154;
+  if (connector.key === "powerpole1545") {
+    const columns = Math.min(4, connector.positions);
+    const rows = Math.ceil(connector.positions / columns);
+    const moduleWidth = 34;
+    const moduleHeight = 46;
+    const gap = 5;
+    const width = columns * moduleWidth + Math.max(0, columns - 1) * gap;
+    const height = rows * moduleHeight + Math.max(0, rows - 1) * gap;
+    return { centerX, x: centerX - width / 2, y: top + 34, width, height, columns, rows, moduleWidth, moduleHeight, gap };
+  }
+  const dual = connector.definition.rows === 2;
+  const physicalRows = dual ? Math.ceil(connector.positions / 2) : connector.positions;
+  const width = dual ? 122 : 96;
+  const height = dual
+    ? clamp(physicalRows * 31 + 50, 116, 298)
+    : clamp(physicalRows * 20 + 42, 100, 282);
+  return { centerX, x: centerX - width / 2, y: top + 30, width, height, dual, physicalRows };
+}
+
+function datasheetConnectorPinPoint(connector, pin, side) {
+  const geometry = datasheetConnectorGeometry(connector, side);
+  const numeric = clamp(numericPin(pin), 1, connector.positions);
+  if (connector.key === "powerpole1545") {
+    const index = numeric - 1;
+    const column = index % geometry.columns;
+    const row = Math.floor(index / geometry.columns);
+    return {
+      x: geometry.x + column * (geometry.moduleWidth + geometry.gap) + geometry.moduleWidth / 2,
+      y: geometry.y + row * (geometry.moduleHeight + geometry.gap) + geometry.moduleHeight / 2
+    };
+  }
+  const rowIndex = geometry.dual ? Math.floor((numeric - 1) / 2) : numeric - 1;
+  const columnIndex = geometry.dual ? (numeric - 1) % 2 : 0;
+  const rowGap = (geometry.height - 42) / Math.max(1, geometry.physicalRows - 1);
+  return {
+    x: geometry.dual
+      ? geometry.x + 35 + columnIndex * (geometry.width - 70)
+      : geometry.centerX,
+    y: geometry.y + 21 + rowIndex * rowGap
+  };
+}
+
+function buildDatasheetConnectorFaceSvg(connector, side) {
+  const geometry = datasheetConnectorGeometry(connector, side);
+  const heading = `${connector.definition.manufacturer} ${connector.definition.family}`.trim();
+  const partLabel = connector.engineeringPart
+    ? `${connector.housingPart} / ${connector.engineeringPart}`
+    : connector.key === "powerpole1545"
+      ? "1327 COLOR HOUSING SERIES"
+      : connector.housingPart;
+  const output = [
+    `<g aria-label="${escapeXml(heading)} ${connector.positions} position mating face">`,
+    `<text class="ds-connector-name" x="${geometry.centerX}" y="122">${escapeXml(connector.name)}</text>`,
+    `<text class="ds-connector-part" x="${geometry.centerX}" y="141">${escapeXml(shortLabel(partLabel, 40))}</text>`,
+    `<text class="ds-connector-detail" x="${geometry.centerX}" y="158">${escapeXml(`${heading} | ${connector.positions} POS | ${connector.definition.pitch}`)}</text>`
+  ];
+  if (connector.key === "powerpole1545") {
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const index = pin - 1;
+      const column = index % geometry.columns;
+      const row = Math.floor(index / geometry.columns);
+      const x = geometry.x + column * (geometry.moduleWidth + geometry.gap);
+      const y = geometry.y + row * (geometry.moduleHeight + geometry.gap);
+      const active = connector.activePins.get(String(pin));
+      const fill = active ? datasheetHousingFill(active.colorName) : "#6d7578";
+      const textFill = isDarkDatasheetColor(active?.colorName) ? "#ffffff" : "#000000";
+      output.push(`
+        <path class="powerpole-module" d="M ${x + 5} ${y} H ${x + geometry.moduleWidth - 5} L ${x + geometry.moduleWidth} ${y + 6} V ${y + geometry.moduleHeight - 6} L ${x + geometry.moduleWidth - 5} ${y + geometry.moduleHeight} H ${x + 5} L ${x} ${y + geometry.moduleHeight - 6} V ${y + 6} Z" fill="${fill}" />
+        <rect class="powerpole-opening" x="${x + 6}" y="${y + 8}" width="${geometry.moduleWidth - 12}" height="18" rx="3" />
+        <path class="powerpole-contact" d="M ${x + 9} ${y + 22} H ${x + geometry.moduleWidth - 9} L ${x + geometry.moduleWidth - 12} ${y + 16} H ${x + 12} Z" />
+        <text class="ds-cavity-number" x="${x + geometry.moduleWidth / 2}" y="${y + geometry.moduleHeight - 8}" fill="${textFill}">${pin}</text>`);
+    }
+  } else {
+    const bodyClass = connector.key === "miniFitJr" ? "minifit-body" : "microfit-body";
+    output.push(`<rect class="${bodyClass}" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="9" />`);
+    if (connector.key === "microFitFront") {
+      output.push(`<path class="microfit-lock" d="M ${geometry.x + 24} ${geometry.y} L ${geometry.x + 36} ${geometry.y - 18} H ${geometry.x + geometry.width - 20} L ${geometry.x + geometry.width - 10} ${geometry.y} Z" />`);
+    } else if (connector.key === "microFitSide") {
+      const latchX = side === "left" ? geometry.x - 20 : geometry.x + geometry.width;
+      output.push(`<rect class="microfit-lock" x="${latchX}" y="${geometry.y + 22}" width="20" height="${Math.min(72, geometry.height - 44)}" rx="4" />`);
+    } else if (connector.key === "miniFitJr") {
+      output.push(`<path class="minifit-latch" d="M ${geometry.centerX - 22} ${geometry.y} L ${geometry.centerX - 12} ${geometry.y - 20} H ${geometry.centerX + 25} L ${geometry.centerX + 34} ${geometry.y} Z" />`);
+    }
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      output.push(`
+        <rect class="ds-cavity" x="${point.x - 15}" y="${point.y - 9}" width="30" height="18" rx="4" stroke="${active?.stroke || "#9ca3a7"}" stroke-width="${active ? 3.5 : 1.3}" />
+        <rect class="ds-cavity-hole" x="${point.x - 6}" y="${point.y - 4}" width="12" height="8" rx="2" />
+        <text class="ds-cavity-number" x="${point.x}" y="${point.y + 4}">${pin}</text>`);
+    }
+    output.push(`<path class="circuit-one-marker" d="M ${geometry.x + 8} ${geometry.y + 8} L ${geometry.x + 18} ${geometry.y + 8} L ${geometry.x + 8} ${geometry.y + 18} Z" />`);
+  }
+  output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">MATING FACE - CIRCUIT 1 MARKED</text>`);
+  output.push("</g>");
+  return output.join("");
+}
+
+function datasheetHousingFill(colorName) {
+  const color = normalizeColorName(colorName);
+  if (color === "RED") return "#d62828";
+  if (color === "BLACK") return "#151719";
+  if (color === "GREEN") return "#198754";
+  if (color === "WHITE") return "#f1f1ec";
+  if (color === "BLUE") return "#1769aa";
+  if (color === "YELLOW") return "#f0c419";
+  if (color === "ORANGE") return "#ef7f1a";
+  if (color === "BROWN") return "#74452a";
+  if (color === "PINK") return "#e88aad";
+  if (color === "VIOLET") return "#6f42c1";
+  return "#858b8f";
+}
+
+function isDarkDatasheetColor(colorName) {
+  const color = normalizeColorName(colorName);
+  return ["BLACK", "BLUE", "BROWN", "VIOLET"].includes(color);
+}
+
+function buildDatasheetConnectorHarnessSvg(result, model) {
+  const wireSvg = model.wires.map((wire) => {
+    const leftPoint = datasheetConnectorPinPoint(model.left, wire.fromPin, "left");
+    const rightPoint = datasheetConnectorPinPoint(model.right, wire.toPin, "right");
+    return `
+      <path class="ds-wire" d="M ${leftPoint.x} ${leftPoint.y} L 396 ${leftPoint.y} L 438 ${wire.laneY} L 1162 ${wire.laneY} L 1204 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${wire.stroke}" />
+      <circle class="ds-terminal" cx="${leftPoint.x}" cy="${leftPoint.y}" r="4.5" />
+      <circle class="ds-terminal" cx="${rightPoint.x}" cy="${rightPoint.y}" r="4.5" />
+      <text class="ds-wire-label" x="800" y="${wire.laneY - 5}">${escapeXml(`${wire.name} | ${wire.colorName} | ${wire.awg || "?"} AWG`)}</text>`;
+  }).join("");
+  const firstHalf = model.wires.slice(0, 8);
+  const secondHalf = model.wires.slice(8, 16);
+  const tableRows = (wires) => wires.map((wire) => [
+    wire.fromPin,
+    wire.name,
+    wire.colorName,
+    wire.awg || model.gauge || "",
+    formatLengthInches(wire.length || model.length),
+    wire.toPin
+  ]);
+  const parts = buildDatasheetPartsPanelLines(model);
+  const warnings = model.warnings.slice(0, 3).map((warning, index) =>
+    `<text class="ds-warning" x="800" y="${111 + index * 15}">${escapeXml(shortLabel(warning, 150))}</text>`
+  ).join("");
+  const partLines = parts.map((line, index) =>
+    `<text class="${line.warning ? "ds-part-warning" : "ds-part-line"}" x="1226" y="${548 + index * 18}">${escapeXml(shortLabel(line.text, 50))}</text>`
+  ).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} datasheet connector drawing">
+  <defs>
+    ${buildBraidPatternDefs()}
+    <style>
+      .page { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 2; }
+      .title { fill: #000000; font: 900 31px Aptos, Segoe UI, sans-serif; text-anchor: middle; letter-spacing: 0.8px; }
+      .subtitle { fill: #222222; font: 900 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; text-decoration: underline; }
+      .ds-warning { fill: #b42318; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .ds-connector-name { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .ds-connector-part { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .ds-connector-detail { fill: #3d4448; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .microfit-body { fill: #25292c; stroke: #050505; stroke-width: 3; }
+      .minifit-body { fill: #ded9c9; stroke: #111111; stroke-width: 3; }
+      .microfit-lock { fill: #353a3d; stroke: #050505; stroke-width: 2.5; }
+      .minifit-latch { fill: #c8c1ad; stroke: #111111; stroke-width: 2.5; }
+      .ds-cavity { fill: #090a0a; }
+      .ds-cavity-hole { fill: #313638; stroke: #d9dddf; stroke-width: 0.8; }
+      .ds-cavity-number { fill: #ffffff; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .circuit-one-marker { fill: #f0f2f3; stroke: #050505; stroke-width: 1; }
+      .powerpole-module { stroke: #111111; stroke-width: 2; }
+      .powerpole-opening { fill: #101314; stroke: #000000; stroke-width: 1.5; }
+      .powerpole-contact { fill: #c7cccf; stroke: #f4f5f5; stroke-width: 1; }
+      .ds-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+      .ds-terminal { fill: #ffffff; stroke: #000000; stroke-width: 1.8; }
+      .ds-wire-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 1.3; }
+      .table-grid { stroke: #000000; stroke-width: 0.9; }
+      .table-title { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #000000; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #000000; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .ds-parts-box { fill: #fffdf5; stroke: #000000; stroke-width: 1.5; }
+      .ds-parts-title { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; }
+      .ds-part-line { fill: #111111; font: 800 10px Aptos, Segoe UI, sans-serif; }
+      .ds-part-warning { fill: #b42318; font: 900 10px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #1f2930; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    </style>
+  </defs>
+  <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="10" y="10" width="1580" height="780" />
+  <text class="title" x="800" y="48">${escapeXml(model.cableName)}</text>
+  <text class="subtitle" x="800" y="78">${escapeXml(model.description)}</text>
+  <text class="ds-connector-detail" x="800" y="98">DATASHEET-AWARE CONNECTOR MATING FACES | EXPANDABLE BRAID + HEAT SHRINK</text>
+  ${warnings}
+
+  ${buildHorizontalProtectionSvg({
+    x1: 454,
+    x2: 1146,
+    top: model.wires[0].laneY - 16,
+    bottom: model.wires[model.wires.length - 1].laneY + 16,
+    labelY: model.wires[0].laneY - 25,
+    endLabelY: model.wires[model.wires.length - 1].laneY + 37,
+    bandWidth: 26
+  })}
+  ${buildDatasheetConnectorFaceSvg(model.left, "left")}
+  ${buildDatasheetConnectorFaceSvg(model.right, "right")}
+  ${wireSvg}
+
+  ${buildSvgTable({
+    x: 30,
+    y: 510,
+    width: 575,
+    title: secondHalf.length ? "WIRING TABLE 1-8" : "WIRING TABLE",
+    headers: ["LEFT", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT"],
+    rows: tableRows(firstHalf),
+    colWidths: [60, 180, 90, 55, 95, 60],
+    rowHeight: 22,
+    titleHeight: 26,
+    headerHeight: 26
+  })}
+  ${secondHalf.length ? buildSvgTable({
+    x: 620,
+    y: 510,
+    width: 575,
+    title: `WIRING TABLE 9-${model.wires.length}`,
+    headers: ["LEFT", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT"],
+    rows: tableRows(secondHalf),
+    colWidths: [60, 180, 90, 55, 95, 60],
+    rowHeight: 22,
+    titleHeight: 26,
+    headerHeight: 26
+  }) : ""}
+
+  <rect class="ds-parts-box" x="1210" y="510" width="350" height="252" />
+  <text class="ds-parts-title" x="1226" y="532">DATASHEET PARTS / CRIMP TOOLS</text>
+  ${partLines}
+</svg>`;
+}
+
+function buildDatasheetPartsPanelLines(model) {
+  const lines = [];
+  const grouped = [];
+  [
+    ["LEFT", model.left],
+    ["RIGHT", model.right]
+  ].forEach(([label, connector]) => {
+    const signature = [
+      connector.key,
+      connector.positions,
+      connector.housingPart,
+      connector.contactPart,
+      connector.toolPart
+    ].join("|");
+    const existing = grouped.find((item) => item.signature === signature);
+    if (existing) {
+      existing.labels.push(label);
+    } else {
+      grouped.push({ signature, labels: [label], connector });
+    }
+  });
+  grouped.forEach(({ labels, connector }) => {
+    const label = labels.join("/");
+    lines.push({ text: `${label}: ${connector.definition.family} ${connector.positions} POS` });
+    if (connector.key === "powerpole1545" && connector.powerpoleParts.length) {
+      for (let index = 0; index < connector.powerpoleParts.length; index += 2) {
+        const parts = connector.powerpoleParts.slice(index, index + 2)
+          .map((item) => `${item.color} ${item.part} x${item.quantity}`)
+          .join(" | ");
+        lines.push({ text: `Housing: ${parts}` });
+      }
+    } else {
+      lines.push({ text: `Housing: ${connector.housingPart}` });
+    }
+    lines.push({ text: `Contact: ${connector.contactPart}` });
+    lines.push({ text: `Tool: ${connector.toolPart}` });
+  });
+  model.warnings.slice(0, 3).forEach((warning) => lines.push({ text: `WARNING: ${warning}`, warning: true }));
+  return lines.slice(0, 11);
 }
 
 function buildKiCadHarnessModel(sheet) {
@@ -4025,6 +4696,10 @@ function buildSheetDrawioXml(result) {
   if (isMolexUartJetsonSheet(result.sheetHarness.rows)) {
     return buildMolexUartJetsonDrawioXml(result);
   }
+  const datasheetModel = buildDatasheetConnectorHarnessModel(result.sheetHarness);
+  if (datasheetModel) {
+    return buildDatasheetConnectorHarnessDrawioXml(result, datasheetModel);
+  }
   const kicadModel = buildKiCadHarnessModel(result.sheetHarness);
   if (kicadModel) {
     return buildKiCadHarnessDrawioXml(result, kicadModel);
@@ -4157,6 +4832,174 @@ function buildMolexUartJetsonDrawioXml(result) {
     </mxGraphModel>
   </diagram>
 </mxfile>`;
+}
+
+function buildDatasheetConnectorHarnessDrawioXml(result, model) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
+  addVertex("title", model.cableName, 480, 18, 640, 38, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("subtitle", model.description, 460, 58, 680, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=18;fontStyle=5;fontColor=#000000;align=center;");
+  addVertex("datasheet_label", "DATASHEET-AWARE CONNECTOR MATING FACES | EXPANDABLE BRAID + HEAT SHRINK", 430, 88, 740, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#3d4448;align=center;");
+  if (model.warnings.length) {
+    addVertex(
+      "warnings",
+      model.warnings.slice(0, 3).map((warning) => escapeHtml(shortLabel(warning, 145))).join("<br>"),
+      340,
+      108,
+      920,
+      42,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#b42318;align=center;"
+    );
+  }
+  addHorizontalDrawioProtection(addVertex, {
+    id: "datasheet_protection",
+    x1: 454,
+    x2: 1146,
+    top: model.wires[0].laneY - 16,
+    bottom: model.wires[model.wires.length - 1].laneY + 16,
+    bandWidth: 26
+  });
+  addDatasheetConnectorDrawioFace(addVertex, model.left, "left");
+  addDatasheetConnectorDrawioFace(addVertex, model.right, "right");
+  model.wires.forEach((wire, index) => {
+    const leftPoint = datasheetConnectorPinPoint(model.left, wire.fromPin, "left");
+    const rightPoint = datasheetConnectorPinPoint(model.right, wire.toPin, "right");
+    addEdge(
+      `datasheet_wire_${index + 1}`,
+      `${escapeHtml(wire.name)} | ${escapeHtml(wire.colorName)} | ${escapeHtml(wire.awg || "?")} AWG`,
+      leftPoint.x,
+      leftPoint.y,
+      rightPoint.x,
+      rightPoint.y,
+      `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=10;`
+    );
+  });
+  const wiringRows = model.wires.map((wire) => [
+    wire.fromPin,
+    wire.name,
+    wire.colorName,
+    wire.awg || model.gauge || "",
+    formatLengthInches(wire.length || model.length),
+    wire.toPin
+  ]);
+  addVertex(
+    "datasheet_wiring_table",
+    buildKiCadDrawioTableText("WIRING TABLE", ["LEFT", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT"], wiringRows),
+    30,
+    510,
+    1165,
+    252,
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;"
+  );
+  const parts = buildDatasheetPartsPanelLines(model)
+    .map((line) => `${line.warning ? "<font color=\"#b42318\"><b>" : ""}${escapeHtml(line.text)}${line.warning ? "</b></font>" : ""}`)
+    .join("<br>");
+  addVertex(
+    "datasheet_parts",
+    `<b>DATASHEET PARTS / CRIMP TOOLS</b><br>${parts}`,
+    1210,
+    510,
+    350,
+    252,
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#000000;strokeWidth=2;fontSize=10;align=left;spacingLeft=12;spacingTop=10;"
+  );
+  const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
+  const geometry = datasheetConnectorGeometry(connector, side);
+  const heading = `${connector.name}<br><b>${connector.housingPart}</b><br>${connector.definition.family} | ${connector.positions} POS | ${connector.definition.pitch}`;
+  addVertex(
+    `${side}_datasheet_heading`,
+    heading,
+    geometry.centerX - 125,
+    112,
+    250,
+    58,
+    "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;"
+  );
+  if (connector.key === "powerpole1545") {
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const index = pin - 1;
+      const column = index % geometry.columns;
+      const row = Math.floor(index / geometry.columns);
+      const x = geometry.x + column * (geometry.moduleWidth + geometry.gap);
+      const y = geometry.y + row * (geometry.moduleHeight + geometry.gap);
+      const active = connector.activePins.get(String(pin));
+      const fill = active ? datasheetHousingFill(active.colorName) : "#858b8f";
+      const fontColor = isDarkDatasheetColor(active?.colorName) ? "#ffffff" : "#000000";
+      addVertex(
+        `${side}_powerpole_${pin}`,
+        String(pin),
+        x,
+        y,
+        geometry.moduleWidth,
+        geometry.moduleHeight,
+        `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=#111111;strokeWidth=2;fontColor=${fontColor};fontStyle=1;fontSize=10;`
+      );
+      addVertex(
+        `${side}_powerpole_opening_${pin}`,
+        "",
+        x + 6,
+        y + 8,
+        geometry.moduleWidth - 12,
+        18,
+        "rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#101314;strokeColor=#000000;strokeWidth=1;"
+      );
+    }
+  } else {
+    const fill = connector.key === "miniFitJr" ? "#ded9c9" : connector.key === "generic" ? "#f4f4f4" : "#25292c";
+    addVertex(
+      `${side}_datasheet_body`,
+      "",
+      geometry.x,
+      geometry.y,
+      geometry.width,
+      geometry.height,
+      `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${fill};strokeColor=#050505;strokeWidth=3;`
+    );
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      addVertex(
+        `${side}_datasheet_cavity_${pin}`,
+        String(pin),
+        point.x - 15,
+        point.y - 9,
+        30,
+        18,
+        `rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#090a0a;strokeColor=${active?.stroke || "#9ca3a7"};strokeWidth=${active ? 3 : 1};fontColor=#ffffff;fontStyle=1;fontSize=8;`
+      );
+    }
+  }
+  addVertex(
+    `${side}_datasheet_view`,
+    "MATING FACE - CIRCUIT 1 MARKED",
+    geometry.centerX - 120,
+    geometry.y + geometry.height + 8,
+    240,
+    22,
+    "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#3d4448;align=center;"
+  );
 }
 
 function buildKiCadHarnessDrawioXml(result, model) {
