@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.7 - 2026-06-18
+
+- Added automatic expandable braided sleeving (expando) around conductor bundles on every cable drawing.
+- Added short heat-shrink collars that overlap and retain both ends of each sleeve while leaving connector leads visible.
+- Kept wire colors, wire names, pin labels, and dimensions above the translucent braid for drawing readability.
+- Added matching sleeving and heat-shrink shapes to editable Draw.io exports, including CAN trunk and branch protection.
+
 ## v1.6.6 - 2026-06-17
 
 - Changed uploaded sketch handling from CAN-first to multi-cable-first.

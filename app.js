@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.6";
+const APP_VERSION = "1.6.7";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1031,6 +1031,140 @@ function sheetColorToStroke(color) {
   return "#4a5560";
 }
 
+function buildBraidPatternDefs() {
+  return `
+    <pattern id="braidPattern" patternUnits="userSpaceOnUse" width="24" height="18">
+      <path d="M -6 18 L 6 0 M 6 18 L 18 0 M 18 18 L 30 0" stroke="#22282c" stroke-width="2.2" opacity="0.58" />
+      <path d="M -6 0 L 6 18 M 6 0 L 18 18 M 18 0 L 30 18" stroke="#22282c" stroke-width="2.2" opacity="0.58" />
+    </pattern>`;
+}
+
+function buildHorizontalProtectionSvg({
+  x1,
+  x2,
+  top,
+  bottom,
+  label = "EXPANDABLE BRAIDED SLEEVING (EXPANDO)",
+  labelY = top - 10,
+  endLabelY = bottom + 18,
+  bandWidth = 30
+}) {
+  const width = Math.max(1, x2 - x1);
+  const height = Math.max(1, bottom - top);
+  const radius = Math.min(18, height / 2);
+  const leftBandX = x1 - bandWidth / 2;
+  const rightBandX = x2 - bandWidth / 2;
+  return `
+  <g class="cable-protection">
+    <rect x="${x1}" y="${top}" width="${width}" height="${height}" rx="${radius}" fill="#d7dde0" fill-opacity="0.46" stroke="#59636b" stroke-width="2.2" />
+    <rect x="${x1}" y="${top}" width="${width}" height="${height}" rx="${radius}" fill="url(#braidPattern)" opacity="0.58" />
+    <rect x="${leftBandX}" y="${top - 4}" width="${bandWidth}" height="${height + 8}" rx="7" fill="#151515" opacity="0.9" />
+    <rect x="${rightBandX}" y="${top - 4}" width="${bandWidth}" height="${height + 8}" rx="7" fill="#151515" opacity="0.9" />
+    ${label ? `<text class="protection-label" x="${(x1 + x2) / 2}" y="${labelY}">${escapeXml(label)}</text>` : ""}
+    ${Number.isFinite(endLabelY) ? `
+      <text class="protection-end-label" x="${x1}" y="${endLabelY}">HEAT SHRINK</text>
+      <text class="protection-end-label" x="${x2}" y="${endLabelY}">HEAT SHRINK</text>` : ""}
+  </g>`;
+}
+
+function buildVerticalProtectionSvg({
+  left,
+  right,
+  y1,
+  y2,
+  bandHeight = 24
+}) {
+  const width = Math.max(1, right - left);
+  const height = Math.max(1, y2 - y1);
+  const radius = Math.min(16, width / 2);
+  return `
+  <g class="cable-protection">
+    <rect x="${left}" y="${y1}" width="${width}" height="${height}" rx="${radius}" fill="#d7dde0" fill-opacity="0.46" stroke="#59636b" stroke-width="2" />
+    <rect x="${left}" y="${y1}" width="${width}" height="${height}" rx="${radius}" fill="url(#braidPattern)" opacity="0.58" />
+    <rect x="${left - 4}" y="${y1 - bandHeight / 2}" width="${width + 8}" height="${bandHeight}" rx="6" fill="#151515" opacity="0.9" />
+    <rect x="${left - 4}" y="${y2 - bandHeight / 2}" width="${width + 8}" height="${bandHeight}" rx="6" fill="#151515" opacity="0.9" />
+  </g>`;
+}
+
+function addHorizontalDrawioProtection(addVertex, {
+  id,
+  x1,
+  x2,
+  top,
+  bottom,
+  label = "EXPANDABLE BRAIDED SLEEVING (EXPANDO)",
+  bandWidth = 30
+}) {
+  const width = Math.max(1, x2 - x1);
+  const height = Math.max(1, bottom - top);
+  addVertex(
+    `${id}_sleeve`,
+    escapeHtml(label),
+    x1,
+    top,
+    width,
+    height,
+    "rounded=1;arcSize=24;whiteSpace=wrap;html=1;fillColor=#d7dde0;opacity=48;strokeColor=#59636b;strokeWidth=2;dashed=1;dashPattern=8 5;fontStyle=1;fontSize=11;fontColor=#1f2930;verticalAlign=top;spacingTop=4;"
+  );
+  addVertex(
+    `${id}_heat_left`,
+    "",
+    x1 - bandWidth / 2,
+    top - 4,
+    bandWidth,
+    height + 8,
+    "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#151515;opacity=90;strokeColor=#000000;strokeWidth=1;"
+  );
+  addVertex(
+    `${id}_heat_right`,
+    "",
+    x2 - bandWidth / 2,
+    top - 4,
+    bandWidth,
+    height + 8,
+    "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#151515;opacity=90;strokeColor=#000000;strokeWidth=1;"
+  );
+}
+
+function addVerticalDrawioProtection(addVertex, {
+  id,
+  left,
+  right,
+  y1,
+  y2,
+  bandHeight = 24
+}) {
+  const width = Math.max(1, right - left);
+  const height = Math.max(1, y2 - y1);
+  addVertex(
+    `${id}_sleeve`,
+    "",
+    left,
+    y1,
+    width,
+    height,
+    "rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#d7dde0;opacity=48;strokeColor=#59636b;strokeWidth=2;dashed=1;dashPattern=8 5;"
+  );
+  addVertex(
+    `${id}_heat_top`,
+    "",
+    left - 4,
+    y1 - bandHeight / 2,
+    width + 8,
+    bandHeight,
+    "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#151515;opacity=90;strokeColor=#000000;strokeWidth=1;"
+  );
+  addVertex(
+    `${id}_heat_bottom`,
+    "",
+    left - 4,
+    y2 - bandHeight / 2,
+    width + 8,
+    bandHeight,
+    "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#151515;opacity=90;strokeColor=#000000;strokeWidth=1;"
+  );
+}
+
 function buildInternalModel(wireSegments, connectors, findings, width, height) {
   const rightConnectors = connectors.filter((connector) => connector.side === "right");
   const leftConnectors = connectors.filter((connector) => connector.side === "left");
@@ -1105,10 +1239,18 @@ function buildSchematicSvg(result) {
     `;
   }).join("");
   const resistor = buildResistorPath(1390, 310, 365, 13);
+  const branchProtection = branchXs.map((x) => buildVerticalProtectionSvg({
+    left: x - 8,
+    right: x + 42,
+    y1: 446,
+    y2: connectorTop - 12,
+    bandHeight: 20
+  })).join("");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${title}">
   <defs>
+    ${buildBraidPatternDefs()}
     <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
     </marker>
@@ -1131,6 +1273,8 @@ function buildSchematicSvg(result) {
       .resistor { fill: none; stroke: #000000; stroke-width: 5; stroke-linejoin: bevel; }
       .term-text { fill: #000000; font: 500 17px Aptos, Segoe UI, sans-serif; }
       .note { fill: #333333; font: 700 13px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #1f2930; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
@@ -1146,6 +1290,16 @@ function buildSchematicSvg(result) {
   <text class="connector-pin" x="127.5" y="313">CAN-H</text>
   <text class="connector-pin" x="127.5" y="368">CAN-L</text>
   <text class="connector-pin" x="127.5" y="407">GND</text>
+
+  ${buildHorizontalProtectionSvg({
+    x1: trunkStart + 28,
+    x2: gndEnd - 18,
+    top: 286,
+    bottom: 444,
+    labelY: 276,
+    endLabelY: 464
+  })}
+  ${branchProtection}
 
   <line class="wire-line" x1="${trunkStart}" y1="310" x2="${trunkEnd}" y2="310" stroke="#ffd400" />
   <line class="wire-line" x1="${trunkStart}" y1="365" x2="${trunkEnd}" y2="365" stroke="#008a13" />
@@ -1185,6 +1339,8 @@ function buildGenericImageHarnessSvg(result) {
   const rightConnectorX = 1325;
   const connectorHeight = Math.max(150, (wires.length - 1) * rowSpacing + 105);
   const connectorY = Math.max(145, firstWireY - 52);
+  const protectionTop = firstWireY - 28;
+  const protectionBottom = firstWireY + (wires.length - 1) * rowSpacing + 28;
   const wireRows = wires.map((wire, index) => {
     const y = firstWireY + index * rowSpacing;
     const stroke = wire.stroke || sheetColorToStroke(wire.colorName);
@@ -1217,6 +1373,7 @@ function buildGenericImageHarnessSvg(result) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${title}">
   <defs>
+    ${buildBraidPatternDefs()}
     <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
     </marker>
@@ -1245,6 +1402,8 @@ function buildGenericImageHarnessSvg(result) {
       .table-text { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .title-block-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; }
       .title-block-text { fill: #000000; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
@@ -1264,6 +1423,15 @@ function buildGenericImageHarnessSvg(result) {
 
   <path class="dim-line" d="M ${leftX - 20} 145 L ${rightX + 20} 145" marker-start="url(#arrow)" marker-end="url(#arrow)" />
   <text class="dim-label" x="${(leftX + rightX) / 2}" y="128">OVERALL LENGTH - VERIFY FROM SOURCE DRAWING</text>
+
+  ${buildHorizontalProtectionSvg({
+    x1: leftX + 28,
+    x2: rightX - 28,
+    top: protectionTop,
+    bottom: protectionBottom,
+    labelY: protectionTop - 10,
+    endLabelY: protectionBottom + 18
+  })}
 
   ${wireRows}
 
@@ -1319,6 +1487,8 @@ function buildSheetHarnessSvg(result) {
   const startY = 230;
   const leftX = 270;
   const rightX = 1185;
+  const protectionTop = startY - 28;
+  const protectionBottom = startY + (rows.length - 1) * rowSpacing + 28;
   const rowLines = rows.map((row, index) => {
     const y = startY + index * rowSpacing;
     const color = sheetColorToStroke(row.color);
@@ -1349,6 +1519,7 @@ function buildSheetHarnessSvg(result) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(sheet.title)}">
   <defs>
+    ${buildBraidPatternDefs()}
     <style>
       .sheet { fill: #ffffff; }
       .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; }
@@ -1363,6 +1534,8 @@ function buildSheetHarnessSvg(result) {
       .sheet-note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
       .sheet-note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
       .meta { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
@@ -1373,6 +1546,14 @@ function buildSheetHarnessSvg(result) {
   <text class="connector-title" x="148" y="210">${leftTitle}</text>
   <rect class="connector-box" x="1220" y="178" width="300" height="455" />
   <text class="connector-title" x="1370" y="210">${rightTitle}</text>
+  ${buildHorizontalProtectionSvg({
+    x1: leftX + 34,
+    x2: rightX - 34,
+    top: protectionTop,
+    bottom: protectionBottom,
+    labelY: protectionTop - 10,
+    endLabelY: protectionBottom + 18
+  })}
   ${rowLines}
   <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
   ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
@@ -1618,6 +1799,8 @@ function buildKiCadHarnessSvg(result, model) {
   const leftFace = buildKiCadConnectorFaceSvg(170, model.wires, model.leftConnector, "left");
   const rightFace = buildKiCadConnectorFaceSvg(1300, model.wires, model.rightConnector, "right");
   const wireSvg = model.wires.map((wire) => buildKiCadWireSvg(wire)).join("");
+  const protectionTop = model.wires[0].y - 30;
+  const protectionBottom = model.wires[model.wires.length - 1].y + 30;
   const wiringRows = model.wires.map((wire) => [
     wire.fromPin,
     wire.name,
@@ -1634,6 +1817,7 @@ function buildKiCadHarnessSvg(result, model) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} KiCad style harness drawing">
   <defs>
+    ${buildBraidPatternDefs()}
     <marker id="kicadArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
     </marker>
@@ -1673,6 +1857,8 @@ function buildKiCadHarnessSvg(result, model) {
       .title-block-label { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; }
       .title-block-text { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .title-block-small { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
@@ -1699,6 +1885,14 @@ function buildKiCadHarnessSvg(result, model) {
   <text class="dim-text" x="796" y="132">${escapeXml(formatLengthInches(model.length))} in +/-0.25</text>
   <text class="dim-text" x="796" y="154" dy="22">OVERALL LENGTH</text>
 
+  ${buildHorizontalProtectionSvg({
+    x1: 452,
+    x2: 1138,
+    top: protectionTop,
+    bottom: protectionBottom,
+    labelY: protectionTop - 10,
+    endLabelY: protectionBottom + 18
+  })}
   ${leftFace}
   ${rightFace}
   ${wireSvg}
@@ -1739,6 +1933,8 @@ function buildKiCadMultiGroupSvg(result, model) {
   const leftFace = buildKiCadMultiLeftFaceSvg(model);
   const rightFace = buildKiCadMaestroGridSvg(model);
   const wireSvg = model.wires.map((wire) => buildKiCadMultiWireSvg(wire)).join("");
+  const protectionTop = Math.min(...model.wires.map((wire) => wire.y)) - 24;
+  const protectionBottom = Math.max(...model.wires.map((wire) => wire.y)) + 24;
   const wiringRows = model.wires.map((wire) => [
     wire.row.leftLeg || "",
     wire.row.leftLegName || "",
@@ -1755,6 +1951,7 @@ function buildKiCadMultiGroupSvg(result, model) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} multi-row board harness drawing">
   <defs>
+    ${buildBraidPatternDefs()}
     <marker id="kicadArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
     </marker>
@@ -1794,6 +1991,8 @@ function buildKiCadMultiGroupSvg(result, model) {
       .title-block-label { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; }
       .title-block-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .title-block-small { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .protection-label { fill: #1f2930; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
@@ -1819,6 +2018,15 @@ function buildKiCadMultiGroupSvg(result, model) {
   <text class="dim-text" x="776" y="128">${escapeXml(formatLengthInches(model.length))} in +/-0.25</text>
   <text class="dim-text" x="776" y="166">OVERALL LENGTH</text>
 
+  ${buildHorizontalProtectionSvg({
+    x1: 416,
+    x2: 1112,
+    top: protectionTop,
+    bottom: protectionBottom,
+    labelY: protectionTop - 10,
+    endLabelY: protectionBottom + 17,
+    bandWidth: 28
+  })}
   ${leftFace}
   ${rightFace}
   ${wireSvg}
@@ -2242,9 +2450,7 @@ function buildBarrelPowerCableSvg(result) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${cableName}">
   <defs>
-    <pattern id="wrapPattern" patternUnits="userSpaceOnUse" width="14" height="14" patternTransform="rotate(35)">
-      <line x1="0" y1="0" x2="0" y2="14" stroke="#7c8790" stroke-width="2" opacity="0.65" />
-    </pattern>
+    ${buildBraidPatternDefs()}
     <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
     </marker>
@@ -2259,7 +2465,8 @@ function buildBarrelPowerCableSvg(result) {
       .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .small { fill: #222222; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .callout { fill: #000000; font: 800 13px Aptos, Segoe UI, sans-serif; }
-      .wrap-shell { fill: url(#wrapPattern); stroke: #4f5961; stroke-width: 3; opacity: 0.45; }
+      .wrap-shell { fill: #d7dde0; fill-opacity: 0.46; stroke: #4f5961; stroke-width: 3; }
+      .wrap-weave { fill: url(#braidPattern); opacity: 0.58; }
       .wrap-label { fill: #1f2930; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .heat-shrink { fill: #111111; opacity: 0.82; }
       .barrel-metal { fill: #f8f8f8; stroke: #000000; stroke-width: 4; }
@@ -2283,6 +2490,7 @@ function buildBarrelPowerCableSvg(result) {
   <text class="pin-text" x="126" y="408">Pin ${powerPin}</text>
 
   <rect class="wrap-shell" x="318" y="296" width="760" height="142" rx="54" />
+  <rect class="wrap-weave" x="318" y="296" width="760" height="142" rx="54" />
   <rect class="heat-shrink" x="318" y="292" width="24" height="150" rx="8" />
   <rect class="heat-shrink" x="1054" y="292" width="24" height="150" rx="8" />
   <text class="wrap-label" x="698" y="286">Expandable wire wrap sleeve around GND and +48V</text>
@@ -3580,6 +3788,8 @@ function buildGenericImageDrawioXml(result) {
   const rightX = 1235;
   const connectorHeight = Math.max(150, (wires.length - 1) * rowSpacing + 105);
   const connectorY = Math.max(145, firstWireY - 52);
+  const protectionTop = firstWireY - 28;
+  const protectionBottom = firstWireY + (wires.length - 1) * rowSpacing + 28;
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
   addVertex("border", "", 14, 14, 1572, 772, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
@@ -3590,6 +3800,13 @@ function buildGenericImageDrawioXml(result) {
   addVertex("left_connector", escapeHtml(harness.leftConnectorName), 105, connectorY, 170, connectorHeight, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=14;");
   addVertex("right_connector", escapeHtml(harness.rightConnectorName), 1325, connectorY, 170, connectorHeight, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontStyle=1;fontSize=14;");
   addEdge("overall_length", "OVERALL LENGTH - VERIFY FROM SOURCE DRAWING", leftX - 20, 145, rightX + 20, 145, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=13;");
+  addHorizontalDrawioProtection(addVertex, {
+    id: "main_protection",
+    x1: leftX + 28,
+    x2: rightX - 28,
+    top: protectionTop,
+    bottom: protectionBottom
+  });
   wires.forEach((wire, index) => {
     const y = firstWireY + index * rowSpacing;
     const stroke = wire.stroke || sheetColorToStroke(wire.colorName);
@@ -3645,12 +3862,21 @@ function buildSheetDrawioXml(result) {
   const leftX = 270;
   const rightX = 1185;
   const startY = 230;
+  const protectionTop = startY - 28;
+  const protectionBottom = startY + (rows.length - 1) * rowSpacing + 28;
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
   addVertex("title", sheet.title, 46, 28, 900, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
   addVertex("subtitle", sheet.subtitle, 46, 72, 720, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
   addVertex("left_connector", firstFilled(rows, "leftLegName") || firstFilled(rows, "leftLeg") || "LEFT LEG", 58, 178, 180, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
   addVertex("right_connector", firstFilled(rows, "rightLegName") || firstFilled(rows, "rightLeg") || "RIGHT LEG", 1220, 178, 300, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
+  addHorizontalDrawioProtection(addVertex, {
+    id: "main_protection",
+    x1: leftX + 34,
+    x2: rightX - 34,
+    top: protectionTop,
+    bottom: protectionBottom
+  });
   rows.forEach((row, index) => {
     const y = startY + index * rowSpacing;
     const stroke = sheetColorToStroke(row.color);
@@ -3692,6 +3918,13 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addVertex("left_heading", `LEFT CONNECTOR<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("right_heading", `RIGHT CONNECTOR<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;");
+  addHorizontalDrawioProtection(addVertex, {
+    id: "main_protection",
+    x1: 452,
+    x2: 1138,
+    top: model.wires[0].y - 30,
+    bottom: model.wires[model.wires.length - 1].y + 30
+  });
   addVertex("left_face", model.leftConnector.name, 170, Math.max(162, model.wires[0].y - 42), 88, model.wires[model.wires.length - 1].y - model.wires[0].y + 84, "rounded=1;whiteSpace=wrap;html=1;fillColor=#d7d7d7;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
   addVertex("right_face", model.rightConnector.name, 1300, Math.max(162, model.wires[0].y - 42), 88, model.wires[model.wires.length - 1].y - model.wires[0].y + 84, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
   model.wires.forEach((wire, index) => {
@@ -3749,6 +3982,14 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
   addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 365, 146, 1188, 146, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=14;");
   const firstY = model.groups[0]?.y ?? 205;
   const lastY = model.groups[model.groups.length - 1]?.y ?? firstY;
+  addHorizontalDrawioProtection(addVertex, {
+    id: "main_protection",
+    x1: 416,
+    x2: 1112,
+    top: Math.min(...model.wires.map((wire) => wire.y)) - 24,
+    bottom: Math.max(...model.wires.map((wire) => wire.y)) + 24,
+    bandWidth: 28
+  });
   addVertex("left_board", "ESC PCB", 155, firstY - 48, 118, lastY - firstY + 96, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
   addVertex("right_board", `${model.rightConnector.name}<br>1 2 3 rows`, 1250, firstY - 48, 164, lastY - firstY + 96, "rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontStyle=1;");
   model.groups.forEach((group) => {
@@ -3871,6 +4112,23 @@ function buildCanDrawioXml(result) {
   addEdge("dim_12", "12&quot;", 195, 178, 455, 178, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=16;");
   branchXs.slice(0, -1).forEach((x, index) => {
     addEdge(`dim_2_${index + 1}`, "2&quot;", x + 16, 224, branchXs[index + 1] + 16, 224, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontSize=14;");
+  });
+  addHorizontalDrawioProtection(addVertex, {
+    id: "trunk_protection",
+    x1: 223,
+    x2: 1332,
+    top: 286,
+    bottom: 444
+  });
+  branchXs.forEach((x, index) => {
+    addVerticalDrawioProtection(addVertex, {
+      id: `branch_${index + 1}_protection`,
+      left: x - 8,
+      right: x + 42,
+      y1: 446,
+      y2: 548,
+      bandHeight: 20
+    });
   });
   addEdge("trunk_can_h", "CAN-H", 195, 310, 1370, 310, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#ffd400;strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;");
   addEdge("trunk_can_l", "CAN-L", 195, 365, 1370, 365, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#008a13;strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;");
