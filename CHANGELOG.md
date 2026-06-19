@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.6.14 - 2026-06-19
+
+- Made the uploaded production sheet the universal harness definition instead of treating cable names such as W114 or W115 as product types.
+- Preserved rows that contain leg or pin data even when wire names, colors, gauges, lengths, housings, and contacts are still blank.
+- Added a template-driven fallback that draws arbitrary left/right endpoint groups, pin-to-pin conductors, branch/tap labels, and a separate expando/heat-shrink bundle for each left leg.
+- A blank 16-position pin-to-pin template now creates 16 editable wires labeled WIRE 1 through WIRE 16.
+- Made all right-side production headers explicit (`Right Pin Pos #`, `Right Housing Type`, `Right Housing Part #`, and `Right Pin P#`) while continuing to import the older shortened labels.
+- Restricted the Maestro multi-group layout to sheets with Maestro, servo-header, or ESC signal evidence so unrelated multi-leg harnesses use the universal renderer.
+- Kept datasheet-aware connector faces and manufacturing validation reusable by housing family and part number, independent of the cable name.
+
 ## v1.6.13 - 2026-06-19
 
 - Added a permanent minimum of eight editable Draw.io waypoints to every electrical wire in every drawing family.

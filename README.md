@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.13**
+Current release: **v1.6.14**
 
 ## Use The App
 
@@ -22,20 +22,23 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Accepts prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets through the Upload Excel button.
 - Accepts pasted tab-delimited rows copied from Excel, Google Sheets, or a text table through the Paste table button.
 - Preserves uploaded sheet headers and rows in the copy-only table.
+- Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
+- Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
+- Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
 - Generates a general cable drawing from uploaded sketches instead of assuming every image is a CAN harness.
 - Preserves branched hand-drawn electrical topology instead of flattening every sketch into a left-to-right cable.
 - Distinguishes orthogonal turns and T-junctions from unconnected wire crossings, and keeps segment dimensions with the applicable source pair.
 - Recognizes the power-board/I2C sketch pattern with TP1 GND, TP71 +5V, a two-position side-lock Micro-Fit J43 connector, and an ISO154X four-position Dupont header.
-- Uses the W114 production pinout for both photo and table imports: TP1 GND to pin 1, J43 pin 1 SDA to pin 2, J43 pin 2 SCL to pin 3, and TP71 5V to pin 4.
+- Recognizes the TP1/TP71/J43-to-ISO154X topology from its endpoint and pin data, regardless of the cable name.
 - Uses board/test-point symbols and actual connector-face layouts for sketch networks, with compact verification tables and matching editable Draw.io waypoints.
 - Applies expando and heat-shrink only to the bundled portions of branched sketch routes, leaving breakouts and crossed nets readable.
-- Recognizes W114 production tables as two separate physical cable legs to one Isolator 154X header instead of one four-conductor cable.
+- Recognizes that production topology as two separate physical cable legs to one Isolator 154X header instead of one four-conductor cable.
 - Draws the 22 inch TP1/TP71 soldered test-point leg separately from the 12 inch J43 two-position side-lock Micro-Fit leg, with independent expando and heat-shrink.
-- Uses the authoritative W114 table pinout: Isolator pin 1 GND, pin 2 SDA, pin 3 SCL, and pin 4 5V.
+- Uses the table-defined Isolator pinout: pin 1 GND, pin 2 SDA, pin 3 SCL, and pin 4 5V.
 - Uses the CAN bus template only when the sketch has CAN-specific evidence such as CAN-H/CAN-L, USB-CAN, JST branch notes, or 120 ohm termination.
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Automatically draws expandable braided sleeving around conductor bundles with heat-shrink collars at both ends on every cable drawing and Draw.io export.
-- Recognizes W115-style Molex connector pairs and draws the actual 43645-0200 Micro-Fit 3.0 two-circuit mating face plus the complete 90143-0040 C-Grid III 2-by-20 cavity grid, with connected cavities highlighted.
+- Recognizes the 43645-0200 to 90143-0040 Molex connector pair from its housing data and draws the actual Micro-Fit 3.0 two-circuit mating face plus the complete C-Grid III 2-by-20 cavity grid, with connected cavities highlighted.
 - Recognizes Molex Micro-Fit 3.0 front-lock 43645 housings from 2 through 12 circuits and side-lock 43025 housings from 2 through 16 even-numbered circuits.
 - Recognizes Molex Mini-Fit Jr. 5557 dual-row housings from 2 through 16 even-numbered circuits, including the dedicated 16 AWG and 24-18 AWG female terminal/tool selections.
 - Recognizes Anderson Powerpole PP15/45 modular assemblies through 16 poles, colors each housing from the wire color, and lists the related housing, contact, and crimp-tool part numbers.

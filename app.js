@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.13";
+const APP_VERSION = "1.6.14";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1413,10 +1413,10 @@ function getHarnessTableColumns() {
     { key: "branchRole", label: "Branch Role" },
     { key: "rightLeg", label: "Right Leg" },
     { key: "rightLegName", label: "Right Leg Name" },
-    { key: "rightPinPos", label: "Pin Pos #" },
-    { key: "rightHousingType", label: "Housing Type" },
-    { key: "rightHousingPart", label: "Housing Part #" },
-    { key: "rightPinPart", label: "Pin P#" },
+    { key: "rightPinPos", label: "Right Pin Pos #" },
+    { key: "rightHousingType", label: "Right Housing Type" },
+    { key: "rightHousingPart", label: "Right Housing Part #" },
+    { key: "rightPinPart", label: "Right Pin P#" },
     { key: "toolUsed", label: "Tool used" },
     { key: "comments", label: "Comments" }
   ];
@@ -1648,17 +1648,118 @@ function isDrawableSheetRow(row) {
     return false;
   }
   return Boolean(
+    row.leftLeg ||
+    row.leftPinPos ||
+    row.leftHousingType ||
+    row.leftHousingPart ||
     row.wireName ||
     row.color ||
     row.branchRole ||
     row.comments ||
     row.leftLegName ||
-    row.rightLegName
+    row.rightLeg ||
+    row.rightLegName ||
+    row.rightPinPos ||
+    row.rightHousingType ||
+    row.rightHousingPart
   );
 }
 
 function firstFilled(rows, key) {
   return rows.map((row) => row[key]).find((value) => String(value || "").trim()) || "";
+}
+
+function sheetEndpointKey(row, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const leg = String(row[`${prefix}Leg`] || "").trim();
+  if (leg) {
+    return `${side}:leg:${leg}`;
+  }
+  const identity = [
+    row[`${prefix}LegName`],
+    row[`${prefix}HousingPart`],
+    row[`${prefix}HousingType`]
+  ].map((value) => normalizeText(value)).filter(Boolean).join("|");
+  return `${side}:${identity || "main"}`;
+}
+
+function sheetEndpointLabel(rows, side, index) {
+  const prefix = side === "left" ? "left" : "right";
+  const leg = firstFilled(rows, `${prefix}Leg`);
+  const names = uniqueValues(rows.map((row) => row[`${prefix}LegName`]).filter(isMeaningfulSheetValue));
+  const types = uniqueValues(rows.map((row) => row[`${prefix}HousingType`]).filter(isMeaningfulSheetValue));
+  const parts = uniqueValues(rows.map((row) => row[`${prefix}HousingPart`]).filter(isMeaningfulSheetValue));
+  const titleValues = names.length ? names : types;
+  const title = titleValues.length
+    ? shortListLabel(titleValues, 2)
+    : `${side.toUpperCase()} LEG ${leg || index + 1}`;
+  const details = uniqueValues([
+    leg ? `LEG ${leg}` : "",
+    ...types.filter((type) => !normalizeText(title).includes(normalizeText(type))),
+    ...parts
+  ]);
+  return {
+    title: cleanConnectorName(title),
+    leg,
+    details
+  };
+}
+
+function groupSheetEndpoints(rows, side) {
+  const groups = [];
+  rows.forEach((row, rowIndex) => {
+    const key = sheetEndpointKey(row, side);
+    let group = groups.find((candidate) => candidate.key === key);
+    if (!group) {
+      group = {
+        key,
+        rows: [],
+        rowIndexes: []
+      };
+      groups.push(group);
+    }
+    group.rows.push(row);
+    group.rowIndexes.push(rowIndex);
+  });
+  groups.forEach((group, index) => {
+    Object.assign(group, sheetEndpointLabel(group.rows, side, index));
+  });
+  return groups;
+}
+
+function sheetRouteLayout(rows, {
+  top = 174,
+  bottom = 610
+} = {}) {
+  const count = Math.max(1, rows.length);
+  const gap = count > 1 ? (bottom - top) / (count - 1) : 0;
+  return rows.map((row, index) => ({
+    row,
+    index,
+    y: top + index * gap,
+    label: row.wireName || `WIRE ${index + 1}`,
+    leftPin: row.leftPinPos || String(index + 1),
+    rightPin: row.rightPinPos || String(index + 1)
+  }));
+}
+
+function sheetRouteBranchLabel(row) {
+  const parts = [];
+  if (isMeaningfulSheetValue(row.branchId)) {
+    parts.push(`BRANCH ${row.branchId}`);
+  }
+  if (isMeaningfulSheetValue(row.branchRole)) {
+    parts.push(row.branchRole);
+  }
+  if (isMeaningfulSheetValue(row.tapPosition)) {
+    parts.push(`TAP @ ${formatLengthInches(row.tapPosition)} in`);
+  }
+  return parts.join(" | ");
+}
+
+function isMeaningfulSheetValue(value) {
+  const normalized = normalizeText(value);
+  return Boolean(normalized) && !["NONE", "N/A", "NA", "NULL", "-", "--"].includes(normalized);
 }
 
 function isNoWireRow(row) {
@@ -2408,32 +2509,61 @@ function buildSheetHarnessSvg(result) {
     rightLegName: "RIGHT",
     comments: "The uploaded sheet table is still available below."
   }];
-  const rowSpacing = Math.min(52, Math.max(34, 430 / Math.max(1, rows.length)));
-  const startY = 230;
-  const leftX = 270;
-  const rightX = 1185;
-  const protectionTop = startY - 28;
-  const protectionBottom = startY + (rows.length - 1) * rowSpacing + 28;
-  const rowLines = rows.map((row, index) => {
-    const y = startY + index * rowSpacing;
+  const routes = sheetRouteLayout(rows);
+  const leftGroups = groupSheetEndpoints(rows, "left");
+  const rightGroups = groupSheetEndpoints(rows, "right");
+  const leftX = 260;
+  const rightX = 1340;
+  const rowLines = routes.map((route) => {
+    const { row, index, y } = route;
     const color = sheetColorToStroke(row.color);
     const dashed = isNoWireRow(row) ? ` stroke-dasharray="12 9"` : "";
-    const label = escapeXml(row.wireName || row.branchRole || `ROW ${row.rowNumber}`);
-    const lengthText = row.length ? `${escapeXml(row.length)} in` : "";
+    const label = escapeXml(route.label);
+    const lengthText = row.length ? `${row.length} in` : "";
+    const branchText = sheetRouteBranchLabel(row);
     return `
       <g class="sheet-row">
         <line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${color}"${dashed} />
         <circle class="sheet-pin" cx="${leftX}" cy="${y}" r="4" />
         <circle class="sheet-pin" cx="${rightX}" cy="${y}" r="4" />
-        <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 10}">${label}</text>
-        <text class="sheet-small" x="${(leftX + rightX) / 2}" y="${y + 22}">${lengthText}</text>
-        <text class="sheet-pin-label" x="${leftX - 20}" y="${y + 5}">${escapeXml(row.leftPinPos || "")}</text>
-        <text class="sheet-pin-label" x="${rightX + 20}" y="${y + 5}">${escapeXml(row.rightPinPos || "")}</text>
+        <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 6}">${label}</text>
+        <text class="sheet-small" x="${(leftX + rightX) / 2}" y="${y + 12}">${escapeXml([lengthText, branchText].filter(Boolean).join(" | "))}</text>
+        <text class="sheet-pin-label" x="${leftX - 18}" y="${y + 5}">${escapeXml(route.leftPin)}</text>
+        <text class="sheet-pin-label" x="${rightX + 18}" y="${y + 5}">${escapeXml(route.rightPin)}</text>
       </g>
     `;
   }).join("");
-  const leftTitle = escapeXml(firstFilled(rows, "leftLegName") || firstFilled(rows, "leftLeg") || "LEFT LEG");
-  const rightTitle = escapeXml(firstFilled(rows, "rightLegName") || firstFilled(rows, "rightLeg") || "RIGHT LEG");
+  const endpointBoxes = (groups, side) => groups.map((group, groupIndex) => {
+    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+    const top = Math.max(145, Math.min(...ys) - 13);
+    const bottom = Math.min(630, Math.max(...ys) + 13);
+    const height = Math.max(28, bottom - top);
+    const x = side === "left" ? 28 : 1366;
+    const width = 206;
+    const textX = x + width / 2;
+    const detail = group.details.join(" | ");
+    return `
+      <g class="sheet-endpoint" aria-label="${escapeXml(`${side} endpoint ${groupIndex + 1}`)}">
+        <rect class="connector-box" x="${x}" y="${top}" width="${width}" height="${height}" rx="4" />
+        <text class="connector-title" x="${textX}" y="${top + Math.min(18, height / 2 + 4)}">${escapeXml(shortLabel(group.title, 28))}</text>
+        ${detail && height >= 42 ? `<text class="connector-detail" x="${textX}" y="${top + 35}">${escapeXml(shortLabel(detail, 34))}</text>` : ""}
+      </g>`;
+  }).join("");
+  const protectionBundles = leftGroups.map((group, index) => {
+    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+    const top = Math.min(...ys) - 13;
+    const bottom = Math.max(...ys) + 13;
+    return buildHorizontalProtectionSvg({
+      x1: leftX + 48,
+      x2: rightX - 48,
+      top,
+      bottom,
+      label: `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`,
+      labelY: top - 7,
+      endLabelY: bottom + 12,
+      bandWidth: 18
+    });
+  }).join("");
   const notes = rows
     .map((row) => row.comments)
     .filter(Boolean)
@@ -2449,12 +2579,13 @@ function buildSheetHarnessSvg(result) {
       .sheet { fill: #ffffff; }
       .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; }
       .subtitle { fill: #333333; font: 600 17px Aptos, Segoe UI, sans-serif; }
-      .connector-box { fill: #ffffff; stroke: #000000; stroke-width: 4; }
-      .connector-title { fill: #000000; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-box { fill: #ffffff; stroke: #000000; stroke-width: 3; }
+      .connector-title { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-detail { fill: #333333; font: 700 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .sheet-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; }
       .sheet-pin { fill: #ffffff; stroke: #000000; stroke-width: 2; }
-      .sheet-wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
-      .sheet-small { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .sheet-wire-label { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .sheet-small { fill: #333333; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
       .sheet-pin-label { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .sheet-note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
       .sheet-note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
@@ -2466,19 +2597,10 @@ function buildSheetHarnessSvg(result) {
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
   <text class="title" x="46" y="58">${escapeXml(sheet.title)}</text>
   <text class="subtitle" x="46" y="92">${escapeXml(sheet.subtitle)}</text>
-  <text class="meta" x="46" y="122">Rows loaded: ${sheet.totalRows} | Drawing rows shown: ${rows.length}</text>
-  <rect class="connector-box" x="58" y="178" width="180" height="455" />
-  <text class="connector-title" x="148" y="210">${leftTitle}</text>
-  <rect class="connector-box" x="1220" y="178" width="300" height="455" />
-  <text class="connector-title" x="1370" y="210">${rightTitle}</text>
-  ${buildHorizontalProtectionSvg({
-    x1: leftX + 34,
-    x2: rightX - 34,
-    top: protectionTop,
-    bottom: protectionBottom,
-    labelY: protectionTop - 10,
-    endLabelY: protectionBottom + 18
-  })}
+  <text class="meta" x="46" y="122">Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)</text>
+  ${endpointBoxes(leftGroups, "left")}
+  ${endpointBoxes(rightGroups, "right")}
+  ${protectionBundles}
   ${rowLines}
   <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
   ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
@@ -2700,7 +2822,7 @@ function buildPowerBoardIsolatorSheetModel(sheet) {
     { row: scl, name: "SCL", stroke: sheetColorToStroke(scl.color), colorName: normalizeColorName(scl.color), source: "J43", sourcePin: scl.leftPinPos || "2", targetPin: scl.rightPinPos || "3", length: scl.length || "12", awg: scl.awg || "22", leg: "I2C J43 LEG", laneY: 482 }
   ];
   const targetPins = new Map(wires.map((wire) => [String(wire.targetPin), wire]));
-  const cableName = firstFilled(rows, "cableName") || sheet.cableName || "W114";
+  const cableName = firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS";
   return {
     cableName,
     description: "TWO INDEPENDENT POWER-BOARD LEGS TO ISOLATOR 154X",
@@ -2889,6 +3011,9 @@ function buildPowerBoardIsolatorSheetSvg(result, model) {
 function buildDatasheetConnectorHarnessModel(sheet) {
   const sourceRows = getKiCadWireRows(sheet.rows);
   if (!sourceRows.length) {
+    return null;
+  }
+  if (groupSheetEndpoints(sourceRows, "left").length !== 1 || groupSheetEndpoints(sourceRows, "right").length !== 1) {
     return null;
   }
   const leftResolved = resolveDatasheetConnector(sourceRows, "left");
@@ -3668,7 +3793,10 @@ function buildKiCadHarnessModel(sheet) {
   const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
   const awg = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
   const groups = buildKiCadWireGroups(rows);
-  const isMultiGroup = groups.length >= 2 && rows.length > 4;
+  const isMultiGroup = groups.length >= 2 && rows.length > 4 && isMaestroStyleSheet(rows);
+  if (groups.length >= 2 && !isMultiGroup) {
+    return null;
+  }
   const groupNames = groups.map((group) => group.name).filter(Boolean);
   const description = isMultiGroup
     ? `${shortListLabel(groupNames, 4)} TO ${rightName}`.replace(/\s+/g, " ").trim()
@@ -3719,6 +3847,20 @@ function buildKiCadHarnessModel(sheet) {
       view: "FRONT VIEW"
     }
   };
+}
+
+function isMaestroStyleSheet(rows) {
+  const text = normalizeText(rows.map((row) => [
+    row.leftLegName,
+    row.leftHousingType,
+    row.rightLegName,
+    row.rightHousingType,
+    row.wireName,
+    row.comments
+  ].join(" ")).join(" "));
+  return text.includes("MAESTRO") ||
+    text.includes("SERVO HEADER") ||
+    (text.includes("ESC") && (text.includes("GND") || text.includes("V+") || text.includes("SIG")));
 }
 
 function getKiCadWireRows(rows) {
@@ -6143,33 +6285,99 @@ function buildSheetDrawioXml(result) {
   };
   const sheet = result.sheetHarness;
   const rows = sheet.rows.length ? sheet.rows : [{ wireName: "No drawable rows found", color: "Gray" }];
-  const rowSpacing = Math.min(52, Math.max(34, 430 / Math.max(1, rows.length)));
-  const leftX = 270;
-  const rightX = 1185;
-  const startY = 230;
-  const protectionTop = startY - 28;
-  const protectionBottom = startY + (rows.length - 1) * rowSpacing + 28;
+  const routes = sheetRouteLayout(rows);
+  const leftGroups = groupSheetEndpoints(rows, "left");
+  const rightGroups = groupSheetEndpoints(rows, "right");
+  const leftX = 260;
+  const rightX = 1340;
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
   addVertex("title", sheet.title, 46, 28, 900, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
   addVertex("subtitle", sheet.subtitle, 46, 72, 720, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
-  addVertex("left_connector", firstFilled(rows, "leftLegName") || firstFilled(rows, "leftLeg") || "LEFT LEG", 58, 178, 180, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
-  addVertex("right_connector", firstFilled(rows, "rightLegName") || firstFilled(rows, "rightLeg") || "RIGHT LEG", 1220, 178, 300, 455, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
-  addHorizontalDrawioProtection(addVertex, {
-    id: "main_protection",
-    x1: leftX + 34,
-    x2: rightX - 34,
-    top: protectionTop,
-    bottom: protectionBottom
+  addVertex(
+    "template_meta",
+    `Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)`,
+    46,
+    108,
+    850,
+    24,
+    "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#333333;align=left;"
+  );
+  const addEndpointGroups = (groups, side) => {
+    groups.forEach((group, groupIndex) => {
+      const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+      const top = Math.max(145, Math.min(...ys) - 13);
+      const bottom = Math.min(630, Math.max(...ys) + 13);
+      const height = Math.max(28, bottom - top);
+      const x = side === "left" ? 28 : 1366;
+      const detail = group.details.length ? `<br><font style="font-size:9px">${escapeHtml(group.details.join(" | "))}</font>` : "";
+      addVertex(
+        `${side}_endpoint_${groupIndex + 1}`,
+        `<b>${escapeHtml(shortLabel(group.title, 28))}</b>${detail}`,
+        x,
+        top,
+        206,
+        height,
+        "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontSize=11;fontStyle=1;align=center;"
+      );
+    });
+  };
+  addEndpointGroups(leftGroups, "left");
+  addEndpointGroups(rightGroups, "right");
+  leftGroups.forEach((group, index) => {
+    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+    addHorizontalDrawioProtection(addVertex, {
+      id: `leg_${index + 1}_protection`,
+      x1: leftX + 48,
+      x2: rightX - 48,
+      top: Math.min(...ys) - 13,
+      bottom: Math.max(...ys) + 13,
+      label: `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`,
+      bandWidth: 18
+    });
   });
-  rows.forEach((row, index) => {
-    const y = startY + index * rowSpacing;
+  routes.forEach((route) => {
+    const { row, index, y } = route;
     const stroke = sheetColorToStroke(row.color);
     const dashed = isNoWireRow(row) ? "dashed=1;dashPattern=12 9;" : "";
-    const label = row.wireName || row.branchRole || `ROW ${row.rowNumber || index + 1}`;
-    addEdge(`sheet_wire_${index + 1}`, label, leftX, y, rightX, y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;${dashed}`);
+    const details = [
+      row.color ? normalizeColorName(row.color) : "",
+      row.awg ? `${row.awg} AWG` : "",
+      row.length ? `${formatLengthInches(row.length)} in` : "",
+      sheetRouteBranchLabel(row)
+    ].filter(Boolean).join(" | ");
+    addVertex(`left_pin_${index + 1}`, route.leftPin, leftX - 42, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
+    addVertex(`right_pin_${index + 1}`, route.rightPin, rightX + 8, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
+    addEdge(
+      `sheet_wire_${index + 1}`,
+      `${escapeHtml(route.label)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`,
+      leftX,
+      y,
+      rightX,
+      y,
+      `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
+    );
   });
-  addVertex("sheet_notes", `Rows loaded: ${sheet.totalRows}<br>Drawing rows shown: ${rows.length}`, 58, 650, 500, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=14;align=left;spacingLeft=12;");
+  const notes = uniqueValues(rows.map((row) => row.comments)).slice(0, 4);
+  addVertex(
+    "sheet_notes",
+    `<b>TEMPLATE NOTES</b><br>${notes.length ? notes.map((note) => escapeHtml(note)).join("<br>") : "Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."}`,
+    46,
+    650,
+    920,
+    100,
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=left;spacingLeft=12;spacingTop=8;"
+  );
+  addVertex(
+    "title_block",
+    `DESCRIPTION:<br><b>${escapeHtml(sheet.cableName || "WIRE HARNESS")}</b><br>DRAWN BY: DIGIWIRE | REV A`,
+    1010,
+    650,
+    550,
+    100,
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;"
+  );
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
