@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.11";
+const APP_VERSION = "1.6.12";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -845,10 +845,7 @@ function buildSketchNetworkHarnessModel(segments, findings, width, height, meta 
     looksLikePowerBoardIso154xSketch(segments, width, height, text) ||
     (topology && isPowerBoardIso154xTopology(topology, text))
   ) {
-    const profileTopology = topology?.routes.length === 4
-      ? topology
-      : buildPowerBoardIso154xTopologySeed();
-    return buildPowerBoardIso154xHarness(profileTopology, meta);
+    return buildPowerBoardIso154xHarness(buildPowerBoardIso154xTopologySeed(), meta);
   }
   if (!topology || topology.routes.length < 3 || topology.sourceGroups.length < 1 || topology.targetGroups.length < 1) {
     return null;
@@ -914,10 +911,10 @@ function isPowerBoardIsoOrientationEvidence(evidence) {
 function buildPowerBoardIso154xTopologySeed() {
   return {
     routes: [
-      { id: "NET-VCC", targetPin: "1", sourceGroup: 0, sourcePin: "2", confidence: 0.76 },
-      { id: "NET-SCL", targetPin: "2", sourceGroup: 1, sourcePin: "2", confidence: 0.76 },
-      { id: "NET-SDA", targetPin: "3", sourceGroup: 1, sourcePin: "1", confidence: 0.76 },
-      { id: "NET-GND", targetPin: "4", sourceGroup: 0, sourcePin: "1", confidence: 0.76 }
+      { id: "NET-GND", targetPin: "1", sourceGroup: 0, sourcePin: "1", confidence: 0.76 },
+      { id: "NET-SDA", targetPin: "2", sourceGroup: 1, sourcePin: "1", confidence: 0.76 },
+      { id: "NET-SCL", targetPin: "3", sourceGroup: 1, sourcePin: "2", confidence: 0.76 },
+      { id: "NET-5V", targetPin: "4", sourceGroup: 0, sourcePin: "2", confidence: 0.76 }
     ],
     sourceGroups: [
       { index: 0, routes: [] },
@@ -1187,16 +1184,16 @@ function isPowerBoardIso154xTopology(topology, text) {
 function buildPowerBoardIso154xHarness(topology, meta = {}) {
   const columns = getHarnessTableColumns();
   const signalSpecs = {
-    "1": { signal: "VCC", sourceLabel: "+5V / TP71", sourcePin: "TP71", stroke: "#d62828", schematicColor: "RED" },
-    "2": { signal: "SCL", sourceLabel: "SCL / J43-2", sourcePin: "2", stroke: "#e07a00", schematicColor: "ORANGE" },
-    "3": { signal: "SDA", sourceLabel: "SDA / J43-1", sourcePin: "1", stroke: "#1746b5", schematicColor: "BLUE" },
-    "4": { signal: "GND", sourceLabel: "GND / TP1", sourcePin: "TP1", stroke: "#111111", schematicColor: "BLACK" }
+    "1": { signal: "GND", sourceLabel: "GND / TP1", sourcePin: "TP1", stroke: "#111111", schematicColor: "BLACK" },
+    "2": { signal: "SDA", sourceLabel: "SDA / J43-1", sourcePin: "1", stroke: "#1746b5", schematicColor: "BLUE" },
+    "3": { signal: "SCL", sourceLabel: "SCL / J43-2", sourcePin: "2", stroke: "#d9d9d9", schematicColor: "WHITE" },
+    "4": { signal: "5V", sourceLabel: "+5V / TP71", sourcePin: "TP71", stroke: "#d62828", schematicColor: "RED" }
   };
   const routePaths = {
-    VCC: [[330, 270], [1000, 270], [1000, 300], [1290, 300]],
-    SCL: [[350, 535], [1080, 535], [1080, 360], [1290, 360]],
-    SDA: [[350, 485], [820, 485], [820, 420], [1290, 420]],
-    GND: [[330, 205], [900, 205], [900, 480], [1290, 480]]
+    GND: [[330, 205], [900, 205], [900, 300], [1290, 300]],
+    SDA: [[350, 485], [820, 485], [820, 360], [1290, 360]],
+    SCL: [[350, 535], [1080, 535], [1080, 420], [1290, 420]],
+    "5V": [[330, 270], [1000, 270], [1000, 480], [1290, 480]]
   };
   const sourceTitle = cleanFileName(meta.fileName || "");
   const title = !sourceTitle || /^(CLIPBOARD|IMAGE|DRAWING|PHOTO|SCAN)$/i.test(sourceTitle)
@@ -1989,17 +1986,17 @@ function buildPowerBoardIso154xSvg(result) {
   const wirePaths = harness.wires.map((wire) => {
     const path = wire.path.map((point, index) => `${index === 0 ? "M" : "L"} ${point[0]} ${point[1]}`).join(" ");
     const labelPoint = {
-      VCC: [650, 259],
-      SCL: [980, 523],
+      GND: [640, 194],
       SDA: [670, 473],
-      GND: [640, 194]
+      SCL: [980, 523],
+      "5V": [650, 259]
     }[wire.name] || [720, 360];
     return `
       <path class="network-wire" d="${path}" stroke="${wire.stroke}" />
       <text class="wire-label" x="${labelPoint[0]}" y="${labelPoint[1]}">${escapeXml(wire.name)}</text>
     `;
   }).join("");
-  const tableRows = ["VCC", "SCL", "SDA", "GND"].map((signal) => {
+  const tableRows = ["GND", "SDA", "SCL", "5V"].map((signal) => {
     const wire = wireBySignal[signal];
     return [
       wire.sourcePin,
@@ -2146,12 +2143,12 @@ function buildPowerBoardIso154xSvg(result) {
   <text class="pin-number" x="1278" y="364">2</text>
   <text class="pin-number" x="1278" y="424">3</text>
   <text class="pin-number" x="1278" y="484">4</text>
-  <text class="target-label" x="1390" y="305">VCC (+5V)</text>
-  <text class="target-label" x="1390" y="365">SCL</text>
-  <text class="target-label" x="1390" y="425">SDA</text>
-  <text class="target-label" x="1390" y="485">GND</text>
+  <text class="target-label" x="1390" y="305">GND</text>
+  <text class="target-label" x="1390" y="365">SDA</text>
+  <text class="target-label" x="1390" y="425">SCL</text>
+  <text class="target-label" x="1390" y="485">5V</text>
   <path d="M 1318 520 L 1334 520 L 1326 535 z" fill="none" stroke="#217a35" stroke-width="2" />
-  <text class="target-label" x="1378" y="540">PIN 1 / VCC ORIENTATION</text>
+  <text class="target-label" x="1378" y="540">PIN 1 / GND ORIENTATION</text>
 
   ${buildSvgTable({
     x: 35,
@@ -2390,6 +2387,10 @@ function buildSheetHarnessSvg(result) {
   }
   if (isMolexUartJetsonSheet(sheet.rows)) {
     return buildMolexUartJetsonSvg(result);
+  }
+  const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(sheet);
+  if (powerBoardIsolatorModel) {
+    return buildPowerBoardIsolatorSheetSvg(result, powerBoardIsolatorModel);
   }
   const datasheetModel = buildDatasheetConnectorHarnessModel(sheet);
   if (datasheetModel) {
@@ -2656,6 +2657,232 @@ function buildMolexUartJetsonSvg(result) {
 
   <text class="sheet-note-title" x="60" y="622">CONNECTOR / BUILD NOTES</text>
   ${noteLines}
+</svg>`;
+}
+
+function buildPowerBoardIsolatorSheetModel(sheet) {
+  const rows = getKiCadWireRows(sheet.rows);
+  if (rows.length !== 4) {
+    return null;
+  }
+  const text = normalizeText(rows.map((row) => [
+    row.cableName,
+    row.leftLegName,
+    row.wireName,
+    row.leftHousingType,
+    row.rightLegName,
+    row.rightHousingType
+  ].join(" ")).join(" "));
+  const hasIsolator = text.includes("ISOLATOR 154") || text.includes("ISO154");
+  const hasDupont = text.includes("4 POS DUPONT") || text.includes("4 POSITION DUPONT");
+  const hasTestPoints = text.includes("TP 1") && text.includes("TP 71");
+  const hasI2c = text.includes("POWER BOARD I2C") || text.includes("I2C J43") || text.includes("I2C J4");
+  const signals = new Set(rows.map((row) => normalizeText(row.wireName)));
+  if (
+    !hasIsolator ||
+    !hasDupont ||
+    !hasTestPoints ||
+    !hasI2c ||
+    !["GND", "5V", "SDA", "SCL"].every((signal) => signals.has(signal))
+  ) {
+    return null;
+  }
+
+  const wireFor = (signal) => rows.find((row) => normalizeText(row.wireName) === signal) || {};
+  const gnd = wireFor("GND");
+  const power = wireFor("5V");
+  const sda = wireFor("SDA");
+  const scl = wireFor("SCL");
+  const wires = [
+    { row: gnd, name: "GND", stroke: sheetColorToStroke(gnd.color), colorName: normalizeColorName(gnd.color), source: "TP1", sourcePin: gnd.leftPinPos || "1", targetPin: gnd.rightPinPos || "1", length: gnd.length || "22", awg: gnd.awg || "22", leg: "TEST POINT LEG", laneY: 220 },
+    { row: power, name: "5V", stroke: sheetColorToStroke(power.color), colorName: normalizeColorName(power.color), source: "TP71", sourcePin: power.leftPinPos || "2", targetPin: power.rightPinPos || "4", length: power.length || "22", awg: power.awg || "22", leg: "TEST POINT LEG", laneY: 276 },
+    { row: sda, name: "SDA", stroke: sheetColorToStroke(sda.color), colorName: normalizeColorName(sda.color), source: "J43", sourcePin: sda.leftPinPos || "1", targetPin: sda.rightPinPos || "2", length: sda.length || "12", awg: sda.awg || "22", leg: "I2C J43 LEG", laneY: 426 },
+    { row: scl, name: "SCL", stroke: sheetColorToStroke(scl.color), colorName: normalizeColorName(scl.color), source: "J43", sourcePin: scl.leftPinPos || "2", targetPin: scl.rightPinPos || "3", length: scl.length || "12", awg: scl.awg || "22", leg: "I2C J43 LEG", laneY: 482 }
+  ];
+  const targetPins = new Map(wires.map((wire) => [String(wire.targetPin), wire]));
+  const cableName = firstFilled(rows, "cableName") || sheet.cableName || "W114";
+  return {
+    cableName,
+    description: "TWO INDEPENDENT POWER-BOARD LEGS TO ISOLATOR 154X",
+    wires,
+    targetPins,
+    testPointRows: [gnd, power],
+    i2cRows: [sda, scl],
+    rightName: cleanConnectorName(firstFilled(rows, "rightLegName") || "ISOLATOR 154X"),
+    rightType: firstFilled(rows, "rightHousingType") || "4 POS DUPONT",
+    microFitHousing: firstFilled([sda, scl], "leftHousingPart") || "WM1783-ND",
+    microFitContact: firstFilled([sda, scl], "leftPinPart") || "WM-1837CT-ND",
+    dupontHousing: firstFilled(rows, "rightHousingPart") || "DUPONT",
+    dupontContact: firstFilled(rows, "rightPinPart") || "DUPONT",
+    tool: firstFilled(rows, "toolUsed") || "PEBA 2030M",
+    topLength: dominantSheetValue([gnd, power], "length") || "22",
+    bottomLength: dominantSheetValue([sda, scl], "length") || "12"
+  };
+}
+
+function buildPowerBoardIsolatorSheetSvg(result, model) {
+  const targetY = { "1": 212, "2": 284, "3": 356, "4": 428 };
+  const wirePaths = model.wires.map((wire) => {
+    const sourcePoint = wire.source === "J43"
+      ? { x: 318, y: wire.sourcePin === "1" ? 426 : 482 }
+      : { x: 300, y: wire.source === "TP1" ? 220 : 276 };
+    const breakoutX = wire.source === "J43" ? 1035 : 985;
+    const rightY = targetY[String(wire.targetPin)] || wire.laneY;
+    const path = `M ${sourcePoint.x} ${sourcePoint.y} L ${breakoutX} ${wire.laneY} L ${breakoutX} ${rightY} L 1292 ${rightY}`;
+    return `
+      <path class="split-wire-halo" d="${path}" />
+      <path class="split-wire" d="${path}" stroke="${wire.stroke}" />
+      <circle class="wire-terminal" cx="${sourcePoint.x}" cy="${sourcePoint.y}" r="4.5" />
+      <circle class="wire-terminal" cx="1292" cy="${rightY}" r="4.5" />
+      <text class="wire-label" x="${wire.source === "J43" ? 720 : 690}" y="${wire.laneY - 9}">${escapeXml(`${wire.name} | ${wire.colorName} | ${wire.awg} AWG`)}</text>`;
+  }).join("");
+  const pinRows = ["1", "2", "3", "4"].map((pin) => {
+    const wire = model.targetPins.get(pin);
+    const y = targetY[pin];
+    return `
+      <rect class="dupont-cavity" x="1308" y="${y - 18}" width="44" height="36" rx="4" stroke="${wire?.stroke || "#666666"}" />
+      <circle class="dupont-hole" cx="1330" cy="${y}" r="5" />
+      <text class="pin-number" x="1275" y="${y + 5}">${pin}</text>
+      <text class="pin-signal" x="1380" y="${y + 5}">${escapeXml(`${wire?.name || ""}${wire ? ` (${wire.colorName})` : ""}`)}</text>`;
+  }).join("");
+  const tableRows = model.wires.map((wire) => [
+    wire.leg,
+    wire.source,
+    wire.sourcePin,
+    wire.name,
+    wire.colorName,
+    wire.awg,
+    `${formatLengthInches(wire.length)} in`,
+    wire.targetPin
+  ]);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} split-leg harness drawing">
+  <defs>
+    ${buildBraidPatternDefs()}
+    <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#111111" />
+    </marker>
+    <style>
+      .page { fill: #ffffff; }
+      .border { fill: none; stroke: #17231c; stroke-width: 2; }
+      .title { fill: #17231c; font: 900 32px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .subtitle { fill: #35413a; font: 800 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .leg-title { fill: #173a8a; font: 900 18px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .board { fill: #fbfcfb; stroke: #173a8a; stroke-width: 3; }
+      .board-text { fill: #17231c; font: 800 13px Consolas, "Courier New", monospace; }
+      .test-pad { fill: #ffffff; stroke: #111111; stroke-width: 3; }
+      .test-core { fill: #111111; }
+      .microfit-body { fill: #25292c; stroke: #050505; stroke-width: 3; }
+      .microfit-lock { fill: #353a3d; stroke: #050505; stroke-width: 2.5; }
+      .microfit-cavity { fill: #090a0a; stroke-width: 3; }
+      .dupont-body { fill: #ffffff; stroke: #217a35; stroke-width: 3; }
+      .dupont-face { fill: #25292c; stroke: #050505; stroke-width: 3; }
+      .dupont-cavity { fill: #090a0a; stroke-width: 3; }
+      .dupont-hole { fill: #e6e8e9; stroke: #ffffff; stroke-width: 1; }
+      .pin-number { fill: #17231c; font: 900 14px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .pin-signal { fill: #17231c; font: 900 14px Consolas, "Courier New", monospace; }
+      .split-wire-halo { fill: none; stroke: #ffffff; stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+      .split-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+      .wire-terminal { fill: #ffffff; stroke: #111111; stroke-width: 1.7; }
+      .wire-label { fill: #17231c; font: 900 12px Consolas, "Courier New", monospace; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .dim-line { fill: none; stroke: #17231c; stroke-width: 2; }
+      .dim-label { fill: #17231c; font: 900 17px Consolas, "Courier New", monospace; text-anchor: middle; }
+      .table-outline { fill: #ffffff; stroke: #17231c; stroke-width: 2; }
+      .table-grid { stroke: #17231c; stroke-width: 1; }
+      .table-title { fill: #17231c; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #17231c; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #17231c; font: 800 8.5px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .notes-title { fill: #17231c; font: 900 13px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #17231c; font: 700 10.5px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #364149; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .protection-end-label { fill: #111111; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    </style>
+  </defs>
+  <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="12" y="12" width="1576" height="776" />
+  <text class="title" x="800" y="49">${escapeXml(model.cableName.toUpperCase())}</text>
+  <text class="subtitle" x="800" y="77">${escapeXml(model.description)}</text>
+
+  <text class="leg-title" x="190" y="118">LEG 1 - POWER BOARD TEST POINTS</text>
+  <rect class="board" x="48" y="138" width="270" height="174" rx="5" />
+  <text class="board-text" x="74" y="174">POWER BOARD (TOP)</text>
+  <text class="board-text" x="74" y="218">TP1 / GND</text>
+  <text class="board-text" x="74" y="274">TP71 / +5V</text>
+  <circle class="test-pad" cx="300" cy="220" r="10" />
+  <circle class="test-core" cx="300" cy="220" r="3.5" />
+  <circle class="test-pad" cx="300" cy="276" r="10" />
+  <circle class="test-core" cx="300" cy="276" r="3.5" />
+
+  <path class="dim-line" d="M 365 126 L 975 126" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="dim-label" x="670" y="116">${escapeXml(formatLengthInches(model.topLength))} in</text>
+  ${buildHorizontalProtectionSvg({
+    x1: 382,
+    x2: 930,
+    top: 194,
+    bottom: 302,
+    label: "LEG 1 EXPANDO + HEAT SHRINK",
+    labelY: 186,
+    endLabelY: 316,
+    bandWidth: 22
+  })}
+
+  <text class="leg-title" x="190" y="365">LEG 2 - POWER BOARD I2C J43</text>
+  <rect class="board" x="48" y="382" width="270" height="164" rx="5" />
+  <text class="board-text" x="72" y="413">POWER BOARD (BOTTOM)</text>
+  <text class="board-text" x="72" y="440">I2C J43</text>
+  <text class="board-text" x="72" y="466">2 POS SIDE-LOCK</text>
+  <text class="board-text" x="72" y="489">MICRO-FIT J43</text>
+  <text class="board-text" x="72" y="522">${escapeXml(model.microFitHousing)}</text>
+  <rect class="microfit-body" x="252" y="402" width="66" height="104" rx="7" />
+  <rect class="microfit-lock" x="234" y="426" width="18" height="56" rx="4" />
+  <rect class="microfit-cavity" x="270" y="413" width="34" height="28" rx="4" stroke="${model.targetPins.get("2")?.stroke || "#0b64d8"}" />
+  <rect class="microfit-cavity" x="270" y="467" width="34" height="28" rx="4" stroke="${model.targetPins.get("3")?.stroke || "#dddddd"}" />
+  <text class="pin-number" x="260" y="432">1</text>
+  <text class="pin-number" x="260" y="486">2</text>
+
+  ${buildHorizontalProtectionSvg({
+    x1: 382,
+    x2: 930,
+    top: 400,
+    bottom: 508,
+    label: "LEG 2 EXPANDO + HEAT SHRINK",
+    labelY: 392,
+    endLabelY: 522,
+    bandWidth: 22
+  })}
+  <path class="dim-line" d="M 365 554 L 975 554" marker-start="url(#arrow)" marker-end="url(#arrow)" />
+  <text class="dim-label" x="670" y="544">${escapeXml(formatLengthInches(model.bottomLength))} in</text>
+
+  ${wirePaths}
+
+  <text class="leg-title" x="1390" y="118">${escapeXml(model.rightName)}</text>
+  <text class="leg-title" x="1390" y="143">${escapeXml(model.rightType)}</text>
+  <rect class="dupont-body" x="1245" y="160" width="305" height="332" rx="6" />
+  <rect class="dupont-face" x="1292" y="184" width="82" height="272" rx="7" />
+  ${pinRows}
+  <path d="M 1320 466 L 1340 466 L 1330 482 Z" fill="none" stroke="#217a35" stroke-width="2" />
+  <text class="pin-signal" x="1378" y="480">PIN 1 ORIENTATION</text>
+
+  ${buildSvgTable({
+    x: 30,
+    y: 596,
+    width: 960,
+    title: "WIRING TABLE - TWO SEPARATE CABLE LEGS",
+    headers: ["LEG", "SOURCE", "LEFT PIN", "SIGNAL", "COLOR", "AWG", "LENGTH", "ISO PIN"],
+    rows: tableRows,
+    colWidths: [160, 100, 75, 100, 90, 60, 95, 70],
+    rowHeight: 22,
+    titleHeight: 25,
+    headerHeight: 25
+  })}
+  <text class="notes-title" x="1025" y="612">PARTS / BUILD NOTES</text>
+  <text class="note" x="1025" y="635">1. LEG 1: solder 22 AWG GND to TP1 and 5V to TP71; no left connector housing.</text>
+  <text class="note" x="1025" y="657">2. LEG 2: J43 two-position side-lock Micro-Fit housing ${escapeXml(model.microFitHousing)}.</text>
+  <text class="note" x="1025" y="679">3. J43 crimp terminal: ${escapeXml(model.microFitContact)}. Pin 1=SDA, pin 2=SCL.</text>
+  <text class="note" x="1025" y="701">4. Isolator: pin 1=GND, pin 2=SDA, pin 3=SCL, pin 4=5V.</text>
+  <text class="note" x="1025" y="723">5. Right housing/contact: ${escapeXml(model.dupontHousing)} / ${escapeXml(model.dupontContact)}.</text>
+  <text class="note" x="1025" y="745">6. Tool: ${escapeXml(model.tool)}. Install separate expando and heat-shrink on each leg.</text>
 </svg>`;
 }
 
@@ -5721,12 +5948,12 @@ function buildPowerBoardIso154xDrawioXml(result) {
   addVertex("iso_title", "<b>ISO154X<br>4 POS DUPONT</b>", 1270, 122, 260, 52, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=18;fontStyle=1;fontColor=#217a35;align=center;");
   addVertex("iso_body", "", 1265, 180, 275, 390, "rounded=1;arcSize=4;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
   addVertex("iso_face", "", 1290, 260, 80, 250, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
-  ["VCC (+5V)", "SCL", "SDA", "GND"].forEach((label, index) => {
+  ["GND", "SDA", "SCL", "5V"].forEach((label, index) => {
     const y = 282 + index * 60;
     addVertex(`iso_pin_${index + 1}`, String(index + 1), 1305, y, 42, 36, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=2;fontFamily=Courier New;fontStyle=1;");
     addVertex(`iso_label_${index + 1}`, label, 1385, y + 4, 125, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=14;fontStyle=1;fontColor=#17231c;align=left;");
   });
-  addVertex("iso_orientation", "PIN 1 / VCC ORIENTATION", 1355, 520, 170, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=11;fontStyle=1;fontColor=#217a35;align=center;");
+  addVertex("iso_orientation", "PIN 1 / GND ORIENTATION", 1355, 520, 170, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=11;fontStyle=1;fontColor=#217a35;align=center;");
 
   harness.wires.forEach((wire, index) => {
     addEdge(
@@ -5894,6 +6121,10 @@ function buildSheetDrawioXml(result) {
   if (isMolexUartJetsonSheet(result.sheetHarness.rows)) {
     return buildMolexUartJetsonDrawioXml(result);
   }
+  const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(result.sheetHarness);
+  if (powerBoardIsolatorModel) {
+    return buildPowerBoardIsolatorSheetDrawioXml(result, powerBoardIsolatorModel);
+  }
   const datasheetModel = buildDatasheetConnectorHarnessModel(result.sheetHarness);
   if (datasheetModel) {
     return buildDatasheetConnectorHarnessDrawioXml(result, datasheetModel);
@@ -6020,6 +6251,115 @@ function buildMolexUartJetsonDrawioXml(result) {
     "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=left;spacingLeft=12;spacingTop=8;"
   );
   const diagram = escapeXml(result.fileName || sheet.title || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildPowerBoardIsolatorSheetDrawioXml(result, model) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addRoutedEdge = (id, value, points, style) => {
+    const intermediate = points.slice(1, -1)
+      .map((point) => `<mxPoint x="${Math.round(point[0])}" y="${Math.round(point[1])}" />`)
+      .join("");
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry(
+      { relative: 1, as: "geometry" },
+      `${mxPoint(points[0][0], points[0][1], "sourcePoint")}${mxPoint(points[points.length - 1][0], points[points.length - 1][1], "targetPoint")}${intermediate ? `<Array as="points">${intermediate}</Array>` : ""}`
+    )));
+  };
+  const targetY = { "1": 212, "2": 284, "3": 356, "4": 428 };
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 12, 12, 1576, 776, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#17231c;strokeWidth=2;");
+  addVertex("title", model.cableName.toUpperCase(), 480, 20, 640, 38, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=30;fontStyle=1;fontColor=#17231c;align=center;");
+  addVertex("subtitle", model.description, 390, 60, 820, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#35413a;align=center;");
+
+  addVertex("leg1_title", "LEG 1 - POWER BOARD TEST POINTS", 48, 92, 270, 30, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=16;fontStyle=1;fontColor=#173a8a;align=center;");
+  addVertex("leg1_board", "<b>POWER BOARD (TOP)</b><br><br>TP1 / GND<br><br>TP71 / +5V", 48, 138, 270, 174, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=13;fontStyle=1;align=left;spacingLeft=24;");
+  addVertex("tp1_pad", "TP1", 284, 205, 32, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=8;fontStyle=1;");
+  addVertex("tp71_pad", "TP71", 284, 261, 32, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=8;fontStyle=1;");
+  addRoutedEdge("dim_leg1", `${formatLengthInches(model.topLength)} in`, [[365, 126], [975, 126]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
+  addHorizontalDrawioProtection(addVertex, {
+    id: "leg1_protection",
+    x1: 382,
+    x2: 930,
+    top: 194,
+    bottom: 302,
+    label: "LEG 1 EXPANDO + HEAT SHRINK",
+    bandWidth: 22
+  });
+
+  addVertex("leg2_title", "LEG 2 - POWER BOARD I2C J43", 48, 340, 270, 30, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=16;fontStyle=1;fontColor=#173a8a;align=center;");
+  addVertex("leg2_board", `<b>POWER BOARD (BOTTOM)</b><br><br>I2C J43<br>2 POS SIDE-LOCK MICRO-FIT<br>${escapeHtml(model.microFitHousing)}`, 48, 382, 270, 164, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=12;fontStyle=1;align=left;spacingLeft=22;");
+  addVertex("j43_body", "", 252, 402, 66, 104, "rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#25292c;strokeColor=#050505;strokeWidth=3;");
+  addVertex("j43_lock", "LOCK", 226, 426, 26, 56, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#353a3d;strokeColor=#050505;strokeWidth=2;fontColor=#ffffff;fontSize=7;fontStyle=1;");
+  const sda = model.wires.find((wire) => wire.name === "SDA");
+  const scl = model.wires.find((wire) => wire.name === "SCL");
+  addVertex("j43_pin_1", "1", 270, 413, 34, 28, `rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#090a0a;strokeColor=${sda?.stroke || "#0b64d8"};strokeWidth=3;fontColor=#ffffff;fontFamily=Courier New;fontStyle=1;`);
+  addVertex("j43_pin_2", "2", 270, 467, 34, 28, `rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#090a0a;strokeColor=${scl?.stroke || "#dddddd"};strokeWidth=3;fontColor=#ffffff;fontFamily=Courier New;fontStyle=1;`);
+  addHorizontalDrawioProtection(addVertex, {
+    id: "leg2_protection",
+    x1: 382,
+    x2: 930,
+    top: 400,
+    bottom: 508,
+    label: "LEG 2 EXPANDO + HEAT SHRINK",
+    bandWidth: 22
+  });
+  addRoutedEdge("dim_leg2", `${formatLengthInches(model.bottomLength)} in`, [[365, 554], [975, 554]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
+
+  addVertex("isolator_title", `<b>${escapeHtml(model.rightName)}</b><br>${escapeHtml(model.rightType)}`, 1245, 94, 305, 52, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=16;fontStyle=1;fontColor=#217a35;align=center;");
+  addVertex("isolator_body", "", 1245, 160, 305, 332, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
+  addVertex("dupont_face", "", 1292, 184, 82, 272, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#25292c;strokeColor=#050505;strokeWidth=3;");
+  ["1", "2", "3", "4"].forEach((pin) => {
+    const wire = model.targetPins.get(pin);
+    const y = targetY[pin];
+    addVertex(`dupont_pin_${pin}`, pin, 1308, y - 18, 44, 36, `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#090a0a;strokeColor=${wire?.stroke || "#666666"};strokeWidth=3;fontColor=#ffffff;fontFamily=Courier New;fontStyle=1;`);
+    addVertex(`dupont_label_${pin}`, `${wire?.name || ""} (${wire?.colorName || ""})`, 1380, y - 14, 140, 28, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=12;fontStyle=1;fontColor=#17231c;align=left;");
+  });
+  addVertex("dupont_orientation", "PIN 1 ORIENTATION", 1378, 458, 150, 24, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=10;fontStyle=1;fontColor=#217a35;align=left;");
+
+  model.wires.forEach((wire, index) => {
+    const source = wire.source === "J43"
+      ? [318, wire.sourcePin === "1" ? 426 : 482]
+      : [300, wire.source === "TP1" ? 220 : 276];
+    const breakoutX = wire.source === "J43" ? 1035 : 985;
+    const rightY = targetY[String(wire.targetPin)] || wire.laneY;
+    addRoutedEdge(
+      `split_wire_${index + 1}`,
+      `${wire.name} | ${wire.colorName} | ${wire.awg} AWG`,
+      [source, [breakoutX, wire.laneY], [breakoutX, rightY], [1292, rightY]],
+      `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=8;fontFamily=Courier New;fontStyle=1;fontSize=11;`
+    );
+  });
+
+  addVertex("split_wiring_table", buildKiCadDrawioTableText(
+    "WIRING TABLE - TWO SEPARATE CABLE LEGS",
+    ["LEG", "SOURCE", "LEFT PIN", "SIGNAL", "COLOR", "AWG", "LENGTH", "ISO PIN"],
+    model.wires.map((wire) => [
+      wire.leg,
+      wire.source,
+      wire.sourcePin,
+      wire.name,
+      wire.colorName,
+      wire.awg,
+      `${formatLengthInches(wire.length)} in`,
+      wire.targetPin
+    ])
+  ), 30, 596, 960, 174, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#17231c;strokeWidth=2;fontSize=9;align=center;");
+  addVertex("split_notes", `<b>PARTS / BUILD NOTES</b><br>1. LEG 1: solder GND to TP1 and 5V to TP71; no left connector housing.<br>2. LEG 2: J43 side-lock Micro-Fit ${escapeHtml(model.microFitHousing)}; contact ${escapeHtml(model.microFitContact)}.<br>3. Isolator pinout: 1=GND, 2=SDA, 3=SCL, 4=5V.<br>4. Right housing/contact: ${escapeHtml(model.dupontHousing)} / ${escapeHtml(model.dupontContact)}.<br>5. Tool: ${escapeHtml(model.tool)}. Use separate expando and heat-shrink on each leg.`, 1025, 596, 535, 174, "rounded=0;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#17231c;strokeWidth=2;fontSize=10;align=left;spacingLeft=12;spacingTop=10;");
+  const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
   <diagram id="${drawioId(diagram)}" name="${diagram}">

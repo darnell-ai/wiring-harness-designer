@@ -1,12 +1,22 @@
 # Changelog
 
+## v1.6.12 - 2026-06-19
+
+- Added a dedicated W114 sheet renderer that preserves two independent physical cable legs to the shared Isolator 154X header.
+- Leg 1 now originates at separate solder pads TP1 and TP71, carries GND and 5V for 22 inches, and has its own expando and heat-shrink.
+- Leg 2 now originates at the J43 two-position side-lock Micro-Fit connector, carries SDA and SCL for 12 inches, and has its own expando and heat-shrink.
+- Corrected the authoritative table mapping to Isolator pin 1 GND, pin 2 SDA, pin 3 SCL, and pin 4 5V.
+- Removed the false Micro-Fit housing from the soldered test-point leg and removed the generic/unrecognized warning from the four-position Dupont destination.
+- Added crossover gaps in SVG and wire-jump styling in Draw.io so crossed conductors cannot be mistaken for splices.
+- Added W114-specific wiring, parts, source, length, and build-note tables to both SVG and Draw.io exports.
+
 ## v1.6.11 - 2026-06-19
 
 - Replaced the straight-cable fallback for branched hand sketches with a topology-aware electrical network renderer.
 - Added neutral-ink route tracing that suppresses pale blue graph paper while retaining light pencil conductors.
 - Added orthogonal route reconstruction that keeps turns and endpoint junctions connected without joining simple wire crossings.
 - Added recognition for the power-board-to-ISO154X I2C sketch, including TP1 GND, TP71 +5V, the J43 two-position side-lock Micro-Fit connector, and the four-position Dupont header.
-- Correctly maps TP71 to VCC pin 1, J43 pin 2 to SCL pin 2, J43 pin 1 to SDA pin 3, and TP1 to GND pin 4.
+- Added an initial inferred pin mapping from the hand sketch; v1.6.12 supersedes it with the authoritative W114 production table.
 - Applies the 22 inch dimension to the top-board power pair and the 12 inch dimension to the J43 I2C pair.
 - Added board/test-point symbols, Micro-Fit latch geometry, Dupont pin-1 orientation, verification notes, compact wiring tables, and matching editable Draw.io routes.
 - Limits expando and heat-shrink rendering to actual bundled route sections instead of covering an entire branched schematic.

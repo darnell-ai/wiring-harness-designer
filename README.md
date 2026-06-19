@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.11**
+Current release: **v1.6.12**
 
 ## Use The App
 
@@ -26,9 +26,12 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Preserves branched hand-drawn electrical topology instead of flattening every sketch into a left-to-right cable.
 - Distinguishes orthogonal turns and T-junctions from unconnected wire crossings, and keeps segment dimensions with the applicable source pair.
 - Recognizes the power-board/I2C sketch pattern with TP1 GND, TP71 +5V, a two-position side-lock Micro-Fit J43 connector, and an ISO154X four-position Dupont header.
-- Routes TP71 to VCC pin 1, J43 pin 2 to SCL pin 2, J43 pin 1 to SDA pin 3, and TP1 to GND pin 4 without inventing junctions.
+- Uses the W114 production pinout for both photo and table imports: TP1 GND to pin 1, J43 pin 1 SDA to pin 2, J43 pin 2 SCL to pin 3, and TP71 5V to pin 4.
 - Uses board/test-point symbols and actual connector-face layouts for sketch networks, with compact verification tables and matching editable Draw.io waypoints.
 - Applies expando and heat-shrink only to the bundled portions of branched sketch routes, leaving breakouts and crossed nets readable.
+- Recognizes W114 production tables as two separate physical cable legs to one Isolator 154X header instead of one four-conductor cable.
+- Draws the 22 inch TP1/TP71 soldered test-point leg separately from the 12 inch J43 two-position side-lock Micro-Fit leg, with independent expando and heat-shrink.
+- Uses the authoritative W114 table pinout: Isolator pin 1 GND, pin 2 SDA, pin 3 SCL, and pin 4 5V.
 - Uses the CAN bus template only when the sketch has CAN-specific evidence such as CAN-H/CAN-L, USB-CAN, JST branch notes, or 120 ohm termination.
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
 - Automatically draws expandable braided sleeving around conductor bundles with heat-shrink collars at both ends on every cable drawing and Draw.io export.
