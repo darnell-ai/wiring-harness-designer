@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.9";
+const APP_VERSION = "1.6.10";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -68,8 +68,39 @@ const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
     positionStep: 1,
     housingPart: () => "1327 SERIES",
     drawingUrl: "https://www.andersonpower.com/product-lines/powerpole/"
+  }),
+  teCpc1714: Object.freeze({
+    key: "teCpc1714",
+    manufacturer: "TE Connectivity",
+    family: "CPC Series 1",
+    style: "shell-size 17 reverse-sex circular connector",
+    series: "17-14",
+    pitch: "17-14 | key A | 15/16-20 UNEF",
+    rows: 0,
+    minPositions: 14,
+    maxPositions: 14,
+    positionStep: 1,
+    housingPart: () => "206043-1",
+    drawingUrl: "https://www.te.com/en/product-206043-1.html"
   })
 });
+
+const CPC_17_14_PIN_LAYOUT = Object.freeze([
+  Object.freeze({ pin: 1, dx: -46, dy: -58 }),
+  Object.freeze({ pin: 2, dx: 0, dy: -58 }),
+  Object.freeze({ pin: 3, dx: 46, dy: -58 }),
+  Object.freeze({ pin: 4, dx: -68, dy: -20 }),
+  Object.freeze({ pin: 5, dx: -23, dy: -20 }),
+  Object.freeze({ pin: 6, dx: 23, dy: -20 }),
+  Object.freeze({ pin: 7, dx: 68, dy: -20 }),
+  Object.freeze({ pin: 8, dx: -68, dy: 20 }),
+  Object.freeze({ pin: 9, dx: -23, dy: 20 }),
+  Object.freeze({ pin: 10, dx: 23, dy: 20 }),
+  Object.freeze({ pin: 11, dx: 68, dy: 20 }),
+  Object.freeze({ pin: 12, dx: -46, dy: 58 }),
+  Object.freeze({ pin: 13, dx: 0, dy: 58 }),
+  Object.freeze({ pin: 14, dx: 46, dy: 58 })
+]);
 
 const POWERPOLE_HOUSING_PARTS = Object.freeze({
   RED: "1327",
@@ -1851,6 +1882,9 @@ function buildDatasheetConnectorHarnessModel(sheet) {
   const warnings = uniqueValues([
     ...left.warnings,
     ...right.warnings,
+    left.key === "teCpc1714" && right.key === "teCpc1714" && left.contactType === right.contactType
+      ? `CPC connectors on both ends use ${left.contactType} contacts and will not mate; use 206043-1 socket receptacle with 206044-1 pin plug.`
+      : "",
     sourceRows.length > 16 ? "Only the first 16 routed conductors are shown on this connector-family drawing." : ""
   ]);
   return {
@@ -1880,13 +1914,20 @@ function resolveDatasheetConnector(rows, side) {
   const definition = DATASHEET_CONNECTOR_LIBRARY[key];
   const inferred = inferDatasheetConnectorPositions(rows, side, text, definition);
   const gauge = Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]);
-  const termination = datasheetTerminationForGauge(key, gauge);
+  const termination = datasheetTerminationForGauge(key, gauge, { text });
   const name = cleanConnectorName(
     firstFilled(rows, `${prefix}LegName`) ||
     firstFilled(rows, `${prefix}HousingType`) ||
     `${definition.manufacturer} ${definition.family}`
   );
-  const warnings = [...inferred.warnings, ...termination.warnings];
+  const cpcVariant = key === "teCpc1714" ? resolveCpc1714Variant(text) : null;
+  const warnings = uniqueValues([
+    ...inferred.warnings,
+    ...termination.warnings,
+    key === "teCpc1714"
+      ? "TE CPC 17-14 bare housings are non-sealed; do not assign an IP rating without a qualified sealed assembly and accessories."
+      : ""
+  ]);
   const powerpoleParts = key === "powerpole1545"
     ? powerpoleHousingPartsForRows(rows, side)
     : [];
@@ -1899,13 +1940,20 @@ function resolveDatasheetConnector(rows, side) {
     requestedPositions: inferred.requestedPositions,
     housingPart: key === "powerpole1545"
       ? powerpoleParts.map((item) => `${item.color} ${item.part}`).join(", ") || definition.housingPart(inferred.positions)
+      : cpcVariant?.housingPart
+        ? cpcVariant.housingPart
       : definition.housingPart(inferred.positions),
     engineeringPart: definition.engineeringPart ? definition.engineeringPart(inferred.positions) : "",
     contactPart: termination.contactPart,
     contactDescription: termination.contactDescription,
     toolPart: termination.toolPart,
+    insulationRange: termination.insulationRange || "",
     gauge,
     powerpoleParts,
+    contactType: cpcVariant?.contactType || "",
+    faceStyle: cpcVariant?.faceStyle || "",
+    matingPart: cpcVariant?.matingPart || "",
+    flange: Boolean(cpcVariant?.flange),
     warnings,
     recognized: true,
     side
@@ -1913,6 +1961,16 @@ function resolveDatasheetConnector(rows, side) {
 }
 
 function datasheetConnectorKey(text) {
+  if (
+    text.includes("206043") ||
+    text.includes("206044") ||
+    text.includes("17 14 CPC") ||
+    text.includes("17-14 CPC") ||
+    text.includes("14 PIN CPC") ||
+    text.includes("14 POSITION CPC")
+  ) {
+    return "teCpc1714";
+  }
   if (text.includes("POWERPOLE") || text.includes("POWER POLE") || text.includes("ANDERSON") || /\b1327G?\d*\b/.test(text)) {
     return "powerpole1545";
   }
@@ -1951,6 +2009,8 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
   } else if (definition.key === "miniFitJr") {
     const skuSuffix = Number(compact.match(/39012(\d{3})/)?.[1] || 0);
     requestedPositions = skuSuffix ? skuSuffix / 10 : 0;
+  } else if (definition.key === "teCpc1714") {
+    requestedPositions = 14;
   }
   if (!requestedPositions) {
     const positionMatch = text.match(/\b(\d{1,2})\s*(?:POS|POSITION|PIN|CIRCUIT)\b/);
@@ -1971,7 +2031,7 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
   return { positions, requestedPositions, warnings };
 }
 
-function datasheetTerminationForGauge(key, gauge) {
+function datasheetTerminationForGauge(key, gauge, options = {}) {
   const warnings = [];
   if (!Number.isFinite(gauge)) {
     return {
@@ -2065,11 +2125,62 @@ function datasheetTerminationForGauge(key, gauge) {
       warnings
     };
   }
+  if (key === "teCpc1714") {
+    const variant = resolveCpc1714Variant(options.text || "");
+    const isSocket = variant.contactType === "socket";
+    if (gauge >= 20 && gauge <= 24) {
+      return {
+        contactPart: isSocket ? "66105-3" : "66103-3",
+        contactDescription: `TE Type III+ gold ${isSocket ? "socket" : "pin"} contact, 24-20 AWG, size 16, 13 A max`,
+        toolPart: "91515-1 / INS 91002-1 / EXT 305183",
+        insulationRange: "1.02-2.03 mm insulation OD",
+        warnings
+      };
+    }
+    if (gauge >= 16 && gauge <= 18) {
+      return {
+        contactPart: isSocket ? "66101-3" : "66099-3",
+        contactDescription: `TE Type III+ gold ${isSocket ? "socket" : "pin"} contact, 18-16 AWG, size 16, 13 A max`,
+        toolPart: "91505-1 / INS 91002-1 / EXT 305183",
+        insulationRange: "2.03-2.54 mm insulation OD",
+        warnings
+      };
+    }
+    warnings.push(`TE CPC Series 1 contact selection is programmed for 24-20 AWG and 18-16 AWG; verify a Type III+ contact for ${gauge} AWG.`);
+    return {
+      contactPart: `VERIFY TYPE III+ ${variant.contactType.toUpperCase()} CONTACT FOR ${gauge} AWG`,
+      contactDescription: "CPC Series 1 uses size 16 Type III+ contacts; insulation diameter must also match the selected contact.",
+      toolPart: "VERIFY CONTACT-SPECIFIC CRIMP TOOL",
+      warnings
+    };
+  }
   return {
     contactPart: "VERIFY",
     contactDescription: "Connector family is not in the datasheet library.",
     toolPart: "VERIFY",
     warnings
+  };
+}
+
+function resolveCpc1714Variant(text) {
+  const normalized = normalizeText(text);
+  const isPlug = normalized.includes("206044") ||
+    (normalized.includes("PLUG") && !normalized.includes("RECEPT"));
+  if (isPlug) {
+    return {
+      housingPart: "206044-1",
+      contactType: "pin",
+      faceStyle: "recessed",
+      matingPart: "206043-1",
+      flange: false
+    };
+  }
+  return {
+    housingPart: "206043-1",
+    contactType: "socket",
+    faceStyle: "flush",
+    matingPart: "206044-1",
+    flange: true
   };
 }
 
@@ -2131,6 +2242,19 @@ function buildDatasheetActivePinMap(wires, side) {
 function datasheetConnectorGeometry(connector, side) {
   const centerX = side === "left" ? 220 : 1380;
   const top = 154;
+  if (connector.key === "teCpc1714") {
+    const width = 196;
+    const height = 196;
+    return {
+      centerX,
+      centerY: top + 132,
+      x: centerX - width / 2,
+      y: top + 34,
+      width,
+      height,
+      radius: 78
+    };
+  }
   if (connector.key === "powerpole1545") {
     const columns = Math.min(4, connector.positions);
     const rows = Math.ceil(connector.positions / columns);
@@ -2153,6 +2277,14 @@ function datasheetConnectorGeometry(connector, side) {
 function datasheetConnectorPinPoint(connector, pin, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
   const numeric = clamp(numericPin(pin), 1, connector.positions);
+  if (connector.key === "teCpc1714") {
+    const layout = CPC_17_14_PIN_LAYOUT.find((item) => item.pin === numeric) || CPC_17_14_PIN_LAYOUT[0];
+    const mirror = connector.contactType === "socket" ? -1 : 1;
+    return {
+      x: geometry.centerX + layout.dx * mirror,
+      y: geometry.centerY + layout.dy
+    };
+  }
   if (connector.key === "powerpole1545") {
     const index = numeric - 1;
     const column = index % geometry.columns;
@@ -2187,7 +2319,50 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
     `<text class="ds-connector-part" x="${geometry.centerX}" y="141">${escapeXml(shortLabel(partLabel, 40))}</text>`,
     `<text class="ds-connector-detail" x="${geometry.centerX}" y="158">${escapeXml(`${heading} | ${connector.positions} POS | ${connector.definition.pitch}`)}</text>`
   ];
-  if (connector.key === "powerpole1545") {
+  if (connector.key === "teCpc1714") {
+    const faceLabel = connector.contactType === "socket"
+      ? "FLUSH SOCKET MATING FACE - MIRRORED NUMBERING"
+      : "RECESSED PIN MATING FACE";
+    if (connector.flange) {
+      output.push(`
+        <rect class="cpc-flange" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="14" />
+        <circle class="cpc-mount-hole" cx="${geometry.x + 19}" cy="${geometry.y + 19}" r="7" />
+        <circle class="cpc-mount-hole" cx="${geometry.x + geometry.width - 19}" cy="${geometry.y + 19}" r="7" />
+        <circle class="cpc-mount-hole" cx="${geometry.x + 19}" cy="${geometry.y + geometry.height - 19}" r="7" />
+        <circle class="cpc-mount-hole" cx="${geometry.x + geometry.width - 19}" cy="${geometry.y + geometry.height - 19}" r="7" />`);
+    } else {
+      output.push(`
+        <circle class="cpc-coupling-ring" cx="${geometry.centerX}" cy="${geometry.centerY}" r="94" />
+        ${Array.from({ length: 16 }, (_, index) => {
+          const angle = index * Math.PI / 8;
+          const x1 = geometry.centerX + Math.cos(angle) * 83;
+          const y1 = geometry.centerY + Math.sin(angle) * 83;
+          const x2 = geometry.centerX + Math.cos(angle) * 93;
+          const y2 = geometry.centerY + Math.sin(angle) * 93;
+          return `<line class="cpc-ring-rib" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+        }).join("")}`);
+    }
+    output.push(`
+      <circle class="cpc-thread-ring" cx="${geometry.centerX}" cy="${geometry.centerY}" r="83" />
+      <circle class="${connector.faceStyle === "recessed" ? "cpc-face-recessed" : "cpc-face"}" cx="${geometry.centerX}" cy="${geometry.centerY}" r="75" />
+      <path class="cpc-keyway" d="M ${geometry.centerX - 16} ${geometry.centerY - 75} H ${geometry.centerX + 16} L ${geometry.centerX + 11} ${geometry.centerY - 64} H ${geometry.centerX - 11} Z" />
+      <path class="cpc-keyway" d="M ${geometry.centerX - 75} ${geometry.centerY - 8} L ${geometry.centerX - 62} ${geometry.centerY - 3} V ${geometry.centerY + 3} L ${geometry.centerX - 75} ${geometry.centerY + 8} Z" />`);
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      if (connector.contactType === "socket") {
+        output.push(`
+          <circle class="cpc-cavity" cx="${point.x}" cy="${point.y}" r="13" stroke="${active?.stroke || "#80878b"}" stroke-width="${active ? 4 : 1.5}" />
+          <circle class="cpc-socket-hole" cx="${point.x}" cy="${point.y}" r="5.5" />`);
+      } else {
+        output.push(`
+          <circle class="cpc-cavity" cx="${point.x}" cy="${point.y}" r="13" stroke="${active?.stroke || "#80878b"}" stroke-width="${active ? 4 : 1.5}" />
+          <circle class="cpc-pin-contact" cx="${point.x}" cy="${point.y}" r="5.5" />`);
+      }
+      output.push(`<text class="cpc-pin-number" x="${point.x}" y="${point.y - 6}">${pin}</text>`);
+    }
+    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">${faceLabel}</text>`);
+  } else if (connector.key === "powerpole1545") {
     for (let pin = 1; pin <= connector.positions; pin += 1) {
       const index = pin - 1;
       const column = index % geometry.columns;
@@ -2224,7 +2399,9 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
     }
     output.push(`<path class="circuit-one-marker" d="M ${geometry.x + 8} ${geometry.y + 8} L ${geometry.x + 18} ${geometry.y + 8} L ${geometry.x + 8} ${geometry.y + 18} Z" />`);
   }
-  output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">MATING FACE - CIRCUIT 1 MARKED</text>`);
+  if (connector.key !== "teCpc1714") {
+    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + 22}">MATING FACE - CIRCUIT 1 MARKED</text>`);
+  }
   output.push("</g>");
   return output.join("");
 }
@@ -2301,6 +2478,18 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       .powerpole-module { stroke: #111111; stroke-width: 2; }
       .powerpole-opening { fill: #101314; stroke: #000000; stroke-width: 1.5; }
       .powerpole-contact { fill: #c7cccf; stroke: #f4f5f5; stroke-width: 1; }
+      .cpc-flange { fill: #171a1c; stroke: #020303; stroke-width: 4; }
+      .cpc-mount-hole { fill: #ffffff; stroke: #020303; stroke-width: 3; }
+      .cpc-coupling-ring { fill: #24282b; stroke: #020303; stroke-width: 4; }
+      .cpc-ring-rib { stroke: #050606; stroke-width: 4; stroke-linecap: round; }
+      .cpc-thread-ring { fill: #24282b; stroke: #050606; stroke-width: 5; }
+      .cpc-face { fill: #202427; stroke: #050606; stroke-width: 3; }
+      .cpc-face-recessed { fill: #121517; stroke: #4c5357; stroke-width: 6; }
+      .cpc-keyway { fill: #050606; stroke: #687176; stroke-width: 1; }
+      .cpc-cavity { fill: #33383b; }
+      .cpc-socket-hole { fill: #050606; stroke: #9aa2a6; stroke-width: 1; }
+      .cpc-pin-contact { fill: #d8b967; stroke: #fff2b8; stroke-width: 1.2; }
+      .cpc-pin-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #000000; stroke-width: 2; }
       .ds-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
       .ds-terminal { fill: #ffffff; stroke: #000000; stroke-width: 1.8; }
       .ds-wire-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
@@ -2371,6 +2560,10 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
 function buildDatasheetPartsPanelLines(model) {
   const lines = [];
   const grouped = [];
+  if (model.left.key === "teCpc1714" || model.right.key === "teCpc1714") {
+    lines.push({ text: "CPC: 600 V max | 13 A/contact; derate loaded connector" });
+    lines.push({ text: "CPC housing: -55 to 105 C | UL94 V-0 thermoplastic" });
+  }
   [
     ["LEFT", model.left],
     ["RIGHT", model.right]
@@ -2380,7 +2573,8 @@ function buildDatasheetPartsPanelLines(model) {
       connector.positions,
       connector.housingPart,
       connector.contactPart,
-      connector.toolPart
+      connector.toolPart,
+      connector.contactType
     ].join("|");
     const existing = grouped.find((item) => item.signature === signature);
     if (existing) {
@@ -2391,7 +2585,11 @@ function buildDatasheetPartsPanelLines(model) {
   });
   grouped.forEach(({ labels, connector }) => {
     const label = labels.join("/");
-    lines.push({ text: `${label}: ${connector.definition.family} ${connector.positions} POS` });
+    lines.push({
+      text: connector.key === "teCpc1714"
+        ? `${label}: ${connector.definition.family} ${connector.positions} POS ${connector.faceStyle.toUpperCase()} ${connector.contactType.toUpperCase()}`
+        : `${label}: ${connector.definition.family} ${connector.positions} POS`
+    });
     if (connector.key === "powerpole1545" && connector.powerpoleParts.length) {
       for (let index = 0; index < connector.powerpoleParts.length; index += 2) {
         const parts = connector.powerpoleParts.slice(index, index + 2)
@@ -2399,13 +2597,24 @@ function buildDatasheetPartsPanelLines(model) {
           .join(" | ");
         lines.push({ text: `Housing: ${parts}` });
       }
+    } else if (connector.key === "teCpc1714") {
+      lines.push({ text: `Housing: ${connector.housingPart} | Mate: ${connector.matingPart}` });
     } else {
       lines.push({ text: `Housing: ${connector.housingPart}` });
     }
-    lines.push({ text: `Contact: ${connector.contactPart}` });
+    lines.push({
+      text: connector.key === "teCpc1714" && connector.insulationRange
+        ? `Contact: ${connector.contactPart} | ${connector.insulationRange}`
+        : `Contact: ${connector.contactPart}`
+    });
     lines.push({ text: `Tool: ${connector.toolPart}` });
   });
-  model.warnings.slice(0, 3).forEach((warning) => lines.push({ text: `WARNING: ${warning}`, warning: true }));
+  model.warnings.slice(0, 3).forEach((warning) => lines.push({
+    text: warning.includes("non-sealed")
+      ? "WARNING: CPC 17-14 bare housings are not sealed or IP rated."
+      : `WARNING: ${warning}`,
+    warning: true
+  }));
   return lines.slice(0, 11);
 }
 
@@ -4937,7 +5146,74 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
     58,
     "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;"
   );
-  if (connector.key === "powerpole1545") {
+  if (connector.key === "teCpc1714") {
+    if (connector.flange) {
+      addVertex(
+        `${side}_cpc_flange`,
+        "",
+        geometry.x,
+        geometry.y,
+        geometry.width,
+        geometry.height,
+        "rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#171a1c;strokeColor=#020303;strokeWidth=4;"
+      );
+      [
+        [geometry.x + 12, geometry.y + 12],
+        [geometry.x + geometry.width - 26, geometry.y + 12],
+        [geometry.x + 12, geometry.y + geometry.height - 26],
+        [geometry.x + geometry.width - 26, geometry.y + geometry.height - 26]
+      ].forEach(([x, y], index) => addVertex(
+        `${side}_cpc_mount_${index + 1}`,
+        "",
+        x,
+        y,
+        14,
+        14,
+        "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#020303;strokeWidth=2;"
+      ));
+    } else {
+      addVertex(
+        `${side}_cpc_coupling`,
+        "",
+        geometry.centerX - 94,
+        geometry.centerY - 94,
+        188,
+        188,
+        "ellipse;whiteSpace=wrap;html=1;fillColor=#24282b;strokeColor=#020303;strokeWidth=4;"
+      );
+    }
+    addVertex(
+      `${side}_cpc_thread`,
+      "",
+      geometry.centerX - 83,
+      geometry.centerY - 83,
+      166,
+      166,
+      "ellipse;whiteSpace=wrap;html=1;fillColor=#24282b;strokeColor=#050606;strokeWidth=4;"
+    );
+    addVertex(
+      `${side}_cpc_face`,
+      "",
+      geometry.centerX - 75,
+      geometry.centerY - 75,
+      150,
+      150,
+      `ellipse;whiteSpace=wrap;html=1;fillColor=${connector.faceStyle === "recessed" ? "#121517" : "#202427"};strokeColor=${connector.faceStyle === "recessed" ? "#4c5357" : "#050606"};strokeWidth=${connector.faceStyle === "recessed" ? 6 : 3};`
+    );
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      addVertex(
+        `${side}_cpc_cavity_${pin}`,
+        String(pin),
+        point.x - 13,
+        point.y - 13,
+        26,
+        26,
+        `ellipse;whiteSpace=wrap;html=1;fillColor=${connector.contactType === "socket" ? "#050606" : "#d8b967"};strokeColor=${active?.stroke || "#80878b"};strokeWidth=${active ? 4 : 1};fontColor=#ffffff;fontStyle=1;fontSize=7;`
+      );
+    }
+  } else if (connector.key === "powerpole1545") {
     for (let pin = 1; pin <= connector.positions; pin += 1) {
       const index = pin - 1;
       const column = index % geometry.columns;
@@ -4993,7 +5269,9 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
   }
   addVertex(
     `${side}_datasheet_view`,
-    "MATING FACE - CIRCUIT 1 MARKED",
+    connector.key === "teCpc1714"
+      ? `${connector.faceStyle.toUpperCase()} ${connector.contactType.toUpperCase()} MATING FACE${connector.contactType === "socket" ? " - MIRRORED" : ""}`
+      : "MATING FACE - CIRCUIT 1 MARKED",
     geometry.centerX - 120,
     geometry.y + geometry.height + 8,
     240,

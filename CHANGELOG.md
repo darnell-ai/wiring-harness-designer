@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.10 - 2026-06-19
+
+- Added datasheet-backed TE Connectivity CPC Series 1 support for the shell-size 17-14 reverse-sex connector pair.
+- Recognizes `206043-1` as the square-flange, flush-face socket receptacle and `206044-1` as its recessed-face pin plug mate.
+- Draws the exact 14-cavity arrangement and mirrors socket-face numbering from the published pin mating face.
+- Added Type III+ gold contact selection for 22 AWG (`66105-3` socket / `66103-3` pin) and 16 AWG (`66101-3` socket / `66099-3` pin).
+- Added `91515-1` and `91505-1` crimp tooling plus `91002-1` insertion and `305183` extraction tooling callouts.
+- Added 600 V, 13 A/contact maximum, insulation diameter, key A, 15/16-20 UNEF, temperature, UL94 V-0, and non-sealed housing notes.
+- Added manufacturing warnings for non-mating CPC contact sexes and invalid IP claims on the bare 17-14 housings.
+- Added matching editable CPC connector faces and cavity layouts to Draw.io exports.
+
 ## v1.6.9 - 2026-06-19
 
 - Added a reusable datasheet-backed connector library for Molex Micro-Fit 3.0, Molex Mini-Fit Jr., and Anderson Powerpole PP15/45.

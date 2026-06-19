@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.9**
+Current release: **v1.6.10**
 
 ## Use The App
 
@@ -30,6 +30,10 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Recognizes Molex Micro-Fit 3.0 front-lock 43645 housings from 2 through 12 circuits and side-lock 43025 housings from 2 through 16 even-numbered circuits.
 - Recognizes Molex Mini-Fit Jr. 5557 dual-row housings from 2 through 16 even-numbered circuits, including the dedicated 16 AWG and 24-18 AWG female terminal/tool selections.
 - Recognizes Anderson Powerpole PP15/45 modular assemblies through 16 poles, colors each housing from the wire color, and lists the related housing, contact, and crimp-tool part numbers.
+- Recognizes the TE Connectivity CPC Series 1 shell-size 17-14 reverse-sex pair: `206043-1` square-flange socket receptacle and mating `206044-1` pin plug.
+- Draws the exact 14-cavity circular arrangement with the socket mating face mirrored from TE's published pin-face numbering, plus keyed/threaded housing details and mounting flange.
+- Selects active Type III+ gold contacts and tooling for 22 AWG (`66105-3` socket / `66103-3` pin) and 16 AWG (`66101-3` socket / `66099-3` pin), including insulation-diameter limits.
+- Warns when CPC contact sexes will not mate or when the non-sealed bare 17-14 housings are treated as IP rated.
 - Validates wire gauge against official contact ranges. Unsupported combinations such as 16 AWG Micro-Fit or 22 AWG PP15/45 are shown as red manufacturing warnings instead of being assigned an unsafe crimp contact.
 - Recognizes DC barrel power cable sheets and draws the barrel plug, center pin, outer sleeve/shell, heat-shrink ends, and wire-wrap sleeve around the conductors.
 - Recognizes straight connector-to-connector cable sheets and renders KiCad-style manufacturing drawings with connector face views, pin numbers, wire labels, wiring table, BOM, notes, and title block.
