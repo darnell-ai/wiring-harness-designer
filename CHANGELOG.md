@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.6.8 - 2026-06-19
+
+- Added a datasheet-aware W115 connector drawing for Molex 43645-0200 and 90143-0040 housings.
+- Draws the Micro-Fit 3.0 two-circuit latch, circuit-1 identifier, and active cavities 1 and 2.
+- Draws the complete C-Grid III 40-circuit 2-by-20 mating face with odd/even numbering and active cavities 8 and 10 highlighted.
+- Routes TX and RX into their actual connector cavities and includes Molex series, pitch, circuit-count, orientation, and keying notes.
+- Added matching editable connector bodies, cavity grids, and metadata to Draw.io exports.
+
 ## v1.6.7 - 2026-06-18
 
 - Added automatic expandable braided sleeving (expando) around conductor bundles on every cable drawing.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.7";
+const APP_VERSION = "1.6.8";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1471,6 +1471,9 @@ function buildSheetHarnessSvg(result) {
   if (isBarrelPowerCableSheet(sheet.rows)) {
     return buildBarrelPowerCableSvg(result);
   }
+  if (isMolexUartJetsonSheet(sheet.rows)) {
+    return buildMolexUartJetsonSvg(result);
+  }
   const kicadModel = buildKiCadHarnessModel(sheet);
   if (kicadModel) {
     return buildKiCadHarnessSvg(result, kicadModel);
@@ -1557,6 +1560,181 @@ function buildSheetHarnessSvg(result) {
   ${rowLines}
   <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
   ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
+</svg>`;
+}
+
+function isMolexUartJetsonSheet(rows) {
+  const leftText = normalizeText(rows.map((row) => [
+    row.leftLegName,
+    row.leftHousingType,
+    row.leftHousingPart
+  ].join(" ")).join(" "));
+  const rightText = normalizeText(rows.map((row) => [
+    row.rightLegName,
+    row.rightHousingType,
+    row.rightHousingPart
+  ].join(" ")).join(" "));
+  const hasMicroFit2 = leftText.includes("43645") ||
+    leftText.includes("WM 1845") ||
+    leftText.includes("MICRO FIT") ||
+    leftText.includes("2 PIN FRONT MOLEX");
+  const hasCGrid40 = rightText.includes("90143") ||
+    rightText.includes("1568 16764") ||
+    rightText.includes("C GRID") ||
+    rightText.includes("40 PIN CONNECTOR");
+  return hasMicroFit2 && hasCGrid40;
+}
+
+function molexMicroFit2PinPoint(pin) {
+  return {
+    x: 183,
+    y: String(pin) === "2" ? 304 : 248
+  };
+}
+
+function molexCGrid40PinPoint(pin) {
+  const numeric = clamp(numericPin(pin), 1, 40);
+  const row = Math.floor((numeric - 1) / 2);
+  const column = (numeric - 1) % 2;
+  return {
+    x: 1354 + column * 42,
+    y: 188 + row * 19.2
+  };
+}
+
+function buildMolexMicroFit2FaceSvg(rows) {
+  const activePins = new Map(rows.map((row) => [
+    String(row.leftPinPos || ""),
+    sheetColorToStroke(row.color)
+  ]));
+  const cavities = ["1", "2"].map((pin) => {
+    const point = molexMicroFit2PinPoint(pin);
+    const stroke = activePins.get(pin) || "#aeb5b9";
+    return `
+      <rect class="molex-cavity" x="${point.x - 20}" y="${point.y - 17}" width="40" height="34" rx="7" />
+      <rect x="${point.x - 10}" y="${point.y - 9}" width="20" height="18" rx="4" fill="#050505" stroke="${stroke}" stroke-width="${activePins.has(pin) ? 4 : 1.5}" />
+      <text class="cavity-number cavity-number-light" x="${point.x}" y="${point.y + 5}">${pin}</text>`;
+  }).join("");
+  return `
+  <g aria-label="Molex 43645-0200 Micro-Fit 3.0 two circuit receptacle mating face">
+    <text class="connector-title" x="160" y="164">J9 HB</text>
+    <text class="connector-part" x="160" y="184">MOLEX 43645-0200</text>
+    <text class="connector-detail" x="160" y="201">MICRO-FIT 3.0 | 2 CIRCUIT | MATING FACE</text>
+    <rect class="molex-body" x="126" y="214" width="114" height="126" rx="10" />
+    <path class="molex-latch" d="M 126 236 L 101 247 L 101 307 L 126 319 Z" />
+    <path class="molex-latch-rib" d="M 112 254 L 112 301" />
+    <rect class="molex-rib" x="136" y="218" width="12" height="118" rx="4" />
+    <path class="circuit-one-marker" d="M 151 226 L 161 216 L 171 226 Z" />
+    ${cavities}
+    <text class="connector-detail" x="160" y="360">LATCH / CIRCUIT 1 IDENTIFIER SHOWN</text>
+  </g>`;
+}
+
+function buildMolexCGrid40FaceSvg(rows) {
+  const activePins = new Map(rows.map((row) => [
+    String(row.rightPinPos || ""),
+    sheetColorToStroke(row.color)
+  ]));
+  const cavities = [];
+  for (let pin = 1; pin <= 40; pin += 1) {
+    const point = molexCGrid40PinPoint(pin);
+    const activeStroke = activePins.get(String(pin));
+    cavities.push(`
+      <rect class="cgrid-cavity" x="${point.x - 14}" y="${point.y - 7}" width="28" height="14" rx="2" stroke="${activeStroke || "#777f84"}" stroke-width="${activeStroke ? 3.5 : 1.2}" />
+      ${activeStroke || pin === 1 || pin === 40
+        ? `<text class="cgrid-pin-number" x="${point.x + (pin % 2 ? -22 : 22)}" y="${point.y + 4}">${pin}</text>`
+        : ""}`);
+  }
+  return `
+  <g aria-label="Molex 90143-0040 C-Grid III forty circuit housing mating face">
+    <text class="connector-title" x="1375" y="132">JETSON</text>
+    <text class="connector-part" x="1375" y="151">MOLEX 90143-0040</text>
+    <text class="connector-detail" x="1375" y="167">C-GRID III | 2 x 20 | MATING FACE</text>
+    <rect class="molex-body" x="1322" y="174" width="106" height="402" rx="8" />
+    <rect class="cgrid-center-rib" x="1371" y="181" width="8" height="388" rx="3" />
+    <path class="circuit-one-marker" d="M 1332 184 L 1342 174 L 1352 184 Z" />
+    ${cavities.join("")}
+    <text class="connector-detail" x="1375" y="597">ODD PINS LEFT | EVEN PINS RIGHT</text>
+    <text class="connector-detail" x="1375" y="614">2.54 mm PITCH | NO POLARIZING BUTTONS</text>
+  </g>`;
+}
+
+function buildMolexUartJetsonSvg(result) {
+  const sheet = result.sheetHarness;
+  const rows = sheet.rows.filter((row) => row.wireName && row.leftPinPos && row.rightPinPos).slice(0, 2);
+  const wireYs = [248, 304];
+  const wireSvg = rows.map((row, index) => {
+    const leftPoint = molexMicroFit2PinPoint(row.leftPinPos);
+    const rightPoint = molexCGrid40PinPoint(row.rightPinPos);
+    const wireY = wireYs[index] ?? 248 + index * 56;
+    const color = sheetColorToStroke(row.color);
+    const label = row.wireName || `WIRE ${index + 1}`;
+    const length = row.length ? `${row.length} in`.replace(/\s+inches?\s+in$/i, " inches") : "";
+    return `
+      <path class="sheet-wire" d="M ${leftPoint.x} ${leftPoint.y} L 316 ${wireY} L 1192 ${wireY} L 1260 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${color}" />
+      <circle class="sheet-pin" cx="${leftPoint.x}" cy="${leftPoint.y}" r="5" />
+      <circle class="sheet-pin" cx="${rightPoint.x}" cy="${rightPoint.y}" r="5" />
+      <text class="sheet-wire-label" x="755" y="${wireY - 10}">${escapeXml(label)}</text>
+      <text class="sheet-small" x="755" y="${wireY + 22}">${escapeXml(length)}</text>`;
+  }).join("");
+  const comments = uniqueValues(rows.map((row) => row.comments)).slice(0, 2);
+  const noteLines = [
+    "43645-0200: Micro-Fit 3.0 single-row receptacle, 2 circuits, black housing.",
+    "90143-0040: C-Grid III crimp housing, 40 circuits (2 x 20), 2.54 mm pitch, black housing.",
+    "Connector faces are shown from the mating side; verify circuit-1 orientation before assembly.",
+    ...comments
+  ].slice(0, 5).map((note, index) => `<text class="sheet-note" x="60" y="${646 + index * 20}">${index + 1}. ${escapeXml(note)}</text>`).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(sheet.title)} with Molex connector faces">
+  <defs>
+    ${buildBraidPatternDefs()}
+    <style>
+      .sheet { fill: #ffffff; }
+      .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; }
+      .subtitle { fill: #333333; font: 600 17px Aptos, Segoe UI, sans-serif; }
+      .meta { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; }
+      .connector-title { fill: #000000; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-part { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-detail { fill: #333333; font: 800 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .molex-body { fill: #202326; stroke: #050505; stroke-width: 4; }
+      .molex-latch { fill: #2e3235; stroke: #050505; stroke-width: 3; }
+      .molex-latch-rib { fill: none; stroke: #080808; stroke-width: 5; stroke-linecap: round; }
+      .molex-rib, .cgrid-center-rib { fill: #34383b; stroke: #070707; stroke-width: 1.5; }
+      .molex-cavity { fill: #353a3d; stroke: #050505; stroke-width: 2; }
+      .cgrid-cavity { fill: #080909; }
+      .cavity-number { fill: #ffffff; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .cgrid-pin-number { fill: #000000; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .circuit-one-marker { fill: #d8dde0; stroke: #050505; stroke-width: 1.2; }
+      .sheet-wire { fill: none; stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+      .sheet-pin { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .sheet-wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .sheet-small { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .sheet-note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
+      .sheet-note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    </style>
+  </defs>
+  <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <text class="title" x="46" y="54">${escapeXml(sheet.title)}</text>
+  <text class="subtitle" x="46" y="84">Molex connector mating-face drawing with expandable braided sleeving</text>
+  <text class="meta" x="46" y="108">Rows loaded: ${sheet.totalRows} | Drawing rows shown: ${rows.length}</text>
+
+  ${buildMolexMicroFit2FaceSvg(rows)}
+  ${buildMolexCGrid40FaceSvg(rows)}
+  ${buildHorizontalProtectionSvg({
+    x1: 330,
+    x2: 1174,
+    top: 218,
+    bottom: 334,
+    labelY: 207,
+    endLabelY: 354
+  })}
+  ${wireSvg}
+
+  <text class="sheet-note-title" x="60" y="622">CONNECTOR / BUILD NOTES</text>
+  ${noteLines}
 </svg>`;
 }
 
@@ -3844,6 +4022,9 @@ function buildSheetDrawioXml(result) {
   if (isBarrelPowerCableSheet(result.sheetHarness.rows)) {
     return buildBarrelPowerDrawioXml(result);
   }
+  if (isMolexUartJetsonSheet(result.sheetHarness.rows)) {
+    return buildMolexUartJetsonDrawioXml(result);
+  }
   const kicadModel = buildKiCadHarnessModel(result.sheetHarness);
   if (kicadModel) {
     return buildKiCadHarnessDrawioXml(result, kicadModel);
@@ -3886,6 +4067,86 @@ function buildSheetDrawioXml(result) {
   });
   addVertex("sheet_notes", `Rows loaded: ${sheet.totalRows}<br>Drawing rows shown: ${rows.length}`, 58, 650, 500, 70, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=14;align=left;spacingLeft=12;");
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function buildMolexUartJetsonDrawioXml(result) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, x1, y1, x2, y2, style) => {
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  };
+  const sheet = result.sheetHarness;
+  const rows = sheet.rows.filter((row) => row.wireName && row.leftPinPos && row.rightPinPos).slice(0, 2);
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("title", sheet.title, 46, 24, 980, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
+  addVertex("subtitle", "Molex connector mating-face drawing with expandable braided sleeving", 46, 68, 820, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
+  addVertex("left_heading", "J9 HB<br><b>MOLEX 43645-0200</b><br>MICRO-FIT 3.0 | 2 CIRCUIT<br>MATING FACE", 62, 132, 196, 70, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("left_body", "", 126, 214, 114, 126, "rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#202326;strokeColor=#050505;strokeWidth=4;");
+  addVertex("left_latch", "", 101, 247, 28, 60, "rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#2e3235;strokeColor=#050505;strokeWidth=3;");
+  addVertex("left_circuit_1", "1", 163, 231, 40, 34, "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#050505;strokeColor=#f77f00;strokeWidth=4;fontColor=#ffffff;fontStyle=1;");
+  addVertex("left_circuit_2", "2", 163, 287, 40, 34, "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#050505;strokeColor=#0b64d8;strokeWidth=4;fontColor=#ffffff;fontStyle=1;");
+  addVertex("right_heading", "JETSON<br><b>MOLEX 90143-0040</b><br>C-GRID III | 2 x 20<br>MATING FACE", 1270, 100, 210, 70, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_body", "", 1322, 174, 106, 402, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#202326;strokeColor=#050505;strokeWidth=4;");
+  for (let pin = 1; pin <= 40; pin += 1) {
+    const point = molexCGrid40PinPoint(pin);
+    const matchingRow = rows.find((row) => String(row.rightPinPos) === String(pin));
+    const stroke = matchingRow ? sheetColorToStroke(matchingRow.color) : "#777f84";
+    addVertex(
+      `right_cavity_${pin}`,
+      matchingRow || pin === 1 || pin === 40 ? String(pin) : "",
+      point.x - 14,
+      point.y - 7,
+      28,
+      14,
+      `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#080909;strokeColor=${stroke};strokeWidth=${matchingRow ? 3 : 1};fontColor=#ffffff;fontSize=8;fontStyle=1;`
+    );
+  }
+  addVertex("right_pin_rule", "ODD PINS LEFT | EVEN PINS RIGHT<br>2.54 mm PITCH | NO POLARIZING BUTTONS", 1260, 588, 230, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#333333;align=center;");
+  addHorizontalDrawioProtection(addVertex, {
+    id: "main_protection",
+    x1: 330,
+    x2: 1174,
+    top: 218,
+    bottom: 334
+  });
+  rows.forEach((row, index) => {
+    const leftPoint = molexMicroFit2PinPoint(row.leftPinPos);
+    const rightPoint = molexCGrid40PinPoint(row.rightPinPos);
+    const color = sheetColorToStroke(row.color);
+    addEdge(
+      `wire_${index + 1}`,
+      `${escapeHtml(row.wireName || `WIRE ${index + 1}`)} | ${escapeHtml(row.length || "")}`,
+      leftPoint.x,
+      leftPoint.y,
+      rightPoint.x,
+      rightPoint.y,
+      `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${color};strokeWidth=6;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`
+    );
+  });
+  addVertex(
+    "connector_notes",
+    "<b>CONNECTOR / BUILD NOTES</b><br>1. 43645-0200: Micro-Fit 3.0 single-row receptacle, 2 circuits, black housing.<br>2. 90143-0040: C-Grid III crimp housing, 40 circuits (2 x 20), 2.54 mm pitch, black housing.<br>3. Connector faces are shown from the mating side; verify circuit-1 orientation before assembly.",
+    46,
+    640,
+    1120,
+    104,
+    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=left;spacingLeft=12;spacingTop=8;"
+  );
+  const diagram = escapeXml(result.fileName || sheet.title || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
   <diagram id="${drawioId(diagram)}" name="${diagram}">
