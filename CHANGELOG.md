@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.17 - 2026-06-21
+
+- Added a `Right Wire Name` field to the universal harness sheet so the right-hand endpoint label can be stored separately from the shared `Wire Name`.
+- Preserved the new column through pasted table import, Excel import, generated copy tables, and sheet-to-table exports.
+- Defaulted generated rows to reuse `Wire Name` in the new right-side column so older workflows still render cleanly.
+
 ## v1.6.16 - 2026-06-19
 
 - Changed embedded Draw.io Save from downloading the editable `.drawio` source to exporting and downloading a PDF.

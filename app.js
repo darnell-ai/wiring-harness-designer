@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.16";
+const APP_VERSION = "1.6.17";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -522,6 +522,12 @@ function sheetRowToObject(headers, row) {
       output[key] = row[index] || "";
     }
   });
+  if (!output.wireName && output.rightWireName) {
+    output.wireName = output.rightWireName;
+  }
+  if (!output.rightWireName && output.wireName) {
+    output.rightWireName = output.wireName;
+  }
   return output;
 }
 
@@ -544,6 +550,7 @@ function normalizeSheetKey(header) {
     LEFTPINP: "leftPinPart",
     PINP: "rightPinPart",
     RIGHTPINP: "rightPinPart",
+    RIGHTWIRENAME: "rightWireName",
     AWGUAGE: "awg",
     AWGGAUGE: "awg",
     AWG: "awg",
@@ -1417,6 +1424,7 @@ function getHarnessTableColumns() {
     { key: "rightHousingType", label: "Right Housing Type" },
     { key: "rightHousingPart", label: "Right Housing Part #" },
     { key: "rightPinPart", label: "Right Pin P#" },
+    { key: "rightWireName", label: "Right Wire Name" },
     { key: "toolUsed", label: "Tool used" },
     { key: "comments", label: "Comments" }
   ];
@@ -1532,7 +1540,11 @@ function buildCanHarnessTableRows(columns, branches, signals) {
 }
 
 function makeHarnessTableRow(columns, values) {
-  return columns.map((column) => String(values[column.key] || ""));
+  const rowValues = {
+    ...values,
+    rightWireName: values.rightWireName || values.wireName || ""
+  };
+  return columns.map((column) => String(rowValues[column.key] || ""));
 }
 
 function buildCanHarnessWires(branches, signals) {
@@ -1629,7 +1641,7 @@ function compileSheetHarnessResult(sheet, fileName) {
     sourceHeight: 0,
     wires: drawableRows.map((row, index) => ({
       id: `SHEET-W${index + 1}`,
-      label: row.wireName || row.branchRole || `ROW ${row.rowNumber}`,
+      label: sheetRowWireName(row) || row.branchRole || `ROW ${row.rowNumber}`,
       color: sheetColorToStroke(row.color),
       confidence: 1
     })),
@@ -1652,7 +1664,7 @@ function isDrawableSheetRow(row) {
     row.leftPinPos ||
     row.leftHousingType ||
     row.leftHousingPart ||
-    row.wireName ||
+    sheetRowWireName(row) ||
     row.color ||
     row.branchRole ||
     row.comments ||
@@ -1667,6 +1679,10 @@ function isDrawableSheetRow(row) {
 
 function firstFilled(rows, key) {
   return rows.map((row) => row[key]).find((value) => String(value || "").trim()) || "";
+}
+
+function sheetRowWireName(row) {
+  return String(row?.wireName || row?.rightWireName || "").trim();
 }
 
 function sheetEndpointKey(row, side) {
@@ -2705,14 +2721,14 @@ function buildMolexCGrid40FaceSvg(rows) {
 
 function buildMolexUartJetsonSvg(result) {
   const sheet = result.sheetHarness;
-  const rows = sheet.rows.filter((row) => row.wireName && row.leftPinPos && row.rightPinPos).slice(0, 2);
+  const rows = sheet.rows.filter((row) => sheetRowWireName(row) && row.leftPinPos && row.rightPinPos).slice(0, 2);
   const wireYs = [248, 304];
   const wireSvg = rows.map((row, index) => {
     const leftPoint = molexMicroFit2PinPoint(row.leftPinPos);
     const rightPoint = molexCGrid40PinPoint(row.rightPinPos);
     const wireY = wireYs[index] ?? 248 + index * 56;
     const color = sheetColorToStroke(row.color);
-    const label = row.wireName || `WIRE ${index + 1}`;
+    const label = sheetRowWireName(row) || `WIRE ${index + 1}`;
     const length = row.length ? `${row.length} in`.replace(/\s+inches?\s+in$/i, " inches") : "";
     return `
       <path class="sheet-wire" d="M ${leftPoint.x} ${leftPoint.y} L 316 ${wireY} L 1192 ${wireY} L 1260 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${color}" />
@@ -3896,12 +3912,13 @@ function isMaestroStyleSheet(rows) {
 
 function getKiCadWireRows(rows) {
   return rows.filter((row) => {
-    const wireName = normalizeText(row.wireName);
+    const wireName = normalizeText(sheetRowWireName(row));
     const leftPin = normalizeText(row.leftPinPos);
     const rightPin = normalizeText(row.rightPinPos);
     const branchRole = normalizeText(row.branchRole);
     const rowText = normalizeText([
-      row.wireName,
+      sheetRowWireName(row),
+      row.rightWireName,
       row.color,
       row.awg,
       row.length,
@@ -6467,7 +6484,7 @@ function buildMolexUartJetsonDrawioXml(result) {
     add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
   };
   const sheet = result.sheetHarness;
-  const rows = sheet.rows.filter((row) => row.wireName && row.leftPinPos && row.rightPinPos).slice(0, 2);
+  const rows = sheet.rows.filter((row) => sheetRowWireName(row) && row.leftPinPos && row.rightPinPos).slice(0, 2);
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
   addVertex("title", sheet.title, 46, 24, 980, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=30;fontStyle=1;fontColor=#000000;align=left;");
