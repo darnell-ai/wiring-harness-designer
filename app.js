@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.23";
+const APP_VERSION = "1.6.24";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -3962,7 +3962,7 @@ function buildKiCadHarnessModel(sheet) {
       name: isMultiGroup ? "ESC PCB" : leftName,
       type: leftType && normalizeText(leftType) !== normalizeText(leftName) ? leftType : "",
       positionText: isMultiGroup ? `${groups.length} x 3 POSITION` : `${rows.length} POSITION`,
-      view: "FRONT VIEW"
+      view: normalizeText(leftType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
     },
     rightConnector: {
       name: rightName,
@@ -3972,7 +3972,7 @@ function buildKiCadHarnessModel(sheet) {
         : rightConnectorGroups.length > 1
           ? formatKiCadConnectorGroupSummary(rightConnectorGroups)
           : `${rows.length} POSITION`,
-      view: "FRONT VIEW"
+      view: normalizeText(rightType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
     }
   };
 }
@@ -4229,9 +4229,15 @@ function buildKiCadHarnessSvg(result, model) {
   }
   const displayModel = buildKiCadSvgDisplayModel(model);
   const denseLayout = displayModel.wires.length > 8;
+  const leftPcb = isKiCadPcbConnector(displayModel.leftConnector);
+  const rightPcb = isKiCadPcbConnector(displayModel.rightConnector);
   const leftFace = buildKiCadConnectorFaceSvg(170, displayModel.wires, displayModel.leftConnector, "left");
   const rightFace = buildKiCadConnectorFaceSvg(1300, displayModel.wires, displayModel.rightConnector, "right", displayModel.rightConnectorGroups);
-  const wireSvg = displayModel.wires.map((wire) => buildKiCadWireSvg(wire, denseLayout)).join("");
+  const wireSvg = displayModel.wires.map((wire) => buildKiCadWireSvg(wire, {
+    compact: denseLayout,
+    leftPcb,
+    rightPcb
+  })).join("");
   const protectionTop = displayModel.wires[0].y - (denseLayout ? 18 : 30);
   const protectionBottom = displayModel.wires[displayModel.wires.length - 1].y + (denseLayout ? 18 : 30);
   const wiringRows = displayModel.wires.map((wire) => [
@@ -4294,6 +4300,13 @@ function buildKiCadHarnessSvg(result, model) {
       .connector-body-right { fill: #ffffff; stroke: #000000; stroke-width: 2; }
       .connector-shadow { fill: #595959; stroke: #000000; stroke-width: 1.4; }
       .connector-group-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
+      .pcb-board { fill: #216b42; stroke: #123d28; stroke-width: 3; }
+      .pcb-silkscreen { fill: none; stroke: #e8f1e9; stroke-width: 1.4; }
+      .pcb-trace { fill: none; stroke: #d5a72b; stroke-width: 5; stroke-linecap: round; }
+      .pcb-pad { fill: #d9aa31; stroke: #8a6515; stroke-width: 1.5; }
+      .pcb-hole { fill: #161918; stroke: #f2d36f; stroke-width: 1.2; }
+      .pcb-label { fill: #ffffff; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pcb-pin-number { fill: #ffffff; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
       .cavity { fill: #f9f9f9; stroke: #000000; stroke-width: 1.5; }
       .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
       .segmented-cavity { fill: #8d8d8d; stroke: #6b6b6b; stroke-width: 1; }
@@ -4314,6 +4327,7 @@ function buildKiCadHarnessSvg(result, model) {
       .dimension { fill: none; stroke: #000000; stroke-width: 1.8; marker-start: url(#kicadArrow); marker-end: url(#kicadArrow); }
       .dim-ext { stroke: #000000; stroke-width: 1.2; }
       .dim-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .dim-label-bg { fill: #ffffff; fill-opacity: 0.96; }
       .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 1.4; }
       .table-grid { stroke: #000000; stroke-width: 1; }
       .table-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -4345,13 +4359,13 @@ function buildKiCadHarnessSvg(result, model) {
   <text class="title" x="800" y="52">${escapeXml(displayModel.cableName)}</text>
   <text class="subtitle" x="800" y="84">${escapeXml(displayModel.description)}</text>
 
-  <text class="connector-heading" x="220" y="46">LEFT CONNECTOR</text>
+  <text class="connector-heading" x="220" y="46">${leftPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}</text>
   <text class="connector-sub" x="220" y="72">${escapeXml(displayModel.leftConnector.name)}</text>
   ${displayModel.leftConnector.type ? `<text class="connector-sub" x="220" y="96">${escapeXml(displayModel.leftConnector.type)}</text>` : ""}
   <text class="connector-sub" x="220" y="120">${escapeXml(displayModel.leftConnector.positionText)}</text>
   <text class="connector-view" x="220" y="144">(${escapeXml(displayModel.leftConnector.view)})</text>
 
-  <text class="connector-heading" x="1360" y="46">RIGHT CONNECTOR</text>
+  <text class="connector-heading" x="1360" y="46">${rightPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}</text>
   <text class="connector-sub" x="1360" y="72">${escapeXml(displayModel.rightConnector.name)}</text>
   ${displayModel.rightConnector.type ? `<text class="connector-sub" x="1360" y="96">${escapeXml(displayModel.rightConnector.type)}</text>` : ""}
   <text class="connector-sub" x="1360" y="120">${escapeXml(displayModel.rightConnector.positionText)}</text>
@@ -4360,8 +4374,8 @@ function buildKiCadHarnessSvg(result, model) {
   <line class="dim-ext" x1="372" y1="138" x2="372" y2="186" />
   <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
   <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
-  <text class="dim-text" x="796" y="132">${escapeXml(formatLengthInches(displayModel.length))} in +/-0.25</text>
-  <text class="dim-text" x="796" y="154" dy="22">OVERALL LENGTH</text>
+  <rect class="dim-label-bg" x="630" y="112" width="332" height="28" rx="5" />
+  <text class="dim-text" x="796" y="132">OVERALL LENGTH: ${escapeXml(formatLengthInches(displayModel.length))} in +/-0.25</text>
 
   ${buildHorizontalProtectionSvg({
     x1: 452,
@@ -4693,6 +4707,9 @@ function buildKiCadCompactTitleBlockSvg(x, y, width, height, model) {
 }
 
 function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups = []) {
+  if (isKiCadPcbConnector(connector)) {
+    return buildKiCadPcbFaceSvg(x, wires, connector, side);
+  }
   if (side === "left" && isKiCadCpcConnector(connector)) {
     return buildKiCadCircularCpcFaceSvg(x, wires);
   }
@@ -4732,6 +4749,46 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
 
 function isKiCadCpcConnector(connector) {
   return normalizeText(`${connector.name} ${connector.type} ${connector.positionText}`).includes("CPC");
+}
+
+function isKiCadPcbConnector(connector) {
+  const type = normalizeText(connector.type);
+  const name = normalizeText(connector.name);
+  return type === "PCB" ||
+    type.includes("PCB TERMINATION") ||
+    name.endsWith(" PCB") ||
+    name.includes(" PCB ");
+}
+
+function buildKiCadPcbFaceSvg(x, wires, connector, side) {
+  const boardX = side === "left" ? x - 24 : x - 12;
+  const boardWidth = 150;
+  const top = Math.max(166, wires[0].y - 48);
+  const bottom = wires[wires.length - 1].y + 48;
+  const height = bottom - top;
+  const padX = side === "left" ? boardX + boardWidth - 28 : boardX + 28;
+  const traceEndX = side === "left" ? boardX + 30 : boardX + boardWidth - 30;
+  const output = [
+    `<rect class="pcb-board" x="${boardX}" y="${top}" width="${boardWidth}" height="${height}" rx="8" />`,
+    `<rect class="pcb-silkscreen" x="${boardX + 9}" y="${top + 9}" width="${boardWidth - 18}" height="${height - 18}" rx="5" />`,
+    `<circle class="pcb-hole" cx="${boardX + boardWidth - 17}" cy="${top + 17}" r="6" />`,
+    `<circle class="pcb-hole" cx="${boardX + boardWidth - 17}" cy="${bottom - 17}" r="6" />`,
+    `<text class="pcb-label" x="${boardX + boardWidth / 2}" y="${top + 19}">${escapeXml(shortLabel(connector.name.replace(/\s+PCB$/i, ""), 22))}</text>`,
+    `<text class="pcb-label" x="${boardX + boardWidth / 2}" y="${bottom - 10}">DIRECT SOLDER</text>`
+  ];
+  wires.forEach((wire, index) => {
+    output.push(`<line class="pcb-trace" x1="${padX}" y1="${wire.y}" x2="${traceEndX}" y2="${wire.y}" />`);
+    output.push(`<circle class="pcb-pad" cx="${padX}" cy="${wire.y}" r="15" />`);
+    output.push(`<circle class="pcb-hole" cx="${padX}" cy="${wire.y}" r="6" />`);
+    output.push(`<text class="pcb-pin-number" x="${side === "left" ? padX - 29 : padX + 21}" y="${wire.y + 4}">${escapeXml(wire[side === "left" ? "fromPin" : "toPin"])}</text>`);
+    if (side === "left") {
+      output.push(`<text class="pin-side" x="72" y="${wire.y + 5}">PIN ${escapeXml(wire.fromPin)}</text>`);
+      output.push(`<text class="pin-label" x="348" y="${wire.y + 5}">${escapeXml(wire.fromPin)}</text>`);
+    } else {
+      output.push(`<text class="pin-side" x="1490" y="${wire.y + 5}">PIN ${escapeXml(wire.toPin)}</text>`);
+    }
+  });
+  return output.join("");
 }
 
 function buildKiCadCircularCpcFaceSvg(x, wires) {
@@ -4797,21 +4854,32 @@ function buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups) {
   return output.join("");
 }
 
-function buildKiCadWireSvg(wire, compact = false) {
+function buildKiCadWireSvg(wire, {
+  compact = false,
+  leftPcb = false,
+  rightPcb = false
+} = {}) {
   const color = wire.stroke;
   const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
   const terminalHeight = compact ? 18 : 32;
   const terminalHalf = terminalHeight / 2;
   const markHalf = compact ? 4 : 7;
-  return `
+  const wireStartX = leftPcb ? 300 : 426;
+  const wireEndX = rightPcb ? 1316 : 1164;
+  const leftTerminal = leftPcb ? "" : `
   <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
-  <rect class="terminal" x="1164" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
-  <line class="${compact ? "wire-line-compact" : "wire-line"}" x1="426" y1="${wire.y}" x2="1164" y2="${wire.y}" stroke="${color}" />
   <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
+  <text class="${textColorClass}" x="398" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+  const rightTerminal = rightPcb ? "" : `
+  <rect class="terminal" x="1164" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
   <path class="terminal-mark" d="M 1192 ${wire.y - markHalf} L 1192 ${wire.y + markHalf} M ${1192 - markHalf} ${wire.y} L ${1192 + markHalf} ${wire.y}" />
-  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
-  <text class="${textColorClass}" x="398" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
   <text class="${textColorClass}" x="1192" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+  return `
+  ${leftTerminal}
+  ${rightTerminal}
+  <line class="${compact ? "wire-line-compact" : "wire-line"}" x1="${wireStartX}" y1="${wire.y}" x2="${wireEndX}" y2="${wire.y}" stroke="${color}" />
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
+  `;
 }
 
 function buildKiCadSpecsSvg(x, y, width, height, model) {
@@ -4850,7 +4918,14 @@ function buildKiCadBomRows(model) {
   if (groundHousingPart) {
     rows.push(["3", "1", `${model.leftConnector.type || model.leftConnector.name} GROUND HOUSING\n${model.leftConnector.positionText}`, groundHousingPart]);
   }
-  rows.push([String(rows.length + 1), "1", `${model.rightConnector.name} CONNECTOR\n${model.rightConnector.positionText}`, rightPart]);
+  rows.push([
+    String(rows.length + 1),
+    "1",
+    isKiCadPcbConnector(model.rightConnector)
+      ? `${model.rightConnector.name}\nDIRECT-SOLDER PADS`
+      : `${model.rightConnector.name} CONNECTOR\n${model.rightConnector.positionText}`,
+    rightPart
+  ]);
   return rows.slice(0, 4);
 }
 
@@ -7271,12 +7346,14 @@ function buildKiCadHarnessDrawioXml(result, model) {
   };
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
+  const leftIsPcb = isKiCadPcbConnector(model.leftConnector);
+  const rightIsPcb = isKiCadPcbConnector(model.rightConnector);
   addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
   addVertex("title", model.cableName, 650, 22, 300, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=38;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("subtitle", model.description, 560, 64, 480, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=5;fontColor=#000000;align=center;");
-  addVertex("left_heading", `LEFT CONNECTOR<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-  addVertex("right_heading", `RIGHT CONNECTOR<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-  addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;");
+  addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addEdge("dim_length", `OVERALL LENGTH: ${formatLengthInches(model.length)} in +/-0.25`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
   addHorizontalDrawioProtection(addVertex, {
     id: "main_protection",
     x1: 452,
@@ -7292,17 +7369,31 @@ function buildKiCadHarnessDrawioXml(result, model) {
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     addVertex(`left_pin_${index}`, `PIN ${wire.fromPin}`, 45, wire.y - 14, 100, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-    addVertex(`right_pin_num_${index}`, wire.toPin, 1218, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+    if (!rightIsPcb) {
+      addVertex(`right_pin_num_${index}`, wire.toPin, 1218, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+    }
     addVertex(`right_pin_${index}`, `PIN ${wire.toPin}`, splitRight ? 1450 : 1412, wire.y - 14, 105, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
-    if (!leftIsCpc) {
+    if (!leftIsCpc && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
-    if (!splitRight) {
+    if (!splitRight && !rightIsPcb) {
       addVertex(`right_cavity_${index}`, "", 1324, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
-    addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 370, wire.y - 16, 56, 32, terminalStyle);
-    addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1164, wire.y - 16, 56, 32, terminalStyle);
-    addEdge(`wire_${index}`, `${wire.name} (${wire.colorName}) ${wire.awg || ""} AWG`, 426, wire.y, 1164, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;fontStyle=1;fontSize=15;`);
+    if (!leftIsPcb) {
+      addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 370, wire.y - 16, 56, 32, terminalStyle);
+    }
+    if (!rightIsPcb) {
+      addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1164, wire.y - 16, 56, 32, terminalStyle);
+    }
+    addEdge(
+      `wire_${index}`,
+      `${wire.name} (${wire.colorName}) ${wire.awg || ""} AWG`,
+      leftIsPcb ? 300 : 426,
+      wire.y,
+      rightIsPcb ? 1316 : 1164,
+      wire.y,
+      `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;fontStyle=1;fontSize=15;`
+    );
   });
   addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEFT PIN", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT PIN"], model.wires.map((wire) => [wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, wire.toPin])), 30, 498, 560, 160, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
   addVertex("specs", buildKiCadDrawioTableText("SPECIFICATIONS", ["FIELD", "VALUE"], [
@@ -7329,6 +7420,10 @@ function buildKiCadHarnessDrawioXml(result, model) {
 }
 
 function addKiCadDrawioLeftConnectorFace(addVertex, model) {
+  if (isKiCadPcbConnector(model.leftConnector)) {
+    addKiCadDrawioPcbFace(addVertex, model.leftConnector, model.wires, "left");
+    return;
+  }
   if (!isKiCadCpcConnector(model.leftConnector)) {
     addVertex(
       "left_face",
@@ -7360,6 +7455,10 @@ function addKiCadDrawioLeftConnectorFace(addVertex, model) {
 }
 
 function addKiCadDrawioRightConnectorFaces(addVertex, model) {
+  if (isKiCadPcbConnector(model.rightConnector)) {
+    addKiCadDrawioPcbFace(addVertex, model.rightConnector, model.wires, "right");
+    return;
+  }
   if (model.rightConnectorGroups.length <= 1) {
     addVertex(
       "right_face",
@@ -7404,6 +7503,63 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
       46,
       24,
       "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#000000;align=left;"
+    );
+  });
+}
+
+function addKiCadDrawioPcbFace(addVertex, connector, wires, side) {
+  const boardX = side === "left" ? 146 : 1288;
+  const boardWidth = 150;
+  const top = Math.max(166, wires[0].y - 48);
+  const bottom = wires[wires.length - 1].y + 48;
+  const height = bottom - top;
+  const padX = side === "left" ? boardX + boardWidth - 28 : boardX + 28;
+  const traceX = side === "left" ? boardX + 30 : boardX + boardWidth - 30;
+  addVertex(
+    `${side}_pcb_board`,
+    "",
+    boardX,
+    top,
+    boardWidth,
+    height,
+    "rounded=1;arcSize=10;whiteSpace=wrap;html=1;fillColor=#216b42;strokeColor=#123d28;strokeWidth=3;"
+  );
+  addVertex(
+    `${side}_pcb_label`,
+    `${escapeHtml(shortLabel(connector.name.replace(/\s+PCB$/i, ""), 22))}<br><font style="font-size:9px">DIRECT SOLDER</font>`,
+    boardX + 18,
+    top + 7,
+    boardWidth - 36,
+    38,
+    "text;html=1;strokeColor=none;fillColor=none;fontColor=#ffffff;fontStyle=1;fontSize=10;align=center;"
+  );
+  wires.forEach((wire, index) => {
+    addVertex(
+      `${side}_pcb_trace_${index + 1}`,
+      "",
+      Math.min(padX, traceX),
+      wire.y - 2.5,
+      Math.abs(traceX - padX),
+      5,
+      "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#d5a72b;strokeColor=#d5a72b;strokeWidth=1;"
+    );
+    addVertex(
+      `${side}_pcb_pad_${index + 1}`,
+      String(wire[side === "left" ? "fromPin" : "toPin"]),
+      padX - 15,
+      wire.y - 15,
+      30,
+      30,
+      "ellipse;whiteSpace=wrap;html=1;fillColor=#d9aa31;strokeColor=#8a6515;strokeWidth=2;fontColor=#161918;fontStyle=1;fontSize=10;"
+    );
+    addVertex(
+      `${side}_pcb_hole_${index + 1}`,
+      "",
+      padX - 6,
+      wire.y - 6,
+      12,
+      12,
+      "ellipse;whiteSpace=wrap;html=1;fillColor=#161918;strokeColor=#f2d36f;strokeWidth=1;"
     );
   });
 }

@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.24 - 2026-06-21
+
+- Rendered `PCB` housing endpoints as green circuit boards with numbered plated solder pads and traces instead of connector housings.
+- Routed wires directly to PCB solder pads and removed fake crimp-terminal blocks at PCB endpoints.
+- Changed PCB endpoint orientation text to `SOLDER SIDE` in both the program preview and Draw.io output.
+- Consolidated the overall-length annotation into one white-backed line above the sleeve so it no longer overlaps the expando label.
+
 ## v1.6.23 - 2026-06-21
 
 - Replaced the generic vertical 16-position CPC block with a circular 16-cavity mating face numbered 1 through 16.
