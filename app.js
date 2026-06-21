@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.19";
+const APP_VERSION = "1.6.20";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -119,18 +119,12 @@ const POWERPOLE_HOUSING_PARTS = Object.freeze({
 });
 
 const dom = {
-  fileInput: document.querySelector("#fileInput"),
-  sheetInput: document.querySelector("#sheetInput"),
-  sheetButton: document.querySelector("#sheetButton"),
   tablePasteButton: document.querySelector("#tablePasteButton"),
   pasteTablePanel: document.querySelector("#pasteTablePanel"),
   tablePasteInput: document.querySelector("#tablePasteInput"),
   loadPastedTableButton: document.querySelector("#loadPastedTableButton"),
   closePasteTableButton: document.querySelector("#closePasteTableButton"),
-  dropZone: document.querySelector("#dropZone"),
-  analyzeButton: document.querySelector("#analyzeButton"),
   pasteButton: document.querySelector("#pasteButton"),
-  rotateButton: document.querySelector("#rotateButton"),
   resetButton: document.querySelector("#resetButton"),
   printButton: document.querySelector("#printButton"),
   exportDrawio: document.querySelector("#exportDrawio"),
@@ -145,6 +139,7 @@ const dom = {
   connectorFact: document.querySelector("#connectorFact"),
   labelFact: document.querySelector("#labelFact"),
   drawingTitle: document.querySelector("#drawingTitle"),
+  drawingPane: document.querySelector("#drawingPane"),
   sourceTitle: document.querySelector("#sourceTitle"),
   sourceCanvas: document.querySelector("#sourceCanvas"),
   schematicStage: document.querySelector("#schematicStage"),
@@ -173,53 +168,31 @@ let xlsxLoaderPromise = null;
 init();
 
 function init() {
-  dom.fileInput.addEventListener("change", () => {
-    const [file] = dom.fileInput.files || [];
-    if (file) {
-      void loadDrawingFile(file);
-    }
-  });
-  dom.sheetInput.addEventListener("change", () => {
-    const [file] = dom.sheetInput.files || [];
-    if (file) {
-      void loadHarnessSheetFile(file);
-    }
-  });
-
   ["dragenter", "dragover"].forEach((eventName) => {
-    dom.dropZone.addEventListener(eventName, (event) => {
+    dom.drawingPane.addEventListener(eventName, (event) => {
       event.preventDefault();
-      dom.dropZone.classList.add("is-dragging");
+      dom.drawingPane.classList.add("is-dragging");
     });
   });
 
   ["dragleave", "drop"].forEach((eventName) => {
-    dom.dropZone.addEventListener(eventName, (event) => {
+    dom.drawingPane.addEventListener(eventName, (event) => {
       event.preventDefault();
-      dom.dropZone.classList.remove("is-dragging");
+      dom.drawingPane.classList.remove("is-dragging");
     });
   });
 
-  dom.dropZone.addEventListener("drop", (event) => {
+  dom.drawingPane.addEventListener("drop", (event) => {
     const [file] = event.dataTransfer?.files || [];
     if (file) {
       void loadDrawingFile(file);
     }
   });
 
-  dom.analyzeButton.addEventListener("click", () => void analyzeCurrentDrawing());
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
-  dom.sheetButton.addEventListener("click", () => dom.sheetInput.click());
   dom.tablePasteButton.addEventListener("click", () => void openPasteTablePanel());
   dom.loadPastedTableButton.addEventListener("click", () => void loadPastedHarnessTable());
   dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
-  dom.rotateButton.addEventListener("click", () => {
-    if (!appState.image) {
-      return;
-    }
-    appState.manualRotation = (appState.manualRotation + 1) % 4;
-    void analyzeCurrentDrawing();
-  });
   dom.resetButton.addEventListener("click", resetApp);
   dom.printButton.addEventListener("click", printDrawing);
   dom.exportSvg.addEventListener("click", exportSvg);
@@ -257,9 +230,7 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       tableText: "",
       tableHeaders: []
     };
-    dom.analyzeButton.disabled = false;
     dom.pasteButton.disabled = false;
-    dom.rotateButton.disabled = false;
     dom.sourceTitle.textContent = appState.fileName;
     renderSourcePreview();
     await analyzeCurrentDrawing();
@@ -359,10 +330,6 @@ function applyHarnessSheet(sheet, sourceName) {
     tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
     tableHeaders: result.tableHeaders || sheet.headers
   };
-  dom.fileInput.value = "";
-  dom.sheetInput.value = "";
-  dom.analyzeButton.disabled = true;
-  dom.rotateButton.disabled = true;
   dom.sourceTitle.textContent = cleanFileName(sourceName);
   renderSchematic(result);
   renderFacts(result);
@@ -5826,7 +5793,7 @@ function renderFindings(findings) {
 
 function renderHarnessTable(rows, headers = getHarnessTableHeaders()) {
   if (!rows.length) {
-    dom.tablePreview.innerHTML = `<span class="quiet">Upload Excel or paste table rows to generate the copy-only table.</span>`;
+    dom.tablePreview.innerHTML = `<span class="quiet">Paste table rows or an image to generate the copy-only table.</span>`;
     dom.copyTableButton.disabled = true;
     return;
   }
@@ -5927,8 +5894,8 @@ function renderEmpty() {
   setExportsEnabled(false);
   dom.schematicStage.innerHTML = `
     <div class="empty-state">
-      <strong>No image loaded</strong>
-      <span>The clean digital schematic will appear here.</span>
+      <strong>Ready for a harness</strong>
+      <span>Paste a table, paste an image, or drop an image here.</span>
     </div>
   `;
   dom.confidenceValue.textContent = "--";
@@ -5937,7 +5904,7 @@ function renderEmpty() {
   dom.wireFact.textContent = "0";
   dom.connectorFact.textContent = "0";
   dom.labelFact.textContent = "0";
-  dom.drawingTitle.textContent = "Waiting for image";
+  dom.drawingTitle.textContent = "Ready for a harness";
   dom.sourceTitle.textContent = "None";
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
@@ -5948,12 +5915,9 @@ function renderEmpty() {
 }
 
 function setBusy(isBusy) {
-  dom.analyzeButton.disabled = isBusy || !appState.image;
   dom.pasteButton.disabled = isBusy;
-  dom.sheetButton.disabled = isBusy;
   dom.tablePasteButton.disabled = isBusy;
   dom.loadPastedTableButton.disabled = isBusy;
-  dom.rotateButton.disabled = isBusy || !appState.image;
   dom.resetButton.disabled = isBusy;
 }
 
@@ -5979,18 +5943,13 @@ function resetApp() {
     tableText: "",
     tableHeaders: []
   };
-  dom.fileInput.value = "";
-  dom.sheetInput.value = "";
-  dom.analyzeButton.disabled = true;
   dom.pasteButton.disabled = false;
-  dom.sheetButton.disabled = false;
   dom.tablePasteButton.disabled = false;
   dom.loadPastedTableButton.disabled = false;
   dom.pasteTablePanel.hidden = true;
   dom.tablePasteInput.value = "";
-  dom.rotateButton.disabled = true;
   dom.printButton.disabled = true;
-  setStatus("Upload an image, upload Excel, or paste table rows to start.");
+  setStatus("Paste a table or image to start.");
   renderEmpty();
 }
 

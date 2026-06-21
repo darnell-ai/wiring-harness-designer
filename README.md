@@ -4,22 +4,21 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.19**
+Current release: **v1.6.20**
 
 ## Use The App
 
 Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-DIGIWIRE is upload-first: drop in a photo, scan, pasted screenshot, Excel sheet, or copied table for a cable or wire harness and it builds a clean professional electrical drawing. The row data is kept copy-only so the operator can paste it into a build sheet without editing spreadsheet cells inside this app.
+DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing. The row data stays copy-only so the operator can move it between Excel, Google Sheets, and build sheets without editing spreadsheet cells inside this app.
 
-The user-facing flow is intentionally simple: upload an image, paste a copied screenshot, upload a prefilled Excel/CSV/TSV sheet, or paste copied table rows, then generate the clean electrical drawing, print, open the editable drawing in Draw.io, or copy the generated table rows.
+The daily workflow is intentionally simple: use Paste table, inspect the drawing, edit it in Draw.io when needed, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading, and image files can still be dropped directly onto the drawing area.
 
 ## Features
 
 - Reads sideways, upside-down, and normal uploads by trying all four page orientations.
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
-- Accepts pasted clipboard images as well as file uploads and drag-and-drop.
-- Accepts prefilled `.xlsx`, `.xls`, `.csv`, `.tsv`, and `.txt` harness sheets through the Upload Excel button.
+- Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
 - Accepts pasted tab-delimited rows copied from Excel, Google Sheets, or a text table through the Paste table button.
 - Preserves uploaded sheet headers and rows in the copy-only table.
 - Carries a separate `Right Wire Name` field so the right-hand label can differ from the shared `Wire Name` when needed.

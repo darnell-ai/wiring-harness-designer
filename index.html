@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v1.6.19</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>DIGIWIRE v1.6.20</title>
+    <link rel="stylesheet" href="styles.css?v=1.6.20">
   </head>
   <body>
     <main class="app-shell">
@@ -13,7 +13,7 @@
           <div class="brand-mark">DW</div>
           <div>
             <h1>DIGIWIRE</h1>
-            <p>Upload or paste a sketch. Get a clean electrical drawing.</p>
+            <p>Paste a table or image. Get a clean electrical drawing.</p>
           </div>
         </div>
         <div class="top-actions">
@@ -29,50 +29,31 @@
       </header>
 
       <section class="simple-flow">
-        <section class="upload-card">
-          <section id="dropZone" class="drop-zone" tabindex="0">
-            <input id="fileInput" type="file" accept="image/*">
-            <div class="drop-icon">IMG</div>
-            <strong>Upload image</strong>
-            <span>Photo, scan, copied screenshot, Excel file, or pasted table rows.</span>
-          </section>
-          <input id="sheetInput" class="hidden-input" type="file" accept=".xlsx,.xls,.csv,.tsv,.txt,text/csv,text/tab-separated-values,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel">
-
-          <div class="reader-promise">
-            <span>Reads all sides</span>
-            <span>Finds wires</span>
-            <span>Reads labels</span>
-            <span>Interprets markups</span>
+        <section class="drawing-pane" id="drawingPane">
+          <div class="pane-head">
+            <div class="pane-title">
+              <span class="panel-label">Digital electrical drawing</span>
+              <strong id="drawingTitle">Ready for a harness</strong>
+              <span id="statusText" class="pane-status">Paste a table or image to start.</span>
+            </div>
+            <div class="pane-tools">
+              <button id="pasteButton" type="button" title="Read and draw a copied image from the clipboard">
+                <span class="icon">PST</span>
+                <span>Paste image</span>
+              </button>
+              <button id="tablePasteButton" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
+                <span class="icon">TAB</span>
+                <span>Paste table</span>
+              </button>
+              <button id="resetButton" type="button" title="Clear the current harness and start a new one">
+                <span class="icon">CLR</span>
+                <span>Clear</span>
+              </button>
+              <span id="engineBadge">Multi-cable engine</span>
+            </div>
           </div>
 
-          <div class="action-row">
-            <button id="analyzeButton" class="primary" type="button" disabled>
-              <span class="icon">RUN</span>
-              <span>Read drawing</span>
-            </button>
-            <button id="pasteButton" type="button" title="Paste a copied image from the clipboard">
-              <span class="icon">PST</span>
-              <span>Paste image</span>
-            </button>
-            <button id="sheetButton" type="button" title="Upload a prefilled Excel, CSV, or tab-delimited sheet">
-              <span class="icon">XLS</span>
-              <span>Upload Excel</span>
-            </button>
-            <button id="tablePasteButton" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
-              <span class="icon">TAB</span>
-              <span>Paste table</span>
-            </button>
-            <button id="rotateButton" type="button" disabled title="Rotate the uploaded image and read again">
-              <span class="icon">ROT</span>
-              <span>Rotate</span>
-            </button>
-            <button id="resetButton" type="button">
-              <span class="icon">CLR</span>
-              <span>Clear</span>
-            </button>
-          </div>
-
-          <section id="pasteTablePanel" class="paste-table-panel" hidden>
+          <section id="pasteTablePanel" class="paste-table-panel pane-paste-panel" hidden>
             <label for="tablePasteInput">Paste Excel / Sheets rows here</label>
             <textarea id="tablePasteInput" rows="8" spellcheck="false" placeholder="Cable Name&#9;Left Leg&#9;Left Leg Name&#9;Wire Name&#9;...&#9;Right Pin P#&#9;Right Wire Name"></textarea>
             <div class="paste-table-actions">
@@ -86,22 +67,10 @@
               </button>
             </div>
           </section>
-
-          <p id="statusText" class="status-text">Upload an image, upload Excel, or paste table rows to start.</p>
-        </section>
-
-        <section class="drawing-pane">
-          <div class="pane-head">
-            <div>
-              <span class="panel-label">Digital electrical drawing</span>
-              <strong id="drawingTitle">Waiting for image</strong>
-            </div>
-            <span id="engineBadge">Multi-cable engine</span>
-          </div>
           <div id="schematicStage" class="schematic-stage">
             <div class="empty-state">
-              <strong>No image loaded</strong>
-              <span>The clean digital schematic will appear here.</span>
+              <strong>Ready for a harness</strong>
+              <span>Paste a table, paste an image, or drop an image here.</span>
             </div>
           </div>
         </section>
@@ -119,7 +88,7 @@
           </button>
         </div>
         <div id="tablePreview" class="table-preview">
-          <span class="quiet">Upload Excel or paste table rows to generate the copy-only table.</span>
+          <span class="quiet">Paste table rows or an image to generate the copy-only table.</span>
         </div>
       </section>
 
@@ -140,6 +109,6 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="app.js?v=1.6.19" defer></script>
+    <script src="app.js?v=1.6.20" defer></script>
   </body>
 </html>

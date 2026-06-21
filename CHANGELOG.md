@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.20 - 2026-06-21
+
+- Removed the large image-upload card and secondary reader controls from the main workspace.
+- Moved Paste image, Paste table, and Clear into the drawing header for the everyday table-first workflow.
+- Kept clipboard image reading automatic and retained image drag-and-drop directly on the drawing area.
+- Expanded the drawing to the full workspace width and moved live status text beneath the drawing title.
+
 ## v1.6.19 - 2026-06-21
 
 - Kept datasheet-aware harness wires on separate horizontal lanes aligned with their connector cavities.
