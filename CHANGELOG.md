@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.22 - 2026-06-21
+
+- Added an automatic high-density page layout for straight harnesses with more than eight conductors.
+- Compressed wire pitch, terminals, labels, and connector cavities into a clean upper drawing zone without overlap.
+- Moved the wiring list, notes, specifications, title block, legend, and bill of materials into a dedicated lower documentation band matching the cleaner Draw.io composition.
+- Prioritized red power and black ground in the compact wire-color legend.
+
 ## v1.6.21 - 2026-06-21
 
 - Changed Paste table into a one-click action that reads the clipboard and generates the harness immediately.

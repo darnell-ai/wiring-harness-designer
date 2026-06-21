@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.21";
+const APP_VERSION = "1.6.22";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -163,6 +163,7 @@ let ocrWorker = null;
 let ocrUnavailable = false;
 let drawioSession = null;
 let xlsxLoaderPromise = null;
+let pastedTableLoadTimer = null;
 
 init();
 
@@ -190,8 +191,12 @@ function init() {
 
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
   dom.tablePasteButton.addEventListener("click", () => void pasteClipboardTable());
-  dom.tablePasteInput.addEventListener("paste", () => {
-    setTimeout(() => void loadPastedHarnessTable(), 0);
+  dom.tablePasteInput.addEventListener("input", () => {
+    clearTimeout(pastedTableLoadTimer);
+    const text = dom.tablePasteInput.value;
+    if (looksLikeDelimitedTable(text)) {
+      pastedTableLoadTimer = setTimeout(() => void loadPastedHarnessTable(text), 120);
+    }
   });
   dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
   dom.resetButton.addEventListener("click", resetApp);
@@ -4151,26 +4156,56 @@ function buildKiCadHarnessSvg(result, model) {
   if (model.isMultiGroup) {
     return buildKiCadMultiGroupSvg(result, model);
   }
-  const leftFace = buildKiCadConnectorFaceSvg(170, model.wires, model.leftConnector, "left");
-  const rightFace = buildKiCadConnectorFaceSvg(1300, model.wires, model.rightConnector, "right");
-  const wireSvg = model.wires.map((wire) => buildKiCadWireSvg(wire)).join("");
-  const protectionTop = model.wires[0].y - 30;
-  const protectionBottom = model.wires[model.wires.length - 1].y + 30;
-  const wiringRows = model.wires.map((wire) => [
+  const displayModel = buildKiCadSvgDisplayModel(model);
+  const denseLayout = displayModel.wires.length > 8;
+  const leftFace = buildKiCadConnectorFaceSvg(170, displayModel.wires, displayModel.leftConnector, "left");
+  const rightFace = buildKiCadConnectorFaceSvg(1300, displayModel.wires, displayModel.rightConnector, "right");
+  const wireSvg = displayModel.wires.map((wire) => buildKiCadWireSvg(wire, denseLayout)).join("");
+  const protectionTop = displayModel.wires[0].y - (denseLayout ? 18 : 30);
+  const protectionBottom = displayModel.wires[displayModel.wires.length - 1].y + (denseLayout ? 18 : 30);
+  const wiringRows = displayModel.wires.map((wire) => [
     wire.fromPin,
     wire.name,
     { text: wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
-    wire.awg || model.awg || "",
-    formatLengthInches(wire.length || model.length),
+    wire.awg || displayModel.awg || "",
+    formatLengthInches(wire.length || displayModel.length),
     wire.toPin
   ]);
-  const bomRows = buildKiCadBomRows(model);
-  const notes = buildKiCadNotes(model)
+  const bomRows = buildKiCadBomRows(displayModel);
+  const notes = buildKiCadNotes(displayModel)
     .map((note, index) => `<text class="note" x="36" y="${696 + index * 18}">${index + 1}. ${escapeXml(note)}</text>`)
     .join("");
+  const documentationSvg = denseLayout
+    ? buildKiCadDenseDocumentationSvg(displayModel)
+    : `
+      ${buildSvgTable({
+        x: 30,
+        y: 498,
+        width: 560,
+        title: "WIRING TABLE",
+        headers: ["LEFT PIN", "SIGNAL NAME", "COLOR", "AWG", "LENGTH\n(in)", "RIGHT\nPIN"],
+        rows: wiringRows,
+        colWidths: [92, 142, 84, 62, 82, 98],
+        rowHeight: 33
+      })}
+      ${buildKiCadSpecsSvg(620, 498, 340, 166, displayModel)}
+      ${buildSvgTable({
+        x: 990,
+        y: 498,
+        width: 570,
+        title: "BILL OF MATERIALS",
+        headers: ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"],
+        rows: bomRows,
+        colWidths: [60, 60, 250, 200],
+        rowHeight: 30
+      })}
+      <text class="note-title" x="36" y="680">NOTES:</text>
+      ${notes}
+      ${buildWireLegendSvg(548, 680, 260, 82, displayModel)}
+      ${buildKiCadTitleBlockSvg(840, 674, 720, 106, displayModel)}`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(model.cableName)} KiCad style harness drawing">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(displayModel.cableName)} KiCad style harness drawing">
   <defs>
     ${buildBraidPatternDefs()}
     <marker id="kicadArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -4191,10 +4226,14 @@ function buildKiCadHarnessSvg(result, model) {
       .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
       .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-label-compact { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-side-compact { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .wire-line { fill: none; stroke-width: 8; stroke-linecap: square; }
+      .wire-line-compact { fill: none; stroke-width: 6; stroke-linecap: square; }
       .terminal { stroke: #000000; stroke-width: 1.8; }
       .terminal-mark { stroke: #000000; stroke-width: 1.2; fill: none; }
       .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .wire-label-compact { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
       .dimension { fill: none; stroke: #000000; stroke-width: 1.8; marker-start: url(#kicadArrow); marker-end: url(#kicadArrow); }
       .dim-ext { stroke: #000000; stroke-width: 1.2; }
       .dim-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -4212,6 +4251,13 @@ function buildKiCadHarnessSvg(result, model) {
       .title-block-label { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; }
       .title-block-text { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .title-block-small { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .compact-doc-title { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .compact-doc-head { fill: #000000; font: 900 7.5px Consolas, Cascadia Mono, monospace; text-anchor: middle; }
+      .compact-doc-text { fill: #000000; font: 700 7.5px Consolas, Cascadia Mono, monospace; }
+      .compact-note-title { fill: #000000; font: 900 9px Aptos, Segoe UI, sans-serif; }
+      .compact-note { fill: #000000; font: 700 8px Aptos, Segoe UI, sans-serif; }
+      .compact-spec-label { fill: #000000; font: 900 8px Aptos, Segoe UI, sans-serif; }
+      .compact-spec-value { fill: #000000; font: 700 8px Aptos, Segoe UI, sans-serif; }
       .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
@@ -4219,25 +4265,25 @@ function buildKiCadHarnessSvg(result, model) {
   <rect class="page" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
   <rect class="border" x="10" y="10" width="1580" height="780" />
 
-  <text class="title" x="800" y="52">${escapeXml(model.cableName)}</text>
-  <text class="subtitle" x="800" y="84">${escapeXml(model.description)}</text>
+  <text class="title" x="800" y="52">${escapeXml(displayModel.cableName)}</text>
+  <text class="subtitle" x="800" y="84">${escapeXml(displayModel.description)}</text>
 
   <text class="connector-heading" x="220" y="46">LEFT CONNECTOR</text>
-  <text class="connector-sub" x="220" y="72">${escapeXml(model.leftConnector.name)}</text>
-  ${model.leftConnector.type ? `<text class="connector-sub" x="220" y="96">${escapeXml(model.leftConnector.type)}</text>` : ""}
-  <text class="connector-sub" x="220" y="120">${escapeXml(model.leftConnector.positionText)}</text>
-  <text class="connector-view" x="220" y="144">(${escapeXml(model.leftConnector.view)})</text>
+  <text class="connector-sub" x="220" y="72">${escapeXml(displayModel.leftConnector.name)}</text>
+  ${displayModel.leftConnector.type ? `<text class="connector-sub" x="220" y="96">${escapeXml(displayModel.leftConnector.type)}</text>` : ""}
+  <text class="connector-sub" x="220" y="120">${escapeXml(displayModel.leftConnector.positionText)}</text>
+  <text class="connector-view" x="220" y="144">(${escapeXml(displayModel.leftConnector.view)})</text>
 
   <text class="connector-heading" x="1360" y="46">RIGHT CONNECTOR</text>
-  <text class="connector-sub" x="1360" y="72">${escapeXml(model.rightConnector.name)}</text>
-  ${model.rightConnector.type ? `<text class="connector-sub" x="1360" y="96">${escapeXml(model.rightConnector.type)}</text>` : ""}
-  <text class="connector-sub" x="1360" y="120">${escapeXml(model.rightConnector.positionText)}</text>
-  <text class="connector-view" x="1360" y="144">(${escapeXml(model.rightConnector.view)})</text>
+  <text class="connector-sub" x="1360" y="72">${escapeXml(displayModel.rightConnector.name)}</text>
+  ${displayModel.rightConnector.type ? `<text class="connector-sub" x="1360" y="96">${escapeXml(displayModel.rightConnector.type)}</text>` : ""}
+  <text class="connector-sub" x="1360" y="120">${escapeXml(displayModel.rightConnector.positionText)}</text>
+  <text class="connector-view" x="1360" y="144">(${escapeXml(displayModel.rightConnector.view)})</text>
 
   <line class="dim-ext" x1="372" y1="138" x2="372" y2="186" />
   <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
   <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
-  <text class="dim-text" x="796" y="132">${escapeXml(formatLengthInches(model.length))} in +/-0.25</text>
+  <text class="dim-text" x="796" y="132">${escapeXml(formatLengthInches(displayModel.length))} in +/-0.25</text>
   <text class="dim-text" x="796" y="154" dy="22">OVERALL LENGTH</text>
 
   ${buildHorizontalProtectionSvg({
@@ -4251,37 +4297,94 @@ function buildKiCadHarnessSvg(result, model) {
   ${leftFace}
   ${rightFace}
   ${wireSvg}
-
-  ${buildSvgTable({
-    x: 30,
-    y: 498,
-    width: 560,
-    title: "WIRING TABLE",
-    headers: ["LEFT PIN", "SIGNAL NAME", "COLOR", "AWG", "LENGTH\n(in)", "RIGHT\nPIN"],
-    rows: wiringRows,
-    colWidths: [92, 142, 84, 62, 82, 98],
-    rowHeight: 33
-  })}
-
-  ${buildKiCadSpecsSvg(620, 498, 340, 166, model)}
-
-  ${buildSvgTable({
-    x: 990,
-    y: 498,
-    width: 570,
-    title: "BILL OF MATERIALS",
-    headers: ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"],
-    rows: bomRows,
-    colWidths: [60, 60, 250, 200],
-    rowHeight: 30
-  })}
-
-  <text class="note-title" x="36" y="680">NOTES:</text>
-  ${notes}
-
-  ${buildWireLegendSvg(548, 680, 260, 82, model)}
-  ${buildKiCadTitleBlockSvg(840, 674, 720, 106, model)}
+  ${documentationSvg}
 </svg>`;
+}
+
+function buildKiCadSvgDisplayModel(model) {
+  if (model.wires.length <= 8) {
+    return model;
+  }
+  const top = 184;
+  const bottom = 560;
+  const gap = (bottom - top) / Math.max(1, model.wires.length - 1);
+  return {
+    ...model,
+    wires: model.wires.map((wire, index) => ({
+      ...wire,
+      y: top + index * gap
+    }))
+  };
+}
+
+function buildKiCadDenseDocumentationSvg(model) {
+  const notes = buildKiCadNotes(model).slice(0, 6)
+    .map((note, index) => `<text class="compact-note" x="400" y="${620 + index * 13}">${index + 1}. ${escapeXml(shortLabel(note, 88))}</text>`)
+    .join("");
+  return `
+    ${buildKiCadCompactWiringTableSvg(30, 604, 350, 176, model)}
+    <text class="compact-note-title" x="400" y="607">NOTES:</text>
+    ${notes}
+    ${buildKiCadCompactSpecsSvg(840, 604, 210, 92, model)}
+    ${buildKiCadSummaryTitleBlockSvg(1070, 604, 490, 92, model)}
+    ${buildWireLegendSvg(400, 710, 240, 68, model)}
+    ${buildKiCadCompactBomSvg(660, 710, 520, 68, model)}`;
+}
+
+function buildKiCadCompactWiringTableSvg(x, y, width, height, model) {
+  const rowGap = 8.2;
+  const rows = model.wires.map((wire, index) =>
+    `<text class="compact-doc-text" x="${x + 12}" y="${y + 43 + index * rowGap}">${escapeXml(`${wire.fromPin} | ${wire.name} | ${wire.colorName} | ${wire.awg || model.awg || ""} | ${formatLengthInches(wire.length || model.length)} in | ${wire.toPin}`)}</text>`
+  ).join("");
+  return `
+    <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+    <text class="compact-doc-title" x="${x + width / 2}" y="${y + 17}">WIRING TABLE</text>
+    <text class="compact-doc-head" x="${x + width / 2}" y="${y + 31}">LEFT | SIGNAL | COLOR | AWG | LENGTH | RIGHT</text>
+    ${rows}`;
+}
+
+function buildKiCadCompactSpecsSvg(x, y, width, height, model) {
+  const specs = [
+    ["WIRE GAUGE", `${model.awg || "TBD"} AWG`],
+    ["LENGTH TOLERANCE", "+/-0.25 in"],
+    ["BRANCHES", "NONE"],
+    ["TAP POSITION", "NONE"]
+  ];
+  const rows = specs.map((spec, index) => `
+    <text class="compact-spec-label" x="${x + 10}" y="${y + 39 + index * 13}">${escapeXml(spec[0])}</text>
+    <text class="compact-spec-value" x="${x + 110}" y="${y + 39 + index * 13}">${escapeXml(spec[1])}</text>`).join("");
+  return `
+    <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+    <text class="compact-doc-title" x="${x + width / 2}" y="${y + 18}">SPECIFICATIONS</text>
+    ${rows}`;
+}
+
+function buildKiCadCompactBomSvg(x, y, width, height, model) {
+  const rows = buildKiCadBomRows(model).map((row, index) =>
+    `<text class="compact-doc-text" x="${x + 12}" y="${y + 38 + index * 9}">${escapeXml(row.map((cell) => String(cell || "").replace(/\n/g, " ")).join(" | "))}</text>`
+  ).join("");
+  return `
+    <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+    <text class="compact-doc-title" x="${x + width / 2}" y="${y + 16}">BILL OF MATERIALS</text>
+    <text class="compact-doc-head" x="${x + width / 2}" y="${y + 28}">ITEM | QTY | DESCRIPTION | PART NUMBER</text>
+    ${rows}`;
+}
+
+function buildKiCadSummaryTitleBlockSvg(x, y, width, height, model) {
+  const descriptionEnd = x + width * 0.62;
+  const drawnByEnd = x + width * 0.86;
+  return `
+    <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
+    <line class="table-grid" x1="${descriptionEnd}" y1="${y}" x2="${descriptionEnd}" y2="${y + 52}" />
+    <line class="table-grid" x1="${drawnByEnd}" y1="${y}" x2="${drawnByEnd}" y2="${y + 52}" />
+    <line class="table-grid" x1="${x}" y1="${y + 52}" x2="${x + width}" y2="${y + 52}" />
+    <text class="title-block-label" x="${x + 10}" y="${y + 15}">DESCRIPTION:</text>
+    <text class="title-block-small" x="${x + width * 0.31}" y="${y + 31}">${escapeXml(model.cableName)} CABLE ASSEMBLY</text>
+    <text class="title-block-label" x="${descriptionEnd + 10}" y="${y + 15}">DRAWN BY:</text>
+    <text class="title-block-small" x="${descriptionEnd + (drawnByEnd - descriptionEnd) / 2}" y="${y + 32}">DIGIWIRE</text>
+    <text class="title-block-label" x="${drawnByEnd + 9}" y="${y + 15}">REV:</text>
+    <text class="title-block-text" x="${drawnByEnd + (x + width - drawnByEnd) / 2}" y="${y + 34}">A</text>
+    <text class="title-block-small" x="${x + width / 2}" y="${y + 76}">SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${escapeXml(model.cableName)}</text>`;
 }
 
 function buildKiCadMultiGroupSvg(result, model) {
@@ -4511,6 +4614,8 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side) {
   const top = Math.max(162, wires[0].y - 42);
   const bottom = wires[wires.length - 1].y + 42;
   const height = bottom - top;
+  const gap = wires.length > 1 ? Math.min(...wires.slice(1).map((wire, index) => wire.y - wires[index].y)) : 52;
+  const compact = gap < 38;
   const bodyClass = side === "left" ? "connector-body-left" : "connector-body-right";
   const body = [
     `<rect class="${bodyClass}" x="${x}" y="${top}" width="88" height="${height}" rx="5" />`,
@@ -4519,32 +4624,39 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side) {
     `<rect class="${bodyClass}" x="${x + 14}" y="${bottom - 2}" width="28" height="16" rx="3" />`
   ];
   wires.forEach((wire) => {
-    body.push(`<rect class="cavity" x="${x + 16}" y="${wire.y - 24}" width="50" height="48" rx="4" />`);
-    body.push(`<rect class="cavity" x="${x + 24}" y="${wire.y - 16}" width="34" height="32" rx="5" />`);
-    body.push(`<rect class="cavity-hole" x="${x + 35}" y="${wire.y - 9}" width="14" height="18" rx="3" />`);
-    if (side === "left") {
-      body.push(`<text class="pin-side" x="96" y="${wire.y + 5}">PIN ${escapeXml(wire.fromPin)}</text>`);
-      body.push(`<text class="pin-label" x="348" y="${wire.y + 5}">${escapeXml(wire.fromPin)}</text>`);
+    if (compact) {
+      body.push(`<rect class="cavity-hole" x="${x + 24}" y="${wire.y - 9}" width="34" height="18" rx="4" />`);
     } else {
-      body.push(`<text class="pin-label" x="1238" y="${wire.y + 5}">${escapeXml(wire.toPin)}</text>`);
-      body.push(`<text class="pin-side" x="1464" y="${wire.y + 5}">PIN ${escapeXml(wire.toPin)}</text>`);
+      body.push(`<rect class="cavity" x="${x + 16}" y="${wire.y - 24}" width="50" height="48" rx="4" />`);
+      body.push(`<rect class="cavity" x="${x + 24}" y="${wire.y - 16}" width="34" height="32" rx="5" />`);
+      body.push(`<rect class="cavity-hole" x="${x + 35}" y="${wire.y - 9}" width="14" height="18" rx="3" />`);
+    }
+    if (side === "left") {
+      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="96" y="${wire.y + 4}">PIN ${escapeXml(wire.fromPin)}</text>`);
+      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="348" y="${wire.y + 4}">${escapeXml(wire.fromPin)}</text>`);
+    } else {
+      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="1238" y="${wire.y + 4}">${escapeXml(wire.toPin)}</text>`);
+      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="1464" y="${wire.y + 4}">PIN ${escapeXml(wire.toPin)}</text>`);
     }
   });
   return body.join("");
 }
 
-function buildKiCadWireSvg(wire) {
+function buildKiCadWireSvg(wire, compact = false) {
   const color = wire.stroke;
   const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
+  const terminalHeight = compact ? 18 : 32;
+  const terminalHalf = terminalHeight / 2;
+  const markHalf = compact ? 4 : 7;
   return `
-  <rect class="terminal" x="370" y="${wire.y - 16}" width="56" height="32" fill="${color}" />
-  <rect class="terminal" x="1164" y="${wire.y - 16}" width="56" height="32" fill="${color}" />
-  <line class="wire-line" x1="426" y1="${wire.y}" x2="1164" y2="${wire.y}" stroke="${color}" />
-  <path class="terminal-mark" d="M 393 ${wire.y - 7} L 393 ${wire.y + 7} M 386 ${wire.y} L 400 ${wire.y}" />
-  <path class="terminal-mark" d="M 1192 ${wire.y - 7} L 1192 ${wire.y + 7} M 1185 ${wire.y} L 1199 ${wire.y}" />
-  <text class="wire-label" x="796" y="${wire.y - 14}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
-  <text class="${textColorClass}" x="398" y="${wire.y + 5}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
-  <text class="${textColorClass}" x="1192" y="${wire.y + 5}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+  <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
+  <rect class="terminal" x="1164" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
+  <line class="${compact ? "wire-line-compact" : "wire-line"}" x1="426" y1="${wire.y}" x2="1164" y2="${wire.y}" stroke="${color}" />
+  <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
+  <path class="terminal-mark" d="M 1192 ${wire.y - markHalf} L 1192 ${wire.y + markHalf} M ${1192 - markHalf} ${wire.y} L ${1192 + markHalf} ${wire.y}" />
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(wire.awg || "")} AWG</text>
+  <text class="${textColorClass}" x="398" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
+  <text class="${textColorClass}" x="1192" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
 }
 
 function buildKiCadSpecsSvg(x, y, width, height, model) {
@@ -4609,13 +4721,20 @@ function buildWireLegendSvg(x, y, width, height, model) {
       colors.push({ name: wire.colorName, stroke: wire.stroke, meaning: wire.colorName === "BLACK" ? "GROUND" : "POWER" });
     }
   });
-  const rows = colors.slice(0, 2).map((color, index) => {
-    const rowY = y + 36 + index * 34;
+  const preferredColors = ["RED", "BLACK"]
+    .map((name) => colors.find((color) => color.name === name))
+    .filter(Boolean);
+  const legendColors = uniqueValues([...preferredColors.map((color) => color.name), ...colors.map((color) => color.name)])
+    .slice(0, 2)
+    .map((name) => colors.find((color) => color.name === name));
+  const rows = legendColors.map((color, index) => {
+    const rowGap = legendColors.length > 1 ? Math.min(34, height - 42) : 0;
+    const rowY = y + 36 + index * rowGap;
     return `
       <line class="legend-line" x1="${x + 28}" y1="${rowY}" x2="${x + 78}" y2="${rowY}" stroke="${color.stroke}" />
       <text class="table-text" x="${x + 118}" y="${rowY + 4}">${escapeXml(color.name)}</text>
       <text class="table-text" x="${x + 154}" y="${rowY + 4}">=</text>
-      <text class="table-text" x="${x + 205}" y="${rowY + 4}">${escapeXml(color.meaning)}</text>`;
+      <text class="table-text" x="${x + 205}" y="${rowY + 4}">${escapeXml(color.name === "BLACK" ? "GROUND" : color.name === "RED" ? "POWER" : "SIGNAL")}</text>`;
   }).join("");
   return `
   <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
