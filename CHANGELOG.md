@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.23 - 2026-06-21
+
+- Replaced the generic vertical 16-position CPC block with a circular 16-cavity mating face numbered 1 through 16.
+- Split repeated right-side pin sequences into separate connector housings instead of drawing one oversized combined connector.
+- Applied the W104 grouping as four 3-position connectors plus one 4-position connector, labeled SH, SV, PV, PH, and BW.
+- Added the same circular CPC and split-connector artwork to generated Draw.io files.
+
 ## v1.6.22 - 2026-06-21
 
 - Added an automatic high-density page layout for straight harnesses with more than eight conductors.
