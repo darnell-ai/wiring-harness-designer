@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.6.18 - 2026-06-21
+
+- Moved Draw.io wire anchors to the edge of each pin cavity so pin numbers stay visible inside the connector face.
+- Applied the same cavity-edge anchor to the SVG preview so the preview and Draw.io export stay aligned.
+
 ## v1.6.17 - 2026-06-21
 
 - Added a `Right Wire Name` field to the universal harness sheet so the right-hand endpoint label can be stored separately from the shared `Wire Name`.

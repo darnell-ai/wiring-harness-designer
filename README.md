@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.17**
+Current release: **v1.6.18**
 
 ## Use The App
 
@@ -38,6 +38,7 @@ The user-facing flow is intentionally simple: upload an image, paste a copied sc
 - Uses the table-defined Isolator pinout: pin 1 GND, pin 2 SDA, pin 3 SCL, and pin 4 5V.
 - Uses the CAN bus template only when the sketch has CAN-specific evidence such as CAN-H/CAN-L, USB-CAN, JST branch notes, or 120 ohm termination.
 - Generates a simple sheet-driven harness drawing from meaningful rows in an uploaded sheet.
+- Starts Draw.io wire connections from the edge of the pin cavity instead of the cavity center so pin numbers stay readable.
 - Automatically draws expandable braided sleeving around conductor bundles with heat-shrink collars at both ends on every cable drawing and Draw.io export.
 - Recognizes the 43645-0200 to 90143-0040 Molex connector pair from its housing data and draws the actual Micro-Fit 3.0 two-circuit mating face plus the complete C-Grid III 2-by-20 cavity grid, with connected cavities highlighted.
 - Recognizes Molex Micro-Fit 3.0 front-lock 43645 housings from 2 through 12 circuits and side-lock 43025 housings from 2 through 16 even-numbered circuits.

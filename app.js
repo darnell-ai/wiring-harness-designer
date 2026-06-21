@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.17";
+const APP_VERSION = "1.6.18";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -3511,6 +3511,26 @@ function datasheetConnectorPinPoint(connector, pin, side) {
   };
 }
 
+function datasheetConnectorWireAnchorPoint(connector, pin, side) {
+  const point = datasheetConnectorPinPoint(connector, pin, side);
+  const geometry = datasheetConnectorGeometry(connector, side);
+  if (connector.key === "teCpc1714") {
+    const dx = point.x - geometry.centerX;
+    const dy = point.y - geometry.centerY;
+    const distance = Math.hypot(dx, dy) || 1;
+    const offset = 16;
+    return {
+      x: point.x + (dx / distance) * offset,
+      y: point.y + (dy / distance) * offset
+    };
+  }
+  const offset = connector.key === "powerpole1545" ? 18 : geometry.sideLock ? 16 : geometry.dual ? 16 : 18;
+  return {
+    x: point.x + (side === "left" ? offset : -offset),
+    y: point.y
+  };
+}
+
 function buildDatasheetConnectorFaceSvg(connector, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
   const heading = `${connector.definition.manufacturer} ${connector.definition.family}`.trim();
@@ -3636,8 +3656,8 @@ function isDarkDatasheetColor(colorName) {
 
 function buildDatasheetConnectorHarnessSvg(result, model) {
   const wireSvg = model.wires.map((wire) => {
-    const leftPoint = datasheetConnectorPinPoint(model.left, wire.fromPin, "left");
-    const rightPoint = datasheetConnectorPinPoint(model.right, wire.toPin, "right");
+    const leftPoint = datasheetConnectorWireAnchorPoint(model.left, wire.fromPin, "left");
+    const rightPoint = datasheetConnectorWireAnchorPoint(model.right, wire.toPin, "right");
     return `
       <path class="ds-wire" d="M ${leftPoint.x} ${leftPoint.y} L 396 ${leftPoint.y} L 438 ${wire.laneY} L 1162 ${wire.laneY} L 1204 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${wire.stroke}" />
       <circle class="ds-terminal" cx="${leftPoint.x}" cy="${leftPoint.y}" r="4.5" />
@@ -6700,8 +6720,8 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
   addDatasheetConnectorDrawioFace(addVertex, model.left, "left");
   addDatasheetConnectorDrawioFace(addVertex, model.right, "right");
   model.wires.forEach((wire, index) => {
-    const leftPoint = datasheetConnectorPinPoint(model.left, wire.fromPin, "left");
-    const rightPoint = datasheetConnectorPinPoint(model.right, wire.toPin, "right");
+    const leftPoint = datasheetConnectorWireAnchorPoint(model.left, wire.fromPin, "left");
+    const rightPoint = datasheetConnectorWireAnchorPoint(model.right, wire.toPin, "right");
     addEdge(
       `datasheet_wire_${index + 1}`,
       `${escapeHtml(wire.name)} | ${escapeHtml(wire.colorName)} | ${escapeHtml(wire.awg || "?")} AWG`,
