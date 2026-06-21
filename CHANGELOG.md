@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.6.21 - 2026-06-21
+
+- Changed Paste table into a one-click action that reads the clipboard and generates the harness immediately.
+- Removed the extra Load pasted table button.
+- Kept a clipboard-permission fallback box where Ctrl+V automatically loads the pasted table without another click.
+
 ## v1.6.20 - 2026-06-21
 
 - Removed the large image-upload card and secondary reader controls from the main workspace.

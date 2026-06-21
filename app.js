@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.20";
+const APP_VERSION = "1.6.21";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -122,7 +122,6 @@ const dom = {
   tablePasteButton: document.querySelector("#tablePasteButton"),
   pasteTablePanel: document.querySelector("#pasteTablePanel"),
   tablePasteInput: document.querySelector("#tablePasteInput"),
-  loadPastedTableButton: document.querySelector("#loadPastedTableButton"),
   closePasteTableButton: document.querySelector("#closePasteTableButton"),
   pasteButton: document.querySelector("#pasteButton"),
   resetButton: document.querySelector("#resetButton"),
@@ -190,8 +189,10 @@ function init() {
   });
 
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
-  dom.tablePasteButton.addEventListener("click", () => void openPasteTablePanel());
-  dom.loadPastedTableButton.addEventListener("click", () => void loadPastedHarnessTable());
+  dom.tablePasteButton.addEventListener("click", () => void pasteClipboardTable());
+  dom.tablePasteInput.addEventListener("paste", () => {
+    setTimeout(() => void loadPastedHarnessTable(), 0);
+  });
   dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
   dom.resetButton.addEventListener("click", resetApp);
   dom.printButton.addEventListener("click", printDrawing);
@@ -340,32 +341,35 @@ function applyHarnessSheet(sheet, sourceName) {
   return result;
 }
 
-async function openPasteTablePanel() {
-  dom.pasteTablePanel.hidden = false;
-  setStatus("Paste rows copied from Excel, Google Sheets, or a tab-delimited table, then click Load pasted table.");
-  await waitForFrame();
-  dom.tablePasteInput.focus();
-  if (!dom.tablePasteInput.value.trim() && navigator.clipboard?.readText) {
+async function pasteClipboardTable() {
+  if (navigator.clipboard?.readText) {
     try {
+      setStatus("Reading copied harness table...");
       const text = await navigator.clipboard.readText();
       if (looksLikeDelimitedTable(text)) {
         dom.tablePasteInput.value = text;
-        dom.tablePasteInput.select();
+        await loadPastedHarnessTable(text);
+        return;
       }
     } catch {
-      // Clipboard text permission is optional; the textarea still supports manual paste.
+      // Fall back to the paste box when direct clipboard access is unavailable.
     }
   }
+  dom.pasteTablePanel.hidden = false;
+  setStatus("Press Ctrl+V in the box. The pasted table will load automatically.");
+  await waitForFrame();
+  dom.tablePasteInput.value = "";
+  dom.tablePasteInput.focus();
 }
 
 function closePasteTablePanel() {
   dom.pasteTablePanel.hidden = true;
 }
 
-async function loadPastedHarnessTable() {
-  const text = dom.tablePasteInput.value.trim();
+async function loadPastedHarnessTable(inputText = dom.tablePasteInput.value) {
+  const text = String(inputText || "").trim();
   if (!text) {
-    setStatus("Paste the copied table rows first, then click Load pasted table.");
+    setStatus("Paste the copied table rows into the box.");
     dom.tablePasteInput.focus();
     return;
   }
@@ -5917,7 +5921,6 @@ function renderEmpty() {
 function setBusy(isBusy) {
   dom.pasteButton.disabled = isBusy;
   dom.tablePasteButton.disabled = isBusy;
-  dom.loadPastedTableButton.disabled = isBusy;
   dom.resetButton.disabled = isBusy;
 }
 
@@ -5945,7 +5948,6 @@ function resetApp() {
   };
   dom.pasteButton.disabled = false;
   dom.tablePasteButton.disabled = false;
-  dom.loadPastedTableButton.disabled = false;
   dom.pasteTablePanel.hidden = true;
   dom.tablePasteInput.value = "";
   dom.printButton.disabled = true;

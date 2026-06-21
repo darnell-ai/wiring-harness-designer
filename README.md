@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.20**
+Current release: **v1.6.21**
 
 ## Use The App
 
@@ -12,14 +12,14 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 
 DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing. The row data stays copy-only so the operator can move it between Excel, Google Sheets, and build sheets without editing spreadsheet cells inside this app.
 
-The daily workflow is intentionally simple: use Paste table, inspect the drawing, edit it in Draw.io when needed, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading, and image files can still be dropped directly onto the drawing area.
+The daily workflow is intentionally simple: copy the harness rows, click Paste table to generate the drawing immediately, inspect it, edit it in Draw.io when needed, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading, and image files can still be dropped directly onto the drawing area.
 
 ## Features
 
 - Reads sideways, upside-down, and normal uploads by trying all four page orientations.
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
-- Accepts pasted tab-delimited rows copied from Excel, Google Sheets, or a text table through the Paste table button.
+- Loads tab-delimited rows copied from Excel, Google Sheets, or a text table immediately when Paste table is clicked.
 - Preserves uploaded sheet headers and rows in the copy-only table.
 - Carries a separate `Right Wire Name` field so the right-hand label can differ from the shared `Wire Name` when needed.
 - Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
