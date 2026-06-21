@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.16 - 2026-06-19
+
+- Changed embedded Draw.io Save from downloading the editable `.drawio` source to exporting and downloading a PDF.
+- Save requests Draw.io's supported SVG export, converts it locally into a landscape PDF, and names the file from the harness drawing.
+- Added a clear failure status when Draw.io does not return PDF data.
+- Clarified that browser security controls the physical download folder; setting the browser's download location to Desktop makes Save land there directly.
+
 ## v1.6.15 - 2026-06-19
 
 - Changed embedded Draw.io Save into an immediate `.drawio` browser download of the edited drawing.

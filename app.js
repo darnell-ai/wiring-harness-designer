@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.15";
+const APP_VERSION = "1.6.16";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -5923,7 +5923,8 @@ function exportDrawio() {
     return;
   }
   const xml = buildDrawioXml(appState.result);
-  const title = `${fileBase(appState.fileName || "digiwire")}.drawio`;
+  const fileName = fileBase(appState.fileName || "digiwire");
+  const title = `${fileName}.drawio`;
   const popup = window.open(
     `${DRAWIO_EMBED_ORIGIN}/?embed=1&proto=json&spin=1&ui=min&libraries=1`,
     "DIGIWIRE_DRAWIO_EDITOR",
@@ -5937,6 +5938,8 @@ function exportDrawio() {
     popup,
     xml,
     title,
+    pdfTitle: `${fileName}.pdf`,
+    exportingPdf: false,
     loaded: false
   };
   popup.focus();
@@ -5964,8 +5967,39 @@ function handleDrawioMessage(event) {
   }
   if (message.event === "save") {
     drawioSession.xml = message.xml || drawioSession.xml;
-    downloadText(drawioSession.title, drawioSession.xml, "application/vnd.jgraph.mxfile");
-    setStatus(`Downloaded the edited Draw.io file as ${drawioSession.title}.`);
+    if (drawioSession.exportingPdf) {
+      return;
+    }
+    drawioSession.exportingPdf = true;
+    drawioSession.popup.postMessage(JSON.stringify({
+      action: "export",
+      format: "svg",
+      spin: "Generating PDF...",
+      xml: drawioSession.xml
+    }), event.origin);
+    setStatus(`Generating ${drawioSession.pdfTitle} from the edited Draw.io drawing...`);
+    return;
+  }
+  if (message.event === "export") {
+    if (!drawioSession.exportingPdf) {
+      return;
+    }
+    if (!message.data) {
+      drawioSession.exportingPdf = false;
+      setStatus("Draw.io could not generate the PDF. The editor is still open; try Save again.");
+      return;
+    }
+    const session = drawioSession;
+    void downloadSvgDataUriAsPdf(session.pdfTitle, message.data)
+      .then(() => {
+        session.exportingPdf = false;
+        setStatus(`Downloaded ${session.pdfTitle}. Your browser controls the download folder.`);
+      })
+      .catch((error) => {
+        session.exportingPdf = false;
+        console.error("PDF export failed", error);
+        setStatus("DIGIWIRE could not convert the Draw.io export to PDF. The editor is still open; try Save again.");
+      });
     return;
   }
   if (message.event === "exit") {
@@ -7392,6 +7426,111 @@ function loadImage(dataUrl) {
 
 function downloadText(fileName, text, type) {
   downloadBlob(fileName, new Blob([text], { type }));
+}
+
+async function downloadSvgDataUriAsPdf(fileName, dataUri) {
+  if (String(dataUri || "").startsWith("data:application/pdf")) {
+    downloadDataUri(fileName, dataUri);
+    return;
+  }
+  const pdfBlob = await svgDataUriToPdfBlob(dataUri);
+  downloadBlob(fileName, pdfBlob);
+}
+
+function svgDataUriToPdfBlob(dataUri) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener("load", () => {
+      const naturalWidth = Math.max(1, image.naturalWidth || SVG_WIDTH);
+      const naturalHeight = Math.max(1, image.naturalHeight || SVG_HEIGHT);
+      const renderScale = Math.min(2, 3200 / Math.max(naturalWidth, naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(naturalWidth * renderScale));
+      canvas.height = Math.max(1, Math.round(naturalHeight * renderScale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        reject(new Error("Canvas rendering is unavailable."));
+        return;
+      }
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(async (jpegBlob) => {
+        if (!jpegBlob) {
+          reject(new Error("Could not rasterize the Draw.io SVG."));
+          return;
+        }
+        try {
+          const jpegBytes = new Uint8Array(await jpegBlob.arrayBuffer());
+          resolve(buildJpegPdfBlob(jpegBytes, canvas.width, canvas.height));
+        } catch (error) {
+          reject(error);
+        }
+      }, "image/jpeg", 0.96);
+    });
+    image.addEventListener("error", () => reject(new Error("Could not load the Draw.io SVG export.")));
+    image.src = dataUri;
+  });
+}
+
+function buildJpegPdfBlob(jpegBytes, imageWidth, imageHeight) {
+  const encoder = new TextEncoder();
+  const chunks = [];
+  const offsets = Array(6).fill(0);
+  let byteLength = 0;
+  const pushBytes = (bytes) => {
+    chunks.push(bytes);
+    byteLength += bytes.length;
+  };
+  const pushText = (text) => pushBytes(encoder.encode(text));
+  const addObject = (objectNumber, body, streamBytes = null) => {
+    offsets[objectNumber] = byteLength;
+    pushText(`${objectNumber} 0 obj\n${body}`);
+    if (streamBytes) {
+      pushText("\nstream\n");
+      pushBytes(streamBytes);
+      pushText("\nendstream");
+    }
+    pushText("\nendobj\n");
+  };
+  const pageWidth = 1224;
+  const pageHeight = 792;
+  const margin = 18;
+  const imageAspect = imageWidth / Math.max(1, imageHeight);
+  let drawWidth = pageWidth - margin * 2;
+  let drawHeight = drawWidth / imageAspect;
+  if (drawHeight > pageHeight - margin * 2) {
+    drawHeight = pageHeight - margin * 2;
+    drawWidth = drawHeight * imageAspect;
+  }
+  const drawX = (pageWidth - drawWidth) / 2;
+  const drawY = (pageHeight - drawHeight) / 2;
+  const content = `q\n${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${drawX.toFixed(2)} ${drawY.toFixed(2)} cm\n/Im0 Do\nQ\n`;
+  const contentBytes = encoder.encode(content);
+
+  pushText("%PDF-1.4\n");
+  addObject(1, "<< /Type /Catalog /Pages 2 0 R >>");
+  addObject(2, "<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  addObject(3, `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>`);
+  addObject(4, `<< /Type /XObject /Subtype /Image /Width ${imageWidth} /Height ${imageHeight} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.length} >>`, jpegBytes);
+  addObject(5, `<< /Length ${contentBytes.length} >>`, contentBytes);
+
+  const xrefOffset = byteLength;
+  pushText("xref\n0 6\n0000000000 65535 f \n");
+  for (let objectNumber = 1; objectNumber <= 5; objectNumber += 1) {
+    pushText(`${String(offsets[objectNumber]).padStart(10, "0")} 00000 n \n`);
+  }
+  pushText(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  return new Blob(chunks, { type: "application/pdf" });
+}
+
+function downloadDataUri(fileName, dataUri) {
+  const link = document.createElement("a");
+  link.href = dataUri;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 function downloadBlob(fileName, blob) {
