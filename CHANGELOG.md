@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.6.19 - 2026-06-21
+
+- Kept datasheet-aware harness wires on separate horizontal lanes aligned with their connector cavities.
+- Moved pin-order changes into a compact, staggered center crossover instead of funneling every conductor together beside the right connector.
+- Added rounded SVG crossover corners and explicit editable Draw.io route points while preserving the automatic eight-waypoint rule.
+- Moved wire labels onto the uncluttered left-hand straight section and sized the expando around the actual routed conductors.
+
 ## v1.6.18 - 2026-06-21
 
 - Moved Draw.io wire anchors to the edge of each pin cavity so pin numbers stay visible inside the connector face.

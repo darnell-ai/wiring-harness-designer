@@ -4,7 +4,7 @@ A standalone sketch-to-schematic wiring harness reader.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.18**
+Current release: **v1.6.19**
 
 ## Use The App
 

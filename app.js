@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "1.6.18";
+const APP_VERSION = "1.6.19";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -3531,6 +3531,82 @@ function datasheetConnectorWireAnchorPoint(connector, pin, side) {
   };
 }
 
+function buildDatasheetWireRoutes(model) {
+  const routes = model.wires.map((wire, index) => ({
+    wire,
+    index,
+    leftPoint: datasheetConnectorWireAnchorPoint(model.left, wire.fromPin, "left"),
+    rightPoint: datasheetConnectorWireAnchorPoint(model.right, wire.toPin, "right")
+  }));
+  const verticalOrder = [...routes].sort((left, right) =>
+    left.leftPoint.y - right.leftPoint.y ||
+    left.leftPoint.x - right.leftPoint.x ||
+    left.index - right.index
+  );
+  const rankByIndex = new Map(verticalOrder.map((route, rank) => [route.index, rank]));
+  const middleRank = (routes.length - 1) / 2;
+  const crossoverStep = routes.length > 1
+    ? clamp(112 / (routes.length - 1), 9, 22)
+    : 0;
+  const crossoverCenterX = 800;
+
+  return routes.map((route) => {
+    const rank = rankByIndex.get(route.index) || 0;
+    const crossoverX = crossoverCenterX + (middleRank - rank) * crossoverStep;
+    const points = Math.abs(route.leftPoint.y - route.rightPoint.y) < 0.5
+      ? [route.leftPoint, route.rightPoint]
+      : [
+          route.leftPoint,
+          { x: crossoverX, y: route.leftPoint.y },
+          { x: crossoverX, y: route.rightPoint.y },
+          route.rightPoint
+        ];
+    return {
+      ...route,
+      crossoverX,
+      points
+    };
+  });
+}
+
+function roundedSvgPolylinePath(points, radius = 12) {
+  if (!points.length) {
+    return "";
+  }
+  if (points.length === 1) {
+    return `M ${points[0].x} ${points[0].y}`;
+  }
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incomingX = current.x - previous.x;
+    const incomingY = current.y - previous.y;
+    const outgoingX = next.x - current.x;
+    const outgoingY = next.y - current.y;
+    const incomingLength = Math.hypot(incomingX, incomingY);
+    const outgoingLength = Math.hypot(outgoingX, outgoingY);
+    const cross = incomingX * outgoingY - incomingY * outgoingX;
+    if (incomingLength < 0.5 || outgoingLength < 0.5 || Math.abs(cross) < 0.5) {
+      path += ` L ${current.x} ${current.y}`;
+      continue;
+    }
+    const cornerRadius = Math.min(radius, incomingLength / 2, outgoingLength / 2);
+    const cornerStart = {
+      x: current.x - incomingX / incomingLength * cornerRadius,
+      y: current.y - incomingY / incomingLength * cornerRadius
+    };
+    const cornerEnd = {
+      x: current.x + outgoingX / outgoingLength * cornerRadius,
+      y: current.y + outgoingY / outgoingLength * cornerRadius
+    };
+    path += ` L ${cornerStart.x} ${cornerStart.y} Q ${current.x} ${current.y} ${cornerEnd.x} ${cornerEnd.y}`;
+  }
+  const last = points[points.length - 1];
+  return `${path} L ${last.x} ${last.y}`;
+}
+
 function buildDatasheetConnectorFaceSvg(connector, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
   const heading = `${connector.definition.manufacturer} ${connector.definition.family}`.trim();
@@ -3655,15 +3731,18 @@ function isDarkDatasheetColor(colorName) {
 }
 
 function buildDatasheetConnectorHarnessSvg(result, model) {
-  const wireSvg = model.wires.map((wire) => {
-    const leftPoint = datasheetConnectorWireAnchorPoint(model.left, wire.fromPin, "left");
-    const rightPoint = datasheetConnectorWireAnchorPoint(model.right, wire.toPin, "right");
+  const routes = buildDatasheetWireRoutes(model);
+  const wireSvg = routes.map(({ wire, leftPoint, rightPoint, points }) => {
     return `
-      <path class="ds-wire" d="M ${leftPoint.x} ${leftPoint.y} L 396 ${leftPoint.y} L 438 ${wire.laneY} L 1162 ${wire.laneY} L 1204 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${wire.stroke}" />
+      <path class="ds-wire" d="${roundedSvgPolylinePath(points)}" stroke="${wire.stroke}" />
       <circle class="ds-terminal" cx="${leftPoint.x}" cy="${leftPoint.y}" r="4.5" />
       <circle class="ds-terminal" cx="${rightPoint.x}" cy="${rightPoint.y}" r="4.5" />
-      <text class="ds-wire-label" x="800" y="${wire.laneY - 5}">${escapeXml(`${wire.name} | ${wire.colorName} | ${wire.awg || "?"} AWG`)}</text>`;
+      <text class="ds-wire-label" x="640" y="${leftPoint.y - 5}">${escapeXml(`${wire.name} | ${wire.colorName} | ${wire.awg || "?"} AWG`)}</text>`;
   }).join("");
+  const routeYs = routes.flatMap((route) => [route.leftPoint.y, route.rightPoint.y]);
+  const protectionPadding = clamp(58 - model.wires.length * 2, 24, 48);
+  const protectionTop = Math.min(...routeYs) - protectionPadding;
+  const protectionBottom = Math.max(...routeYs) + protectionPadding;
   const firstHalf = model.wires.slice(0, 8);
   const secondHalf = model.wires.slice(8, 16);
   const tableRows = (wires) => wires.map((wire) => [
@@ -3745,10 +3824,10 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
   ${buildHorizontalProtectionSvg({
     x1: 454,
     x2: 1146,
-    top: model.wires[0].laneY - 16,
-    bottom: model.wires[model.wires.length - 1].laneY + 16,
-    labelY: model.wires[0].laneY - 25,
-    endLabelY: model.wires[model.wires.length - 1].laneY + 37,
+    top: protectionTop,
+    bottom: protectionBottom,
+    labelY: protectionTop - 10,
+    endLabelY: protectionBottom + 18,
     bandWidth: 26
   })}
   ${buildDatasheetConnectorFaceSvg(model.left, "left")}
@@ -6689,9 +6768,26 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
   const addVertex = (id, value, x, y, width, height, style) => {
     add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
   };
-  const addEdge = (id, value, x1, y1, x2, y2, style) => {
-    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
+  const addEdge = (id, value, points, style) => {
+    const source = points[0];
+    const target = points[points.length - 1];
+    const waypoints = points.slice(1, -1)
+      .map((point) => `<mxPoint x="${formatDrawioCoordinate(point.x)}" y="${formatDrawioCoordinate(point.y)}" />`)
+      .join("");
+    const pointsXml = waypoints ? `<Array as="points">${waypoints}</Array>` : "";
+    add(mxCell(
+      { id, value, style, edge: 1, parent: "1" },
+      mxGeometry(
+        { x: -0.28, y: -8, relative: 1, as: "geometry" },
+        `${mxPoint(source.x, source.y, "sourcePoint")}${mxPoint(target.x, target.y, "targetPoint")}${pointsXml}`
+      )
+    ));
   };
+  const routes = buildDatasheetWireRoutes(model);
+  const routeYs = routes.flatMap((route) => [route.leftPoint.y, route.rightPoint.y]);
+  const protectionPadding = clamp(58 - model.wires.length * 2, 24, 48);
+  const protectionTop = Math.min(...routeYs) - protectionPadding;
+  const protectionBottom = Math.max(...routeYs) + protectionPadding;
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
   addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
@@ -6713,23 +6809,18 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
     id: "datasheet_protection",
     x1: 454,
     x2: 1146,
-    top: model.wires[0].laneY - 16,
-    bottom: model.wires[model.wires.length - 1].laneY + 16,
+    top: protectionTop,
+    bottom: protectionBottom,
     bandWidth: 26
   });
   addDatasheetConnectorDrawioFace(addVertex, model.left, "left");
   addDatasheetConnectorDrawioFace(addVertex, model.right, "right");
-  model.wires.forEach((wire, index) => {
-    const leftPoint = datasheetConnectorWireAnchorPoint(model.left, wire.fromPin, "left");
-    const rightPoint = datasheetConnectorWireAnchorPoint(model.right, wire.toPin, "right");
+  routes.forEach(({ wire, points }, index) => {
     addEdge(
       `datasheet_wire_${index + 1}`,
       `${escapeHtml(wire.name)} | ${escapeHtml(wire.colorName)} | ${escapeHtml(wire.awg || "?")} AWG`,
-      leftPoint.x,
-      leftPoint.y,
-      rightPoint.x,
-      rightPoint.y,
-      `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=10;`
+      points,
+      `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=8;fontStyle=1;fontSize=10;`
     );
   });
   const wiringRows = model.wires.map((wire) => [
