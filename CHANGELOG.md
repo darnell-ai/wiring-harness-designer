@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.1 - 2026-06-22
+
+- Forced Draw.io's exported artwork to use its light palette before PDF rendering.
+- Added the Draw.io grid to the exported page so the PDF matches the editing canvas.
+- Fixed washed-out colors and black documentation panels caused by Draw.io's `light-dark(...)` SVG styles following the browser's dark-mode preference.
+- Increased the screenshot-quality PDF render to preserve clear text, wires, connector faces, and page spacing.
+
 ## v2.0.0 - 2026-06-22
 
 - Rebuilt DIGIWIRE as a streamlined Excel-to-Draw.io conversion workspace.

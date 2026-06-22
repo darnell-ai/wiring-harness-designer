@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.0**
+Current release: **v2.0.1**
 
 ## Use The App
 
@@ -62,7 +62,7 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
 - Uses Draw.io as the only visible drawing workspace; no separate DIGIWIRE preview or editor popup is required.
 - Automatically replaces the Draw.io canvas whenever a new table or image is converted.
-- Exports and downloads the edited drawing as a PDF when Save is clicked inside Draw.io. The browser's configured download location controls whether the PDF lands in Downloads or directly on the Desktop.
+- Makes Save produce a screenshot-faithful PDF of the edited Draw.io page, forcing the light drawing palette and including the Draw.io grid so the downloaded file matches the editing canvas.
 - Adds at least eight evenly distributed editable Draw.io waypoints to every electrical wire, including straight runs, while preserving existing routed corners.
 - Runs as static browser files with no server-side project database.
 

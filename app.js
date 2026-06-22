@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.0";
+const APP_VERSION = "2.0.1";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -6362,17 +6362,7 @@ function handleDrawioMessage(event) {
   }
   if (message.event === "save") {
     drawioSession.xml = message.xml || drawioSession.xml;
-    if (drawioSession.exportingPdf) {
-      return;
-    }
-    drawioSession.exportingPdf = true;
-    drawioSession.frame.postMessage(JSON.stringify({
-      action: "export",
-      format: "svg",
-      spin: "Generating PDF...",
-      xml: drawioSession.xml
-    }), event.origin);
-    setStatus(`Generating ${drawioSession.pdfTitle} from the edited Draw.io drawing...`);
+    requestDrawioPdfExport();
     return;
   }
   if (message.event === "export") {
@@ -6385,7 +6375,7 @@ function handleDrawioMessage(event) {
       return;
     }
     const session = drawioSession;
-    void downloadSvgDataUriAsPdf(session.pdfTitle, message.data)
+    void downloadDrawioPdf(session.pdfTitle, message.data)
       .then(() => {
         session.exportingPdf = false;
         setStatus(`Downloaded ${session.pdfTitle}. Keep editing here or paste the next harness.`);
@@ -6393,7 +6383,7 @@ function handleDrawioMessage(event) {
       .catch((error) => {
         session.exportingPdf = false;
         console.error("PDF export failed", error);
-        setStatus("DIGIWIRE could not convert the Draw.io export to PDF. The editor is still open; try Save again.");
+        setStatus("DIGIWIRE could not render the Draw.io page as a PDF. The editor is still open; try Save again.");
       });
     return;
   }
@@ -6404,6 +6394,23 @@ function handleDrawioMessage(event) {
     setStatus("Restarting Draw.io without leaving DIGIWIRE...");
     dom.drawioFrame.src = DRAWIO_EDITOR_URL;
   }
+}
+
+function requestDrawioPdfExport() {
+  if (!drawioSession?.ready || !drawioSession.frame || drawioSession.exportingPdf) {
+    return;
+  }
+  drawioSession.exportingPdf = true;
+  drawioSession.frame.postMessage(JSON.stringify({
+    action: "export",
+    format: "svg",
+    crop: false,
+    border: 0,
+    scale: 1,
+    spin: "Generating PDF...",
+    xml: drawioSession.xml
+  }), drawioSession.origin);
+  setStatus(`Generating ${drawioSession.pdfTitle} from the edited Draw.io drawing...`);
 }
 
 function parseDrawioMessage(data) {
@@ -8015,18 +8022,84 @@ function loadImage(dataUrl) {
   });
 }
 
-async function downloadSvgDataUriAsPdf(fileName, dataUri) {
-  if (String(dataUri || "").startsWith("data:application/pdf")) {
-    downloadDataUri(fileName, dataUri);
+async function downloadDrawioPdf(fileName, dataUri) {
+  const value = String(dataUri || "");
+  if (value.startsWith("data:application/pdf")) {
+    downloadDataUri(fileName, value);
     return;
   }
-  const pdfBlob = await svgDataUriToPdfBlob(dataUri);
+  if (!value.startsWith("data:image/svg+xml")) {
+    throw new Error("Draw.io returned an unsupported export.");
+  }
+  const svgText = forceLightDrawioSvg(decodeTextDataUri(value));
+  const pdfBlob = await svgTextToPdfBlob(svgText);
   downloadBlob(fileName, pdfBlob);
 }
 
-function svgDataUriToPdfBlob(dataUri) {
+function decodeTextDataUri(dataUri) {
+  const commaIndex = dataUri.indexOf(",");
+  if (commaIndex < 0) {
+    throw new Error("The Draw.io export was not a valid data URI.");
+  }
+  const metadata = dataUri.slice(0, commaIndex);
+  const payload = dataUri.slice(commaIndex + 1);
+  if (!metadata.includes(";base64")) {
+    return decodeURIComponent(payload);
+  }
+  const binary = atob(payload);
+  const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+function forceLightDrawioSvg(svgText) {
+  let output = replaceLightDarkColors(String(svgText || ""));
+  output = output.replace(/color-scheme:\s*light\s+dark;?/gi, "color-scheme: light;");
+  output = output.replace(
+    /(<svg\b[^>]*\bstyle=")([^"]*)(")/i,
+    (match, start, style, end) => `${start}${style.replace(/background(?:-color)?:\s*transparent;?/gi, "")} background: #ffffff; background-color: #ffffff; color-scheme: light;${end}`
+  );
+  const grid = `<defs><pattern id="digiwire-export-grid" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M 10 0 L 0 0 0 10" fill="none" stroke="#e5eaed" stroke-width="0.6"/></pattern></defs><rect x="0" y="0" width="100%" height="100%" fill="#ffffff"/><rect x="0" y="0" width="100%" height="100%" fill="url(#digiwire-export-grid)"/>`;
+  return output.replace(/(<svg\b[^>]*>)/i, `$1${grid}`);
+}
+
+function replaceLightDarkColors(input) {
+  let output = "";
+  let cursor = 0;
+  const marker = "light-dark(";
+  while (cursor < input.length) {
+    const start = input.indexOf(marker, cursor);
+    if (start < 0) {
+      output += input.slice(cursor);
+      break;
+    }
+    output += input.slice(cursor, start);
+    let depth = 1;
+    let comma = -1;
+    let index = start + marker.length;
+    for (; index < input.length && depth > 0; index += 1) {
+      const character = input[index];
+      if (character === "(") {
+        depth += 1;
+      } else if (character === ")") {
+        depth -= 1;
+      } else if (character === "," && depth === 1 && comma < 0) {
+        comma = index;
+      }
+    }
+    if (depth !== 0 || comma < 0) {
+      output += input.slice(start);
+      break;
+    }
+    output += input.slice(start + marker.length, comma).trim();
+    cursor = index;
+  }
+  return output;
+}
+
+function svgTextToPdfBlob(svgText) {
   return new Promise((resolve, reject) => {
     const image = new Image();
+    const svgDataUri = encodeTextDataUri("image/svg+xml", svgText);
     image.addEventListener("load", () => {
       const naturalWidth = Math.max(1, image.naturalWidth || SVG_WIDTH);
       const naturalHeight = Math.max(1, image.naturalHeight || SVG_HEIGHT);
@@ -8044,7 +8117,7 @@ function svgDataUriToPdfBlob(dataUri) {
       context.drawImage(image, 0, 0, canvas.width, canvas.height);
       canvas.toBlob(async (jpegBlob) => {
         if (!jpegBlob) {
-          reject(new Error("Could not rasterize the Draw.io SVG."));
+          reject(new Error("Could not render the Draw.io page."));
           return;
         }
         try {
@@ -8053,11 +8126,23 @@ function svgDataUriToPdfBlob(dataUri) {
         } catch (error) {
           reject(error);
         }
-      }, "image/jpeg", 0.96);
+      }, "image/jpeg", 0.97);
     });
-    image.addEventListener("error", () => reject(new Error("Could not load the Draw.io SVG export.")));
-    image.src = dataUri;
+    image.addEventListener("error", () => {
+      reject(new Error("Could not load the corrected Draw.io export."));
+    });
+    image.src = svgDataUri;
   });
+}
+
+function encodeTextDataUri(mimeType, text) {
+  const bytes = new TextEncoder().encode(text);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
 function buildJpegPdfBlob(jpegBytes, imageWidth, imageHeight) {
@@ -8081,17 +8166,13 @@ function buildJpegPdfBlob(jpegBytes, imageWidth, imageHeight) {
     pushText("\nendobj\n");
   };
   const pageWidth = 1224;
-  const pageHeight = 792;
-  const margin = 18;
+  const margin = 8;
   const imageAspect = imageWidth / Math.max(1, imageHeight);
-  let drawWidth = pageWidth - margin * 2;
-  let drawHeight = drawWidth / imageAspect;
-  if (drawHeight > pageHeight - margin * 2) {
-    drawHeight = pageHeight - margin * 2;
-    drawWidth = drawHeight * imageAspect;
-  }
-  const drawX = (pageWidth - drawWidth) / 2;
-  const drawY = (pageHeight - drawHeight) / 2;
+  const drawWidth = pageWidth - margin * 2;
+  const drawHeight = drawWidth / imageAspect;
+  const pageHeight = drawHeight + margin * 2;
+  const drawX = margin;
+  const drawY = margin;
   const content = `q\n${drawWidth.toFixed(2)} 0 0 ${drawHeight.toFixed(2)} ${drawX.toFixed(2)} ${drawY.toFixed(2)} cm\n/Im0 Do\nQ\n`;
   const contentBytes = encoder.encode(content);
 
