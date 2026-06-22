@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.0 - 2026-06-22
+
+- Rebuilt DIGIWIRE as a streamlined Excel-to-Draw.io conversion workspace.
+- Embedded the full Draw.io editor permanently in the center of the app instead of opening a popup.
+- Removed the separate internal drawing preview plus the Print and Edit in Draw.io buttons.
+- Automatically loads every pasted table or interpreted image into the embedded Draw.io canvas.
+- Keeps a queued diagram ready when table conversion finishes before Draw.io has fully initialized.
+- Preserves Save-to-PDF behavior inside Draw.io and keeps the editor open for continued cleanup.
+- Clears and reloads a blank Draw.io canvas without leaving DIGIWIRE.
+
 ## v1.6.24 - 2026-06-21
 
 - Rendered `PCB` housing endpoints as green circuit boards with numbered plated solder pads and traces instead of connector housings.

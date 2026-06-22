@@ -1,11 +1,12 @@
 "use strict";
 
-const APP_VERSION = "1.6.24";
+const APP_VERSION = "2.0.0";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
 const DRAWIO_EMBED_ORIGIN = "https://embed.diagrams.net";
 const DRAWIO_ALLOWED_ORIGINS = new Set([DRAWIO_EMBED_ORIGIN, "https://app.diagrams.net"]);
+const DRAWIO_EDITOR_URL = `${DRAWIO_EMBED_ORIGIN}/?embed=1&proto=json&spin=1&ui=min&libraries=1&saveAndExit=0&noExitBtn=1`;
 const XLSX_READER_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 const MAX_IMAGE_SIDE = 1600;
 const SVG_WIDTH = 1600;
@@ -125,9 +126,6 @@ const dom = {
   closePasteTableButton: document.querySelector("#closePasteTableButton"),
   pasteButton: document.querySelector("#pasteButton"),
   resetButton: document.querySelector("#resetButton"),
-  printButton: document.querySelector("#printButton"),
-  exportDrawio: document.querySelector("#exportDrawio"),
-  exportSvg: document.querySelector("#exportSvg"),
   copyTableButton: document.querySelector("#copyTableButton"),
   tablePreview: document.querySelector("#tablePreview"),
   confidenceValue: document.querySelector("#confidenceValue"),
@@ -141,7 +139,9 @@ const dom = {
   drawingPane: document.querySelector("#drawingPane"),
   sourceTitle: document.querySelector("#sourceTitle"),
   sourceCanvas: document.querySelector("#sourceCanvas"),
-  schematicStage: document.querySelector("#schematicStage"),
+  drawioStage: document.querySelector("#drawioStage"),
+  drawioFrame: document.querySelector("#drawioFrame"),
+  drawioLoading: document.querySelector("#drawioLoading"),
   findingsList: document.querySelector("#findingsList"),
   findingCount: document.querySelector("#findingCount"),
   workCanvas: document.querySelector("#workCanvas")
@@ -153,7 +153,6 @@ let appState = {
   image: null,
   manualRotation: 0,
   result: null,
-  svgText: "",
   tableText: "",
   tableHeaders: []
 };
@@ -200,15 +199,13 @@ function init() {
   });
   dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
   dom.resetButton.addEventListener("click", resetApp);
-  dom.printButton.addEventListener("click", printDrawing);
-  dom.exportSvg.addEventListener("click", exportSvg);
-  dom.exportDrawio.addEventListener("click", exportDrawio);
   dom.copyTableButton.addEventListener("click", () => void copyHarnessTable());
   window.addEventListener("message", handleDrawioMessage);
   document.addEventListener("paste", (event) => {
     void handlePasteEvent(event);
   });
 
+  initializeDrawioEditor();
   renderEmpty();
 }
 
@@ -232,7 +229,6 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       image,
       manualRotation: 0,
       result: null,
-      svgText: "",
       tableText: "",
       tableHeaders: []
     };
@@ -332,12 +328,11 @@ function applyHarnessSheet(sheet, sourceName) {
     image: null,
     manualRotation: 0,
     result,
-    svgText: buildSchematicSvg(result),
     tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
     tableHeaders: result.tableHeaders || sheet.headers
   };
   dom.sourceTitle.textContent = cleanFileName(sourceName);
-  renderSchematic(result);
+  renderDrawioDiagram(result);
   renderFacts(result);
   renderFindings(result.findings);
   renderHarnessTable(result.tableRows || [], appState.tableHeaders);
@@ -588,10 +583,9 @@ async function analyzeCurrentDrawing() {
     });
 
     appState.result = result;
-    appState.svgText = buildSchematicSvg(result);
     appState.tableHeaders = result.tableHeaders || getHarnessTableHeaders();
     appState.tableText = buildHarnessTableText(result.tableRows || [], appState.tableHeaders);
-    renderSchematic(result);
+    renderDrawioDiagram(result);
     renderFacts(result);
     renderFindings(result.findings);
     renderHarnessTable(result.tableRows || [], appState.tableHeaders);
@@ -6110,9 +6104,10 @@ function maskToCanvas(mask, width, height) {
   return canvas;
 }
 
-function renderSchematic(result) {
-  dom.schematicStage.innerHTML = appState.svgText.replace(/^<\?xml[^>]*>\s*/, "");
-  dom.drawingTitle.textContent = result.fileName || "Digital schematic";
+function renderDrawioDiagram(result) {
+  const fileName = fileBase(result.fileName || appState.fileName || "digiwire");
+  dom.drawingTitle.textContent = result.fileName || "Editable Draw.io harness";
+  queueDrawioDiagram(buildDrawioXml(result), `${fileName}.drawio`, `${fileName}.pdf`);
 }
 
 function renderFacts(result) {
@@ -6245,19 +6240,14 @@ function renderSourcePreview(result = null) {
 
 function renderEmpty() {
   setExportsEnabled(false);
-  dom.schematicStage.innerHTML = `
-    <div class="empty-state">
-      <strong>Ready for a harness</strong>
-      <span>Paste a table, paste an image, or drop an image here.</span>
-    </div>
-  `;
+  queueDrawioDiagram(buildBlankDrawioXml(), "digiwire.drawio", "digiwire.pdf");
   dom.confidenceValue.textContent = "--";
   dom.confidenceFill.style.width = "0";
   dom.orientationFact.textContent = "--";
   dom.wireFact.textContent = "0";
   dom.connectorFact.textContent = "0";
   dom.labelFact.textContent = "0";
-  dom.drawingTitle.textContent = "Ready for a harness";
+  dom.drawingTitle.textContent = "Draw.io editor";
   dom.sourceTitle.textContent = "None";
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
@@ -6274,9 +6264,6 @@ function setBusy(isBusy) {
 }
 
 function setExportsEnabled(enabled) {
-  dom.exportDrawio.disabled = !enabled;
-  dom.exportSvg.disabled = !enabled;
-  dom.printButton.disabled = !enabled;
   dom.copyTableButton.disabled = !enabled || !appState.tableText;
 }
 
@@ -6291,7 +6278,6 @@ function resetApp() {
     image: null,
     manualRotation: 0,
     result: null,
-    svgText: "",
     tableText: "",
     tableHeaders: []
   };
@@ -6299,96 +6285,79 @@ function resetApp() {
   dom.tablePasteButton.disabled = false;
   dom.pasteTablePanel.hidden = true;
   dom.tablePasteInput.value = "";
-  dom.printButton.disabled = true;
-  setStatus("Paste a table or image to start.");
+  setStatus("Cleared. Paste the next Excel table or image.");
   renderEmpty();
 }
 
-function printDrawing() {
-  if (!appState.result) {
-    return;
-  }
-  window.print();
-}
-
-function exportSvg() {
-  if (!appState.svgText) {
-    return;
-  }
-  downloadText(`${fileBase(appState.fileName || "digiwire")}.svg`, appState.svgText, "image/svg+xml");
-}
-
-function exportPng() {
-  if (!appState.svgText) {
-    return;
-  }
-  const image = new Image();
-  const blob = new Blob([appState.svgText], { type: "image/svg+xml" });
-  const url = URL.createObjectURL(blob);
-  image.onload = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = SVG_WIDTH * 3;
-    canvas.height = SVG_HEIGHT * 3;
-    const ctx = canvas.getContext("2d");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    URL.revokeObjectURL(url);
-    canvas.toBlob((pngBlob) => {
-      if (!pngBlob) {
-        return;
-      }
-      downloadBlob(`${fileBase(appState.fileName || "digiwire")}.png`, pngBlob);
-    }, "image/png");
-  };
-  image.src = url;
-}
-
-function exportDrawio() {
-  if (!appState.result) {
-    return;
-  }
-  const xml = buildDrawioXml(appState.result);
-  const fileName = fileBase(appState.fileName || "digiwire");
-  const title = `${fileName}.drawio`;
-  const popup = window.open(
-    `${DRAWIO_EMBED_ORIGIN}/?embed=1&proto=json&spin=1&ui=min&libraries=1`,
-    "DIGIWIRE_DRAWIO_EDITOR",
-    "popup=yes,width=1280,height=900,menubar=no,toolbar=no,location=no,status=no"
-  );
-  if (!popup) {
-    setStatus("Draw.io popup was blocked. Allow popups for this site, then click Edit in Draw.io again.");
-    return;
-  }
+function initializeDrawioEditor() {
   drawioSession = {
-    popup,
-    xml,
-    title,
-    pdfTitle: `${fileName}.pdf`,
+    frame: dom.drawioFrame.contentWindow,
+    origin: DRAWIO_EMBED_ORIGIN,
+    xml: buildBlankDrawioXml(),
+    title: "digiwire.drawio",
+    pdfTitle: "digiwire.pdf",
     exportingPdf: false,
-    loaded: false
+    loaded: false,
+    ready: false
   };
-  popup.focus();
-  setStatus("Opening Draw.io editor. Loading the DIGIWIRE drawing...");
+  setDrawioLoading(true, "Loading Draw.io editor", "Your pasted harness will appear here automatically.");
+}
+
+function queueDrawioDiagram(xml, title, pdfTitle) {
+  if (!drawioSession) {
+    initializeDrawioEditor();
+  }
+  drawioSession.frame = dom.drawioFrame.contentWindow;
+  drawioSession.xml = xml;
+  drawioSession.title = title;
+  drawioSession.pdfTitle = pdfTitle;
+  drawioSession.loaded = false;
+  if (drawioSession.ready) {
+    postDrawioLoad();
+  }
+}
+
+function postDrawioLoad() {
+  if (!drawioSession?.ready || !drawioSession.frame) {
+    return;
+  }
+  drawioSession.frame.postMessage(JSON.stringify({
+    action: "load",
+    autosave: 0,
+    title: drawioSession.title,
+    xml: drawioSession.xml
+  }), drawioSession.origin);
+  drawioSession.loaded = true;
+  setDrawioLoading(false);
+}
+
+function setDrawioLoading(visible, title = "", detail = "") {
+  dom.drawioLoading.hidden = !visible;
+  if (!visible) {
+    return;
+  }
+  dom.drawioLoading.innerHTML = `
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(detail)}</span>
+  `;
 }
 
 function handleDrawioMessage(event) {
-  if (!drawioSession || event.source !== drawioSession.popup || !DRAWIO_ALLOWED_ORIGINS.has(event.origin)) {
+  if (!drawioSession || event.source !== dom.drawioFrame.contentWindow || !DRAWIO_ALLOWED_ORIGINS.has(event.origin)) {
     return;
   }
   const message = parseDrawioMessage(event.data);
   if (!message) {
     return;
   }
-  if (message.event === "init" && !drawioSession.loaded) {
-    drawioSession.popup.postMessage(JSON.stringify({
-      action: "load",
-      autosave: 0,
-      title: drawioSession.title,
-      xml: drawioSession.xml
-    }), event.origin);
-    drawioSession.loaded = true;
-    setStatus("Draw.io popup loaded with the editable DIGIWIRE drawing.");
+  drawioSession.frame = event.source;
+  drawioSession.origin = event.origin;
+  if (message.event === "init") {
+    drawioSession.ready = true;
+    postDrawioLoad();
+    setStatus(appState.result
+      ? `${drawioSession.title} is loaded in Draw.io. Edit it here; Save downloads a PDF.`
+      : "Draw.io is ready. Paste an Excel table or image to build a harness.");
     return;
   }
   if (message.event === "save") {
@@ -6397,7 +6366,7 @@ function handleDrawioMessage(event) {
       return;
     }
     drawioSession.exportingPdf = true;
-    drawioSession.popup.postMessage(JSON.stringify({
+    drawioSession.frame.postMessage(JSON.stringify({
       action: "export",
       format: "svg",
       spin: "Generating PDF...",
@@ -6419,7 +6388,7 @@ function handleDrawioMessage(event) {
     void downloadSvgDataUriAsPdf(session.pdfTitle, message.data)
       .then(() => {
         session.exportingPdf = false;
-        setStatus(`Downloaded ${session.pdfTitle}. Your browser controls the download folder.`);
+        setStatus(`Downloaded ${session.pdfTitle}. Keep editing here or paste the next harness.`);
       })
       .catch((error) => {
         session.exportingPdf = false;
@@ -6429,8 +6398,11 @@ function handleDrawioMessage(event) {
     return;
   }
   if (message.event === "exit") {
-    drawioSession = null;
-    setStatus(appState.result?.status || "Draw.io editor closed.");
+    drawioSession.ready = false;
+    drawioSession.loaded = false;
+    setDrawioLoading(true, "Restarting Draw.io editor", "Your current DIGIWIRE harness will reload automatically.");
+    setStatus("Restarting Draw.io without leaving DIGIWIRE...");
+    dom.drawioFrame.src = DRAWIO_EDITOR_URL;
   }
 }
 
@@ -6443,6 +6415,20 @@ function parseDrawioMessage(data) {
     }
   }
   return data && typeof data === "object" ? data : null;
+}
+
+function buildBlankDrawioXml() {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="digiwire_blank" name="DIGIWIRE">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${SVG_WIDTH}" pageHeight="${SVG_HEIGHT}" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
 }
 
 function buildDrawioXml(result) {
@@ -8027,10 +8013,6 @@ function loadImage(dataUrl) {
     image.addEventListener("error", () => reject(new Error("Could not load image.")));
     image.src = dataUrl;
   });
-}
-
-function downloadText(fileName, text, type) {
-  downloadBlob(fileName, new Blob([text], { type }));
 }
 
 async function downloadSvgDataUriAsPdf(fileName, dataUri) {

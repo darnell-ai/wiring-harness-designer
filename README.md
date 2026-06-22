@@ -1,18 +1,18 @@
 # DIGIWIRE
 
-A standalone sketch-to-schematic wiring harness reader.
+A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v1.6.24**
+Current release: **v2.0.0**
 
 ## Use The App
 
 Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing. The row data stays copy-only so the operator can move it between Excel, Google Sheets, and build sheets without editing spreadsheet cells inside this app.
+DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor. The row data stays copy-only so the operator can move it between Excel, Google Sheets, and build sheets without editing spreadsheet cells inside this app.
 
-The daily workflow is intentionally simple: copy the harness rows, click Paste table to generate the drawing immediately, inspect it, edit it in Draw.io when needed, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading, and image files can still be dropped directly onto the drawing area.
+The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
 
 ## Features
 
@@ -58,11 +58,11 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.
 - Classifies arrows and dimension notes as schematic callouts where possible.
 - Converts sketch geometry into an internal hidden electrical model.
-- Renders a clean digital schematic with connector labels, conductor labels, dimensions, notes, and the matching cable-specific drawing style.
+- Populates a persistent embedded Draw.io workspace with connector labels, conductor labels, dimensions, notes, and the matching cable-specific drawing style.
 - Keeps reader diagnostics behind the scenes so the screen stays simple.
-- Prints the generated digital electrical drawing.
-- Opens a Draw.io popup and loads the editable diagram for follow-up editing.
-- Exports and downloads the edited drawing as a PDF when Save is clicked inside the embedded Draw.io editor. The browser's configured download location controls whether the PDF lands in Downloads or directly on the Desktop.
+- Uses Draw.io as the only visible drawing workspace; no separate DIGIWIRE preview or editor popup is required.
+- Automatically replaces the Draw.io canvas whenever a new table or image is converted.
+- Exports and downloads the edited drawing as a PDF when Save is clicked inside Draw.io. The browser's configured download location controls whether the PDF lands in Downloads or directly on the Desktop.
 - Adds at least eight evenly distributed editable Draw.io waypoints to every electrical wire, including straight runs, while preserving existing routed corners.
 - Runs as static browser files with no server-side project database.
 

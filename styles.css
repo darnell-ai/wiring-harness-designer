@@ -138,13 +138,6 @@ h1 {
   font-weight: 800;
 }
 
-.top-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  justify-content: flex-end;
-}
-
 .simple-flow {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -213,8 +206,8 @@ h1 {
 .pane-head strong,
 .panel-label,
 #engineBadge,
-.empty-state strong,
-.empty-state span,
+.drawio-loading strong,
+.drawio-loading span,
 button {
   color: #111;
 }
@@ -271,7 +264,7 @@ button.primary:hover:not(:disabled) {
   height: 23px;
 }
 
-.drawing-pane.is-dragging .schematic-stage {
+.drawing-pane.is-dragging .drawio-stage {
   box-shadow: inset 0 0 0 5px rgba(47, 143, 92, 0.24);
   background-color: #e2f0e5;
 }
@@ -321,44 +314,49 @@ button.primary:hover:not(:disabled) {
   white-space: nowrap;
 }
 
-.schematic-stage {
+.drawio-stage {
+  position: relative;
   min-height: 0;
-  padding: 14px;
-  display: grid;
-  place-items: stretch;
-  background:
-    linear-gradient(90deg, rgba(64, 83, 72, 0.07) 1px, transparent 1px) 0 0 / 30px 30px,
-    linear-gradient(rgba(64, 83, 72, 0.07) 1px, transparent 1px) 0 0 / 30px 30px,
-    #eef3ee;
+  height: calc(100vh - 182px);
+  min-height: 680px;
+  background: #ffffff;
+  overflow: hidden;
 }
 
-.schematic-stage svg {
+.drawio-stage iframe {
+  display: block;
   width: 100%;
   height: 100%;
-  min-height: 610px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--paper);
+  border: 0;
+  background: #ffffff;
 }
 
-.empty-state {
-  border: 1px dashed var(--line-strong);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.76);
+.drawio-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   display: grid;
   place-content: center;
   place-items: center;
   gap: 7px;
+  background:
+    linear-gradient(90deg, rgba(64, 83, 72, 0.07) 1px, transparent 1px) 0 0 / 30px 30px,
+    linear-gradient(rgba(64, 83, 72, 0.07) 1px, transparent 1px) 0 0 / 30px 30px,
+    rgba(248, 251, 247, 0.96);
   color: var(--muted);
-  min-height: 610px;
+  pointer-events: none;
 }
 
-.empty-state strong {
+.drawio-loading[hidden] {
+  display: none;
+}
+
+.drawio-loading strong {
   color: var(--ink);
   font-size: 24px;
 }
 
-.empty-state span {
+.drawio-loading span {
   font-weight: 800;
 }
 
@@ -411,14 +409,6 @@ button.primary:hover:not(:disabled) {
     flex-direction: column;
   }
 
-  .top-actions {
-    width: 100%;
-  }
-
-  .top-actions button {
-    flex: 1 1 160px;
-  }
-
   .simple-flow {
     padding: 12px;
   }
@@ -433,13 +423,9 @@ button.primary:hover:not(:disabled) {
 }
 
 @media (max-width: 560px) {
-  .top-actions {
-    flex-direction: column;
-  }
-
-  .schematic-stage svg,
-  .empty-state {
-    min-height: 500px;
+  .drawio-stage {
+    height: calc(100vh - 245px);
+    min-height: 560px;
   }
 
   .pane-head {
@@ -467,7 +453,8 @@ button.primary:hover:not(:disabled) {
   }
 
   .topbar,
-  .table-card {
+  .table-card,
+  .pane-head {
     display: none !important;
   }
 
@@ -482,25 +469,8 @@ button.primary:hover:not(:disabled) {
     border: 0;
   }
 
-  .pane-head {
-    padding: 0 0 8px;
-  }
-
-  .pane-tools,
-  .pane-status {
-    display: none;
-  }
-
-  .schematic-stage {
-    padding: 0;
-    background: #ffffff;
-  }
-
-  .schematic-stage svg {
-    width: 100%;
-    height: auto;
+  .drawio-stage {
+    height: 100vh;
     min-height: 0;
-    border: 0;
-    border-radius: 0;
   }
 }
