@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.3 - 2026-06-22
+
+- Replaced AWG text on mid-wire labels with each conductor's length in inches.
+- Corrected 16-position CPC faces to the 17-16 cavity arrangement: 2 / 4 / 4 / 4 / 2.
+- Removed duplicate outer `PIN n` columns while preserving terminal-adjacent pin numbers.
+- Labeled split right-side housings from `Right Leg Name` instead of conductor names.
+- Added consistent color-coded right housings, including matching colors for repeated leg names.
+
 ## v2.0.2 - 2026-06-22
 
 - Removed the unused Copy Table panel and its clipboard/export code from the bottom of the app.
