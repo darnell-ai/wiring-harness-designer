@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.2 - 2026-06-22
+
+- Removed the unused Copy Table panel and its clipboard/export code from the bottom of the app.
+- Interpreted duplicate `Wire Name` columns by position: the first is the left wire name and the second is the right wire name.
+- Added explicit support for both `Left Wire Name` and `Right Wire Name` headers.
+- Added separate left/right labels to Draw.io conductors when the endpoint names differ.
+- Added both wire names to Draw.io wiring tables while preserving one uncluttered label when the names match.
+
 ## v2.0.1 - 2026-06-22
 
 - Forced Draw.io's exported artwork to use its light palette before PDF rendering.

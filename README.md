@@ -4,13 +4,13 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.1**
+Current release: **v2.0.2**
 
 ## Use The App
 
 Open the live app in a modern desktop browser, or run `DigiWire.exe` for the offline Windows version. No account is required.
 
-DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor. The row data stays copy-only so the operator can move it between Excel, Google Sheets, and build sheets without editing spreadsheet cells inside this app.
+DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor.
 
 The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
 
@@ -20,8 +20,8 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
 - Loads tab-delimited rows copied from Excel, Google Sheets, or a text table immediately when Paste table is clicked.
-- Preserves uploaded sheet headers and rows in the copy-only table.
-- Carries a separate `Right Wire Name` field so the right-hand label can differ from the shared `Wire Name` when needed.
+- Treats the first `Wire Name` column as the left-side name and a second `Wire Name` column as the right-side name, while also accepting explicit `Left Wire Name` and `Right Wire Name` headers.
+- Shows separate left and right conductor labels in Draw.io when motherboard or connector net names differ; matching names remain a single clean label.
 - Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
@@ -54,7 +54,6 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Recognizes multi-leg board-to-Dupont sheets and draws compact board harnesses with horizontal 1-2-3 Maestro/Dupont pin rows.
 - Applies Micro Maestro servo-header roles so Maestro/Dupont drawings label pin 1 as GND, pin 2 as V+ servo power, and pin 3 as SIG.
 - Supports the original CAN bus sketch style with CAN-H, CAN-L, GND, JST drops, no-connect PWR pins, and 120 ohm termination when detected.
-- Includes a copy-only harness table using the production column order.
 - Reads handwritten labels, dimensions, connector names, and markup text with OCR when available.
 - Classifies arrows and dimension notes as schematic callouts where possible.
 - Converts sketch geometry into an internal hidden electrical model.

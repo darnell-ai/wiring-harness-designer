@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.0.2";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -126,8 +126,6 @@ const dom = {
   closePasteTableButton: document.querySelector("#closePasteTableButton"),
   pasteButton: document.querySelector("#pasteButton"),
   resetButton: document.querySelector("#resetButton"),
-  copyTableButton: document.querySelector("#copyTableButton"),
-  tablePreview: document.querySelector("#tablePreview"),
   confidenceValue: document.querySelector("#confidenceValue"),
   confidenceFill: document.querySelector("#confidenceFill"),
   statusText: document.querySelector("#statusText"),
@@ -152,9 +150,7 @@ let appState = {
   dataUrl: "",
   image: null,
   manualRotation: 0,
-  result: null,
-  tableText: "",
-  tableHeaders: []
+  result: null
 };
 
 let ocrWorkerPromise = null;
@@ -199,7 +195,6 @@ function init() {
   });
   dom.closePasteTableButton.addEventListener("click", closePasteTablePanel);
   dom.resetButton.addEventListener("click", resetApp);
-  dom.copyTableButton.addEventListener("click", () => void copyHarnessTable());
   window.addEventListener("message", handleDrawioMessage);
   document.addEventListener("paste", (event) => {
     void handlePasteEvent(event);
@@ -228,9 +223,7 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       dataUrl,
       image,
       manualRotation: 0,
-      result: null,
-      tableText: "",
-      tableHeaders: []
+      result: null
     };
     dom.pasteButton.disabled = false;
     dom.sourceTitle.textContent = appState.fileName;
@@ -327,17 +320,13 @@ function applyHarnessSheet(sheet, sourceName) {
     dataUrl: "",
     image: null,
     manualRotation: 0,
-    result,
-    tableText: buildHarnessTableText(result.tableRows || [], result.tableHeaders || sheet.headers),
-    tableHeaders: result.tableHeaders || sheet.headers
+    result
   };
   dom.sourceTitle.textContent = cleanFileName(sourceName);
   renderDrawioDiagram(result);
   renderFacts(result);
   renderFindings(result.findings);
-  renderHarnessTable(result.tableRows || [], appState.tableHeaders);
   renderSourcePreview(result);
-  setExportsEnabled(true);
   return result;
 }
 
@@ -462,7 +451,9 @@ function normalizeSheetMatrix(matrix) {
   if (!usefulRows.length) {
     return { headers: [], rows: [], objects: [] };
   }
-  const headers = usefulRows[0].map((header) => normalizeSheetHeaderLabel(header));
+  const headers = disambiguateSheetHeaders(
+    usefulRows[0].map((header) => normalizeSheetHeaderLabel(header))
+  );
   const rows = usefulRows.slice(1)
     .map((row) => padRow(row, headers.length))
     .filter((row) => row.some((cell) => cell !== ""));
@@ -472,6 +463,18 @@ function normalizeSheetMatrix(matrix) {
 
 function normalizeSheetHeaderLabel(header) {
   return String(header || "").replace(/\s+/g, " ").trim();
+}
+
+function disambiguateSheetHeaders(headers) {
+  let wireNameCount = 0;
+  return headers.map((header) => {
+    const normalized = normalizeText(header).replace(/[^A-Z0-9]+/g, "");
+    if (normalized !== "WIRENAME") {
+      return header;
+    }
+    wireNameCount += 1;
+    return wireNameCount === 1 ? "Left Wire Name" : "Right Wire Name";
+  });
 }
 
 function padRow(row, length) {
@@ -509,6 +512,7 @@ function normalizeSheetKey(header) {
     LEFTLEG: "leftLeg",
     LEFTLEGNAME: "leftLegName",
     WIRENAME: "wireName",
+    LEFTWIRENAME: "wireName",
     LEFTPINPOS: "leftPinPos",
     PINPOS: "rightPinPos",
     RIGHTPINPOS: "rightPinPos",
@@ -583,15 +587,11 @@ async function analyzeCurrentDrawing() {
     });
 
     appState.result = result;
-    appState.tableHeaders = result.tableHeaders || getHarnessTableHeaders();
-    appState.tableText = buildHarnessTableText(result.tableRows || [], appState.tableHeaders);
     renderDrawioDiagram(result);
     renderFacts(result);
     renderFindings(result.findings);
-    renderHarnessTable(result.tableRows || [], appState.tableHeaders);
     renderSourcePreview(result);
     setStatus(result.status);
-    setExportsEnabled(true);
   } catch (error) {
     console.error(error);
     setStatus("The drawing could not be analyzed. Try a brighter, flatter photo.");
@@ -1621,7 +1621,7 @@ function compileSheetHarnessResult(sheet, fileName) {
     tableRows: sheet.rows,
     sheetHarness,
     confidence: 1,
-    status: "Prefilled harness sheet loaded. Use Print, Draw.io, or Copy table."
+    status: "Prefilled harness sheet loaded in Draw.io."
   };
 }
 
@@ -1653,6 +1653,22 @@ function firstFilled(rows, key) {
 
 function sheetRowWireName(row) {
   return String(row?.wireName || row?.rightWireName || "").trim();
+}
+
+function sheetRowLeftWireName(row, fallback = "") {
+  return String(row?.wireName || row?.rightWireName || fallback).trim();
+}
+
+function sheetRowRightWireName(row, fallback = "") {
+  return String(row?.rightWireName || row?.wireName || fallback).trim();
+}
+
+function wireNamesDiffer(leftName, rightName) {
+  return Boolean(
+    normalizeText(leftName) &&
+    normalizeText(rightName) &&
+    normalizeText(leftName) !== normalizeText(rightName)
+  );
 }
 
 function sheetEndpointKey(row, side) {
@@ -3017,7 +3033,9 @@ function buildDatasheetConnectorHarnessModel(sheet) {
   const laneGap = rows.length > 1 ? (laneBottom - laneTop) / (rows.length - 1) : 0;
   const wires = rows.map((row, index) => ({
     row,
-    name: row.wireName || `WIRE ${index + 1}`,
+    name: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
+    leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
+    rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
     colorName: normalizeColorName(row.color),
     stroke: sheetColorToStroke(row.color),
     awg: row.awg || gauge,
@@ -3921,7 +3939,9 @@ function buildKiCadHarnessModel(sheet) {
   const wireGap = rows.length <= 4 ? 66 : 52;
   const wires = rows.map((row, index) => ({
     row,
-    name: row.wireName || `WIRE ${index + 1}`,
+    name: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
+    leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
+    rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
     colorName: normalizeColorName(row.color),
     stroke: sheetColorToStroke(row.color),
     awg: row.awg || awg,
@@ -6139,69 +6159,6 @@ function renderFindings(findings) {
   }).join("");
 }
 
-function renderHarnessTable(rows, headers = getHarnessTableHeaders()) {
-  if (!rows.length) {
-    dom.tablePreview.innerHTML = `<span class="quiet">Paste table rows or an image to generate the copy-only table.</span>`;
-    dom.copyTableButton.disabled = true;
-    return;
-  }
-  const headerHtml = headers
-    .map((header) => `<th>${escapeHtml(header)}</th>`)
-    .join("");
-  const bodyHtml = rows.map((row) => `
-    <tr>
-      ${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}
-    </tr>
-  `).join("");
-  dom.tablePreview.innerHTML = `
-    <table class="copy-table" aria-label="Generated harness table">
-      <thead><tr>${headerHtml}</tr></thead>
-      <tbody>${bodyHtml}</tbody>
-    </table>
-  `;
-  dom.copyTableButton.disabled = false;
-}
-
-function buildHarnessTableText(rows, headers = getHarnessTableHeaders()) {
-  return [headers, ...rows]
-    .map((row) => row.map(cleanTableCell).join("\t"))
-    .join("\n");
-}
-
-function cleanTableCell(input) {
-  return String(input ?? "").replace(/[\t\r\n]+/g, " ").trim();
-}
-
-async function copyHarnessTable() {
-  if (!appState.tableText) {
-    return;
-  }
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(appState.tableText);
-    } else {
-      fallbackCopyText(appState.tableText);
-    }
-    setStatus("Harness table copied. Paste it into Excel, Google Sheets, or your build sheet.");
-  } catch (error) {
-    console.error(error);
-    fallbackCopyText(appState.tableText);
-    setStatus("Harness table copied with the fallback copier.");
-  }
-}
-
-function fallbackCopyText(text) {
-  const textArea = document.createElement("textarea");
-  textArea.value = text;
-  textArea.setAttribute("readonly", "");
-  textArea.style.position = "fixed";
-  textArea.style.left = "-9999px";
-  document.body.appendChild(textArea);
-  textArea.select();
-  document.execCommand("copy");
-  textArea.remove();
-}
-
 function renderSourcePreview(result = null) {
   const canvas = dom.sourceCanvas;
   const ctx = canvas.getContext("2d");
@@ -6239,7 +6196,6 @@ function renderSourcePreview(result = null) {
 }
 
 function renderEmpty() {
-  setExportsEnabled(false);
   queueDrawioDiagram(buildBlankDrawioXml(), "digiwire.drawio", "digiwire.pdf");
   dom.confidenceValue.textContent = "--";
   dom.confidenceFill.style.width = "0";
@@ -6251,9 +6207,6 @@ function renderEmpty() {
   dom.sourceTitle.textContent = "None";
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
-  appState.tableText = "";
-  appState.tableHeaders = [];
-  renderHarnessTable([]);
   renderSourcePreview();
 }
 
@@ -6261,10 +6214,6 @@ function setBusy(isBusy) {
   dom.pasteButton.disabled = isBusy;
   dom.tablePasteButton.disabled = isBusy;
   dom.resetButton.disabled = isBusy;
-}
-
-function setExportsEnabled(enabled) {
-  dom.copyTableButton.disabled = !enabled || !appState.tableText;
 }
 
 function setStatus(text) {
@@ -6277,9 +6226,7 @@ function resetApp() {
     dataUrl: "",
     image: null,
     manualRotation: 0,
-    result: null,
-    tableText: "",
-    tableHeaders: []
+    result: null
   };
   dom.pasteButton.disabled = false;
   dom.tablePasteButton.disabled = false;
@@ -6826,6 +6773,9 @@ function buildSheetDrawioXml(result) {
     const { row, index, y } = route;
     const stroke = sheetColorToStroke(row.color);
     const dashed = isNoWireRow(row) ? "dashed=1;dashPattern=12 9;" : "";
+    const leftWireName = sheetRowLeftWireName(row, route.label);
+    const rightWireName = sheetRowRightWireName(row, route.label);
+    const hasDistinctNames = wireNamesDiffer(leftWireName, rightWireName);
     const details = [
       row.color ? normalizeColorName(row.color) : "",
       row.awg ? `${row.awg} AWG` : "",
@@ -6836,13 +6786,33 @@ function buildSheetDrawioXml(result) {
     addVertex(`right_pin_${index + 1}`, route.rightPin, rightX + 8, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
     addEdge(
       `sheet_wire_${index + 1}`,
-      `${escapeHtml(route.label)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`,
+      `${hasDistinctNames ? "" : escapeHtml(leftWireName)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`,
       leftX,
       y,
       rightX,
       y,
       `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
     );
+    if (hasDistinctNames) {
+      addVertex(
+        `sheet_left_wire_name_${index + 1}`,
+        `LEFT: ${escapeHtml(leftWireName)}`,
+        leftX + 34,
+        y - 24,
+        300,
+        20,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=left;"
+      );
+      addVertex(
+        `sheet_right_wire_name_${index + 1}`,
+        `RIGHT: ${escapeHtml(rightWireName)}`,
+        rightX - 334,
+        y - 24,
+        300,
+        20,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=right;"
+      );
+    }
   });
   const notes = uniqueValues(rows.map((row) => row.comments)).slice(0, 4);
   addVertex(
@@ -7119,16 +7089,40 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
   addDatasheetConnectorDrawioFace(addVertex, model.left, "left");
   addDatasheetConnectorDrawioFace(addVertex, model.right, "right");
   routes.forEach(({ wire, points }, index) => {
+    const hasDistinctNames = wireNamesDiffer(wire.leftName, wire.rightName);
+    const wireDetails = `${escapeHtml(wire.colorName)} | ${escapeHtml(wire.awg || "?")} AWG`;
     addEdge(
       `datasheet_wire_${index + 1}`,
-      `${escapeHtml(wire.name)} | ${escapeHtml(wire.colorName)} | ${escapeHtml(wire.awg || "?")} AWG`,
+      hasDistinctNames ? wireDetails : `${escapeHtml(wire.leftName)} | ${wireDetails}`,
       points,
       `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=8;fontStyle=1;fontSize=10;`
     );
+    if (hasDistinctNames) {
+      const y = wire.laneY - 24;
+      addVertex(
+        `datasheet_left_wire_name_${index + 1}`,
+        `LEFT: ${escapeHtml(wire.leftName)}`,
+        468,
+        y,
+        260,
+        20,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=left;"
+      );
+      addVertex(
+        `datasheet_right_wire_name_${index + 1}`,
+        `RIGHT: ${escapeHtml(wire.rightName)}`,
+        872,
+        y,
+        260,
+        20,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=right;"
+      );
+    }
   });
   const wiringRows = model.wires.map((wire) => [
     wire.fromPin,
-    wire.name,
+    wire.leftName,
+    wire.rightName,
     wire.colorName,
     wire.awg || model.gauge || "",
     formatLengthInches(wire.length || model.length),
@@ -7136,7 +7130,7 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
   ]);
   addVertex(
     "datasheet_wiring_table",
-    buildKiCadDrawioTableText("WIRING TABLE", ["LEFT", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT"], wiringRows),
+    buildKiCadDrawioTableText("WIRING TABLE", ["LEFT", "LEFT NAME", "RIGHT NAME", "COLOR", "AWG", "LENGTH", "RIGHT"], wiringRows),
     30,
     510,
     1165,
@@ -7359,6 +7353,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addKiCadDrawioLeftConnectorFace(addVertex, model);
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
+    const hasDistinctNames = wireNamesDiffer(wire.leftName, wire.rightName);
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     addVertex(`left_pin_${index}`, `PIN ${wire.fromPin}`, 45, wire.y - 14, 100, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
@@ -7380,15 +7375,37 @@ function buildKiCadHarnessDrawioXml(result, model) {
     }
     addEdge(
       `wire_${index}`,
-      `${wire.name} (${wire.colorName}) ${wire.awg || ""} AWG`,
+      hasDistinctNames
+        ? `${wire.colorName} | ${wire.awg || ""} AWG`
+        : `${wire.leftName} (${wire.colorName}) ${wire.awg || ""} AWG`,
       leftIsPcb ? 300 : 426,
       wire.y,
       rightIsPcb ? 1316 : 1164,
       wire.y,
       `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;fontStyle=1;fontSize=15;`
     );
+    if (hasDistinctNames) {
+      addVertex(
+        `left_wire_name_${index}`,
+        `LEFT: ${escapeHtml(wire.leftName)}`,
+        442,
+        wire.y - 27,
+        300,
+        22,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=12;fontStyle=1;fontColor=#000000;align=left;"
+      );
+      addVertex(
+        `right_wire_name_${index}`,
+        `RIGHT: ${escapeHtml(wire.rightName)}`,
+        858,
+        wire.y - 27,
+        290,
+        22,
+        "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=12;fontStyle=1;fontColor=#000000;align=right;"
+      );
+    }
   });
-  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEFT PIN", "SIGNAL", "COLOR", "AWG", "LENGTH", "RIGHT PIN"], model.wires.map((wire) => [wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, wire.toPin])), 30, 498, 560, 160, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEFT PIN", "LEFT NAME", "RIGHT NAME", "COLOR", "AWG", "LENGTH", "RIGHT PIN"], model.wires.map((wire) => [wire.fromPin, wire.leftName, wire.rightName, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, wire.toPin])), 30, 498, 560, 160, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=10;align=center;");
   addVertex("specs", buildKiCadDrawioTableText("SPECIFICATIONS", ["FIELD", "VALUE"], [
     ["WIRE GAUGE", `${model.awg || "TBD"} AWG`],
     ["LENGTH TOLERANCE", "+/-0.25 in"],
@@ -7597,16 +7614,21 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
     });
   });
   model.wires.forEach((wire, index) => {
+    const hasDistinctNames = wireNamesDiffer(wire.leftName, wire.rightName);
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     addVertex(`left_pin_${index}`, `PIN ${wire.fromPin}`, 45, wire.y - 12, 92, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=right;");
     addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 12, 45, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`right_pin_num_${index}`, formatBoardPin(wire), 1190, wire.y - 12, 90, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 350, wire.y - 11, 42, 22, terminalStyle);
     addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1136, wire.y - 11, 42, 22, terminalStyle);
-    const wireRole = wire.maestroRole?.code ? `${wire.name} ${wire.maestroRole.code}` : wire.name;
-    addEdge(`wire_${index}`, `${wireRole} (${wire.colorName}) ${wire.awg || ""} AWG`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+    const wireRole = wire.maestroRole?.code ? `${wire.leftName} ${wire.maestroRole.code}` : wire.leftName;
+    addEdge(`wire_${index}`, hasDistinctNames ? `${wire.colorName} | ${wire.awg || ""} AWG` : `${wireRole} (${wire.colorName}) ${wire.awg || ""} AWG`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+    if (hasDistinctNames) {
+      addVertex(`left_wire_name_${index}`, `LEFT: ${escapeHtml(wire.leftName)}`, 410, wire.y - 23, 280, 20, "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=left;");
+      addVertex(`right_wire_name_${index}`, `RIGHT: ${escapeHtml(wire.rightName)}`, 838, wire.y - 23, 280, 20, "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=90;fontSize=10;fontStyle=1;fontColor=#000000;align=right;");
+    }
   });
-  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT NAME", "LEFT PIN", "WIRE", "COLOR", "AWG", "LEN", "MAESTRO ROLE"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.name, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=10;align=center;");
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT END", "LEFT PIN", "LEFT WIRE", "RIGHT WIRE", "COLOR", "AWG", "LEN", "RIGHT PIN"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.leftName, wire.rightName, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;");
   addVertex("bom", buildKiCadDrawioTableText("BILL OF MATERIALS", ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"], buildKiCadBomRows(model)), 830, 538, 730, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;");
   addVertex("notes", `<b>NOTES:</b><br>Micro Maestro servo header: 1=GND edge, 2=V+ servo power, 3=SIG inside board.<br>${uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 1).join("<br>") || "Verify pin orientation before final assembly."}`, 830, 672, 730, 48, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=left;");
   addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 830, 724, 730, 54, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
