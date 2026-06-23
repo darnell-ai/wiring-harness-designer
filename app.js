@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.3";
+const APP_VERSION = "2.0.4";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -3056,8 +3056,16 @@ function buildDatasheetConnectorHarnessModel(sheet) {
   const gauge = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
   const left = leftResolved || buildGenericDatasheetConnector(rows, "left");
   const right = rightResolved || buildGenericDatasheetConnector(rows, "right");
-  const laneTop = 166;
-  const laneBottom = 466;
+  const usesPowerpole = left.key === "powerpole1545" || right.key === "powerpole1545";
+  const laneTop = usesPowerpole && rows.length <= 6 ? 340 : 166;
+  const laneBottom = usesPowerpole && rows.length <= 6 ? 430 : 466;
+  const laneOrder = usesPowerpole
+    ? [...rows.keys()].sort((leftIndex, rightIndex) => {
+        const sortSide = left.key === "powerpole1545" ? "rightPinPos" : "leftPinPos";
+        return numericPin(rows[leftIndex][sortSide]) - numericPin(rows[rightIndex][sortSide]);
+      })
+    : [...rows.keys()];
+  const laneRank = new Map(laneOrder.map((rowIndex, rank) => [rowIndex, rank]));
   const laneGap = rows.length > 1 ? (laneBottom - laneTop) / (rows.length - 1) : 0;
   const wires = rows.map((row, index) => ({
     row,
@@ -3070,7 +3078,7 @@ function buildDatasheetConnectorHarnessModel(sheet) {
     length: row.length || dominantSheetValue(rows, "length") || "",
     fromPin: String(row.leftPinPos || index + 1),
     toPin: String(row.rightPinPos || index + 1),
-    laneY: laneTop + index * laneGap
+    laneY: laneTop + (laneRank.get(index) || 0) * laneGap
   }));
   left.activePins = buildDatasheetActivePinMap(wires, "left");
   right.activePins = buildDatasheetActivePinMap(wires, "right");
@@ -3126,6 +3134,11 @@ function resolveDatasheetConnector(rows, side) {
   const powerpoleParts = key === "powerpole1545"
     ? powerpoleHousingPartsForRows(rows, side)
     : [];
+  const pinOrder = key === "powerpole1545"
+    ? rows
+        .map((row) => String(row[`${prefix}PinPos`] || "").trim())
+        .filter(Boolean)
+    : [];
   return {
     key,
     definition,
@@ -3145,6 +3158,7 @@ function resolveDatasheetConnector(rows, side) {
     insulationRange: termination.insulationRange || "",
     gauge,
     powerpoleParts,
+    pinOrder,
     contactType: cpcVariant?.contactType || "",
     faceStyle: cpcVariant?.faceStyle || "",
     matingPart: cpcVariant?.matingPart || "",
@@ -3207,11 +3221,16 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
   } else if (definition.key === "teCpc1714") {
     requestedPositions = 14;
   }
-  if (!requestedPositions) {
+  if (definition.key === "powerpole1545") {
+    // Powerpole pin numbers identify circuits, not positions in a multi-circuit housing.
+    requestedPositions = rows.filter((row) => row[`${prefix}PinPos`]).length || rows.length || 1;
+  } else if (!requestedPositions) {
     const positionMatch = text.match(/\b(\d{1,2})\s*(?:POS|POSITION|PIN|CIRCUIT)\b/);
     requestedPositions = Number(positionMatch?.[1] || highestPin || definition.minPositions);
   }
-  requestedPositions = Math.max(requestedPositions, highestPin, definition.minPositions);
+  requestedPositions = definition.key === "powerpole1545"
+    ? Math.max(requestedPositions, definition.minPositions)
+    : Math.max(requestedPositions, highestPin, definition.minPositions);
   let positions = requestedPositions;
   const warnings = [];
   if (definition.positionStep === 2 && positions % 2) {
@@ -3487,7 +3506,12 @@ function datasheetConnectorGeometry(connector, side) {
 
 function datasheetConnectorPinPoint(connector, pin, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
-  const numeric = clamp(numericPin(pin), 1, connector.positions);
+  const powerpoleIndex = connector.key === "powerpole1545"
+    ? connector.pinOrder?.indexOf(String(pin))
+    : -1;
+  const numeric = connector.key === "powerpole1545" && powerpoleIndex >= 0
+    ? powerpoleIndex + 1
+    : clamp(numericPin(pin), 1, connector.positions);
   if (connector.key === "teCpc1714") {
     const layout = CPC_17_14_PIN_LAYOUT.find((item) => item.pin === numeric) || CPC_17_14_PIN_LAYOUT[0];
     const mirror = connector.contactType === "socket" ? -1 : 1;
@@ -3540,7 +3564,13 @@ function datasheetConnectorWireAnchorPoint(connector, pin, side) {
       y: point.y + (dy / distance) * offset
     };
   }
-  const offset = connector.key === "powerpole1545" ? 18 : geometry.sideLock ? 16 : geometry.dual ? 16 : 18;
+  if (connector.key === "powerpole1545") {
+    return {
+      x: point.x,
+      y: geometry.y + geometry.moduleHeight
+    };
+  }
+  const offset = geometry.sideLock ? 16 : geometry.dual ? 16 : 18;
   return {
     x: point.x + (side === "left" ? offset : -offset),
     y: point.y
@@ -3569,14 +3599,36 @@ function buildDatasheetWireRoutes(model) {
   return routes.map((route) => {
     const rank = rankByIndex.get(route.index) || 0;
     const crossoverX = crossoverCenterX + (middleRank - rank) * crossoverStep;
-    const points = Math.abs(route.leftPoint.y - route.rightPoint.y) < 0.5
-      ? [route.leftPoint, route.rightPoint]
-      : [
-          route.leftPoint,
-          { x: crossoverX, y: route.leftPoint.y },
-          { x: crossoverX, y: route.rightPoint.y },
-          route.rightPoint
-        ];
+    const leftPowerpole = model.left.key === "powerpole1545";
+    const rightPowerpole = model.right.key === "powerpole1545";
+    let points;
+    if (leftPowerpole || rightPowerpole) {
+      points = [route.leftPoint];
+      if (leftPowerpole) {
+        points.push({ x: route.leftPoint.x, y: route.wire.laneY });
+      }
+      points.push({
+        x: crossoverX,
+        y: leftPowerpole ? route.wire.laneY : route.leftPoint.y
+      });
+      points.push({
+        x: crossoverX,
+        y: rightPowerpole ? route.wire.laneY : route.rightPoint.y
+      });
+      if (rightPowerpole) {
+        points.push({ x: route.rightPoint.x, y: route.wire.laneY });
+      }
+      points.push(route.rightPoint);
+    } else {
+      points = Math.abs(route.leftPoint.y - route.rightPoint.y) < 0.5
+        ? [route.leftPoint, route.rightPoint]
+        : [
+            route.leftPoint,
+            { x: crossoverX, y: route.leftPoint.y },
+            { x: crossoverX, y: route.rightPoint.y },
+            route.rightPoint
+          ];
+    }
     return {
       ...route,
       crossoverX,
@@ -3687,14 +3739,15 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
       const row = Math.floor(index / geometry.columns);
       const x = geometry.x + column * (geometry.moduleWidth + geometry.gap);
       const y = geometry.y + row * (geometry.moduleHeight + geometry.gap);
-      const active = connector.activePins.get(String(pin));
+      const circuitPin = connector.pinOrder?.[pin - 1] || String(pin);
+      const active = connector.activePins.get(circuitPin);
       const fill = active ? datasheetHousingFill(active.colorName) : "#6d7578";
       const textFill = isDarkDatasheetColor(active?.colorName) ? "#ffffff" : "#000000";
       output.push(`
         <path class="powerpole-module" d="M ${x + 5} ${y} H ${x + geometry.moduleWidth - 5} L ${x + geometry.moduleWidth} ${y + 6} V ${y + geometry.moduleHeight - 6} L ${x + geometry.moduleWidth - 5} ${y + geometry.moduleHeight} H ${x + 5} L ${x} ${y + geometry.moduleHeight - 6} V ${y + 6} Z" fill="${fill}" />
         <rect class="powerpole-opening" x="${x + 6}" y="${y + 8}" width="${geometry.moduleWidth - 12}" height="18" rx="3" />
         <path class="powerpole-contact" d="M ${x + 9} ${y + 22} H ${x + geometry.moduleWidth - 9} L ${x + geometry.moduleWidth - 12} ${y + 16} H ${x + 12} Z" />
-        <text class="ds-cavity-number" x="${x + geometry.moduleWidth / 2}" y="${y + geometry.moduleHeight - 8}" fill="${textFill}">${pin}</text>`);
+        <text class="ds-cavity-number" x="${x + geometry.moduleWidth / 2}" y="${y + geometry.moduleHeight - 8}" fill="${textFill}"></text>`);
     }
   } else {
     const bodyClass = connector.key === "miniFitJr" ? "minifit-body" : "microfit-body";
@@ -3755,7 +3808,7 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       <circle class="ds-terminal" cx="${rightPoint.x}" cy="${rightPoint.y}" r="4.5" />
       <text class="ds-wire-label" x="640" y="${leftPoint.y - 5}">${escapeXml(`${wire.name} | ${wire.colorName} | ${formatWireLengthLabel(wire.length)}`)}</text>`;
   }).join("");
-  const routeYs = routes.flatMap((route) => [route.leftPoint.y, route.rightPoint.y]);
+  const routeYs = routes.flatMap((route) => route.points.map((point) => point.y));
   const protectionPadding = clamp(58 - model.wires.length * 2, 24, 48);
   const protectionTop = Math.min(...routeYs) - protectionPadding;
   const protectionBottom = Math.max(...routeYs) + protectionPadding;
@@ -7106,7 +7159,7 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
     ));
   };
   const routes = buildDatasheetWireRoutes(model);
-  const routeYs = routes.flatMap((route) => [route.leftPoint.y, route.rightPoint.y]);
+  const routeYs = routes.flatMap((route) => route.points.map((point) => point.y));
   const protectionPadding = clamp(58 - model.wires.length * 2, 24, 48);
   const protectionTop = Math.min(...routeYs) - protectionPadding;
   const protectionBottom = Math.max(...routeYs) + protectionPadding;
@@ -7297,12 +7350,13 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
       const row = Math.floor(index / geometry.columns);
       const x = geometry.x + column * (geometry.moduleWidth + geometry.gap);
       const y = geometry.y + row * (geometry.moduleHeight + geometry.gap);
-      const active = connector.activePins.get(String(pin));
+      const circuitPin = connector.pinOrder?.[pin - 1] || String(pin);
+      const active = connector.activePins.get(circuitPin);
       const fill = active ? datasheetHousingFill(active.colorName) : "#858b8f";
       const fontColor = isDarkDatasheetColor(active?.colorName) ? "#ffffff" : "#000000";
       addVertex(
         `${side}_powerpole_${pin}`,
-        String(pin),
+        "",
         x,
         y,
         geometry.moduleWidth,
@@ -7525,7 +7579,7 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
       const point = kiCadCircularCpcPinPoint(pin, model.wires.length, centerX, centerY);
       addVertex(
         `right_cpc_pin_${pin}`,
-        String(pin),
+        "",
         point.x - 10,
         point.y - 10,
         20,

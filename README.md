@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.3**
+Current release: **v2.0.4**
 
 ## Use The App
 
