@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.7 - 2026-06-23
+
+- Moved terminal pin-number labels to the front Draw.io layer so wire stubs cannot hide them.
+- Used white pin-number and endpoint-label text on black conductors.
+- Reduced the automatic electrical-wire waypoint minimum from eight to six.
+- Reworked multi-connector routes to move only rightward or vertically, eliminating backward lower-wire jogs.
+
 ## v2.0.6 - 2026-06-23
 
 - Made left, center, and right wire-label backgrounds fully transparent.

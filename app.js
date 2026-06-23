@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.6";
+const APP_VERSION = "2.0.7";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -7512,12 +7512,8 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
-    const crossoverX = 990 + index * 8;
+    const crossoverX = 880 + index * 10;
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
-    addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-    if (!rightIsPcb) {
-      addVertex(`right_pin_num_${index}`, wire.toPin, 1218, targetY - 14, 55, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-    }
     if (!leftIsCpc && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
@@ -7532,13 +7528,10 @@ function buildKiCadHarnessDrawioXml(result, model) {
       "",
       [
         [leftIsPcb ? 300 : 426, wire.y],
-        [520, wire.y],
-        [680, wire.y],
-        [840, wire.y],
+        [700, wire.y],
         [crossoverX, wire.y],
         [crossoverX, targetY],
-        [1080, targetY],
-        [1138, targetY],
+        [1100, targetY],
         [rightIsPcb ? 1316 : 1164, targetY]
       ],
       `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
@@ -7553,6 +7546,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
     const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
     const rightLabelWidth = drawioLabelWidth(rightLabel, 11, 72, 220);
     const detailFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
+    const endpointFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
     addVertex(
       `left_wire_name_${index}`,
       escapeHtml(leftLabel),
@@ -7560,7 +7554,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
       wire.y - 26,
       leftLabelWidth,
       22,
-      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=left;spacing=0;"
+      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=left;spacing=0;`
     );
     addVertex(
       `wire_details_${index}`,
@@ -7578,8 +7572,33 @@ function buildKiCadHarnessDrawioXml(result, model) {
       targetY - 26,
       rightLabelWidth,
       22,
-      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=right;spacing=0;"
+      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=right;spacing=0;`
     );
+  });
+  // Add pin numbers last so they remain above wires, terminals, and connector faces.
+  model.wires.forEach((wire, index) => {
+    const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
+    const pinFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
+    addVertex(
+      `left_pin_num_${index}`,
+      wire.fromPin,
+      320,
+      wire.y - 14,
+      55,
+      28,
+      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=${pinFontColor};align=center;`
+    );
+    if (!rightIsPcb) {
+      addVertex(
+        `right_pin_num_${index}`,
+        wire.toPin,
+        1218,
+        targetY - 14,
+        55,
+        28,
+        `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=${pinFontColor};align=center;`
+      );
+    }
   });
   const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -8105,7 +8124,7 @@ function xmlAttrs(attrs) {
 function mxCell(attrs, inner = "") {
   const attrText = xmlAttrs(attrs);
   const outputInner = attrs.edge === 1 && isElectricalDrawioEdgeStyle(attrs.style)
-    ? addDrawioWireWaypoints(inner, 8)
+    ? addDrawioWireWaypoints(inner, 6)
     : inner;
   return outputInner ? `<mxCell ${attrText}>${outputInner}</mxCell>` : `<mxCell ${attrText} />`;
 }
