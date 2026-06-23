@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.8 - 2026-06-23
+
+- Removed the redundant `LEFT:` and `RIGHT:` prefixes from endpoint wire-name labels.
+- Centered endpoint wire names vertically on their conductors instead of placing them above the wire.
+- Applied the same uncluttered endpoint-label behavior across standard, datasheet, template, and multi-group drawings.
+- Preserved transparent compact labels and white endpoint text on black conductors.
+
 ## v2.0.7 - 2026-06-23
 
 - Moved terminal pin-number labels to the front Draw.io layer so wire stubs cannot hide them.
