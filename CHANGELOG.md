@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.0.5 - 2026-06-23
+
+- Removed the wiring table, specifications, bill of materials, notes, legend, and title-block boxes from the editable harness canvas.
+- Added left and right wire-name labels to every conductor, even when both endpoint names match.
+- Kept the center wire label limited to color and length for a cleaner drawing.
+- Grouped right-side connector housings strictly by `Right Leg`, including non-adjacent rows with the same leg number.
+- Gave each right-side connector a distinct housing color.
+- Ordered housing cavities top-to-bottom by right pin number and routed conductors into those sorted targets with editable waypoints.
+- Changed multi-connector headings to describe the full set of right connector legs instead of only the first destination.
+
 ## v2.0.4 - 2026-06-23
 
 - Fixed sparse circuit numbers such as `13-16` from creating sixteen physical Powerpole housings.
