@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.5";
+const APP_VERSION = "2.0.6";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -5265,6 +5265,11 @@ function formatWireLengthLabel(length, fallback = "") {
   return isMeaningfulSheetValue(value) ? `${formatLengthInches(value)} in` : "LENGTH TBD";
 }
 
+function drawioLabelWidth(text, fontSize = 11, minWidth = 64, maxWidth = 230) {
+  const estimatedWidth = String(text || "").length * fontSize * 0.62 + 12;
+  return Math.round(clamp(estimatedWidth, minWidth, maxWidth));
+}
+
 function isBarrelPowerCableSheet(rows) {
   const haystack = rows
     .map((row) => [
@@ -7541,32 +7546,39 @@ function buildKiCadHarnessDrawioXml(result, model) {
     if (!rightIsPcb) {
       addEdge(`right_stub_${index}`, "", 1220, targetY, 1300, targetY, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;`);
     }
+    const leftLabel = `LEFT: ${wire.leftName}`;
+    const detailLabel = `${wire.colorName} | ${formatWireLengthLabel(wire.length, model.length)}`;
+    const rightLabel = `RIGHT: ${wire.rightName}`;
+    const leftLabelWidth = drawioLabelWidth(leftLabel, 11, 72, 220);
+    const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
+    const rightLabelWidth = drawioLabelWidth(rightLabel, 11, 72, 220);
+    const detailFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
     addVertex(
       `left_wire_name_${index}`,
-      `LEFT: ${escapeHtml(wire.leftName)}`,
+      escapeHtml(leftLabel),
       438,
       wire.y - 26,
-      260,
+      leftLabelWidth,
       22,
-      "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=92;fontSize=11;fontStyle=1;fontColor=#000000;align=left;"
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=left;spacing=0;"
     );
     addVertex(
       `wire_details_${index}`,
-      `${escapeHtml(wire.colorName)} | ${escapeHtml(formatWireLengthLabel(wire.length, model.length))}`,
-      690,
+      escapeHtml(detailLabel),
+      800 - detailLabelWidth / 2,
       wire.y - 12,
-      220,
+      detailLabelWidth,
       24,
-      "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=94;fontSize=12;fontStyle=1;fontColor=#000000;align=center;"
+      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=12;fontStyle=1;fontColor=${detailFontColor};align=center;spacing=0;`
     );
     addVertex(
       `right_wire_name_${index}`,
-      `RIGHT: ${escapeHtml(wire.rightName)}`,
-      888,
+      escapeHtml(rightLabel),
+      1148 - rightLabelWidth,
       targetY - 26,
-      260,
+      rightLabelWidth,
       22,
-      "text;html=1;strokeColor=none;fillColor=#ffffff;opacity=92;fontSize=11;fontStyle=1;fontColor=#000000;align=right;"
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=right;spacing=0;"
     );
   });
   const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");

@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.6 - 2026-06-23
+
+- Made left, center, and right wire-label backgrounds fully transparent.
+- Sized each Draw.io label box from its actual text instead of using fixed 220-260 pixel widths.
+- Preserved left, center, and right anchoring while reducing overlap with the wire drawing.
+- Switched center text to white on black conductors so transparent labels remain readable.
+
 ## v2.0.5 - 2026-06-23
 
 - Removed the wiring table, specifications, bill of materials, notes, legend, and title-block boxes from the editable harness canvas.
