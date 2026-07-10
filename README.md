@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.8**
+Current release: **v2.0.9**
 
 ## Use The App
 
@@ -25,6 +25,8 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
+- Keeps generic template drawings readable with larger single-row endpoint boxes, separated expando labels, template notes, and a title block.
+- Draws actual-build shared sleeves when multiple left connectors feed one right connector, including sleeve ID labels, heat-shrink exits, exposed lead callouts, and pin-to-pin length callouts.
 - Generates a general cable drawing from uploaded sketches instead of assuming every image is a CAN harness.
 - Preserves branched hand-drawn electrical topology instead of flattening every sketch into a left-to-right cable.
 - Distinguishes orthogonal turns and T-junctions from unconnected wire crossings, and keeps segment dimensions with the applicable source pair.

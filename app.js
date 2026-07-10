@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.8";
+const APP_VERSION = "2.0.9";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1761,6 +1761,68 @@ function groupSheetEndpoints(rows, side) {
   return groups;
 }
 
+function sheetEndpointBoxLayout(group, routes, side) {
+  const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const minHeight = group.details.length ? 52 : 42;
+  const height = Math.max(minHeight, maxY - minY + 26);
+  const top = clamp(average(ys) - height / 2, 145, 630 - height);
+  const x = side === "left" ? 28 : 1366;
+  const width = 206;
+  return {
+    x,
+    width,
+    top,
+    bottom: top + height,
+    height,
+    textX: x + width / 2
+  };
+}
+
+function sheetProtectionBounds(group, routes) {
+  const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+  return {
+    top: Math.min(...ys) - 13,
+    bottom: Math.max(...ys) + 13
+  };
+}
+
+function shouldUseSharedSheetBundle(rows, leftGroups, rightGroups) {
+  return rows.length > 1 && leftGroups.length > 1 && rightGroups.length === 1;
+}
+
+function sheetSharedBundleGeometry(routes, leftX, rightX) {
+  const ys = routes.map((route) => route.y);
+  const x1 = leftX + 118;
+  const x2 = rightX - 118;
+  const top = Math.min(...ys) - 20;
+  const bottom = Math.max(...ys) + 20;
+  return {
+    x1,
+    x2,
+    top,
+    bottom,
+    midX: (x1 + x2) / 2,
+    midY: (top + bottom) / 2,
+    leftLeadX: (leftX + x1) / 2,
+    rightLeadX: (x2 + rightX) / 2
+  };
+}
+
+function sheetLengthSummary(rows) {
+  const values = uniqueValues(rows
+    .map((row) => row.length)
+    .filter(isMeaningfulSheetValue)
+    .map((length) => `${formatLengthInches(length)} in`));
+  if (!values.length) {
+    return "";
+  }
+  return values.length === 1
+    ? `PIN-TO-PIN LENGTH: ${values[0]}`
+    : `PIN-TO-PIN LENGTHS: ${shortListLabel(values, 3)}`;
+}
+
 function sheetRouteLayout(rows, {
   top = 174,
   bottom = 610
@@ -1771,7 +1833,7 @@ function sheetRouteLayout(rows, {
     row,
     index,
     y: top + index * gap,
-    label: row.wireName || `WIRE ${index + 1}`,
+    label: sheetRowWireName(row) || `WIRE ${index + 1}`,
     leftPin: row.leftPinPos || String(index + 1),
     rightPin: row.rightPinPos || String(index + 1)
   }));
@@ -2543,17 +2605,20 @@ function buildSheetHarnessSvg(result) {
     rightLegName: "RIGHT",
     comments: "The uploaded sheet table is still available below."
   }];
-  const routes = sheetRouteLayout(rows);
   const leftGroups = groupSheetEndpoints(rows, "left");
   const rightGroups = groupSheetEndpoints(rows, "right");
   const leftX = 260;
   const rightX = 1340;
+  const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
+  const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
+  const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
+  const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   const rowLines = routes.map((route) => {
     const { row, index, y } = route;
     const color = sheetColorToStroke(row.color);
     const dashed = isNoWireRow(row) ? ` stroke-dasharray="12 9"` : "";
     const label = escapeXml(route.label);
-    const lengthText = row.length ? `${row.length} in` : "";
+    const lengthText = row.length ? `${formatLengthInches(row.length)} in` : "";
     const branchText = sheetRouteBranchLabel(row);
     return `
       <g class="sheet-row">
@@ -2568,41 +2633,61 @@ function buildSheetHarnessSvg(result) {
     `;
   }).join("");
   const endpointBoxes = (groups, side) => groups.map((group, groupIndex) => {
-    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
-    const top = Math.max(145, Math.min(...ys) - 13);
-    const bottom = Math.min(630, Math.max(...ys) + 13);
-    const height = Math.max(28, bottom - top);
-    const x = side === "left" ? 28 : 1366;
-    const width = 206;
-    const textX = x + width / 2;
+    const box = sheetEndpointBoxLayout(group, routes, side);
     const detail = group.details.join(" | ");
+    const titleY = box.top + (detail ? 21 : box.height / 2 + 4);
     return `
       <g class="sheet-endpoint" aria-label="${escapeXml(`${side} endpoint ${groupIndex + 1}`)}">
-        <rect class="connector-box" x="${x}" y="${top}" width="${width}" height="${height}" rx="4" />
-        <text class="connector-title" x="${textX}" y="${top + Math.min(18, height / 2 + 4)}">${escapeXml(shortLabel(group.title, 28))}</text>
-        ${detail && height >= 42 ? `<text class="connector-detail" x="${textX}" y="${top + 35}">${escapeXml(shortLabel(detail, 34))}</text>` : ""}
+        <rect class="connector-box" x="${box.x}" y="${box.top}" width="${box.width}" height="${box.height}" rx="4" />
+        <text class="connector-title" x="${box.textX}" y="${titleY}">${escapeXml(shortLabel(group.title, 28))}</text>
+        ${detail ? `<text class="connector-detail" x="${box.textX}" y="${box.top + 39}">${escapeXml(shortLabel(detail, 34))}</text>` : ""}
       </g>`;
   }).join("");
-  const protectionBundles = leftGroups.map((group, index) => {
-    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
-    const top = Math.min(...ys) - 13;
-    const bottom = Math.max(...ys) + 13;
-    return buildHorizontalProtectionSvg({
-      x1: leftX + 48,
-      x2: rightX - 48,
-      top,
-      bottom,
-      label: `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`,
-      labelY: top - 7,
-      endLabelY: bottom + 12,
-      bandWidth: 18
-    });
-  }).join("");
-  const notes = rows
+  const protectionBundles = sharedBundle
+    ? buildHorizontalProtectionSvg({
+      x1: sharedBundleGeometry.x1,
+      x2: sharedBundleGeometry.x2,
+      top: sharedBundleGeometry.top,
+      bottom: sharedBundleGeometry.bottom,
+      label: "",
+      endLabelY: sharedBundleGeometry.bottom + 16,
+      bandWidth: 26
+    })
+    : leftGroups.map((group, index) => {
+      const { top, bottom } = sheetProtectionBounds(group, routes);
+      return buildHorizontalProtectionSvg({
+        x1: leftX + 48,
+        x2: rightX - 48,
+        top,
+        bottom,
+        label: `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`,
+        labelY: Math.max(140, top - 18),
+        endLabelY: bottom + 12,
+        bandWidth: 18
+      });
+    }).join("");
+  const sharedBundleOverlay = sharedBundle ? `
+  <g class="shared-bundle-callouts">
+    <rect class="sleeve-id-label" x="${sharedBundleGeometry.midX - 70}" y="${sharedBundleGeometry.midY - 16}" width="140" height="32" rx="6" />
+    <text class="sleeve-id-text" x="${sharedBundleGeometry.midX}" y="${sharedBundleGeometry.midY + 6}">${escapeXml(sheet.cableName || "CABLE ID")}</text>
+    <text class="lead-callout" x="${sharedBundleGeometry.leftLeadX}" y="${sharedBundleGeometry.bottom + 34}">WIRE ENDS EXIT HEAT SHRINK TO LEFT CONNECTORS</text>
+    <text class="lead-callout" x="${sharedBundleGeometry.rightLeadX}" y="${sharedBundleGeometry.bottom + 34}">WIRE ENDS EXIT HEAT SHRINK TO RIGHT CONNECTOR</text>
+    ${sharedLengthLabel ? `<text class="dimension-label" x="${(leftX + rightX) / 2}" y="${sharedBundleGeometry.bottom + 56}">${escapeXml(sharedLengthLabel)}</text>` : ""}
+  </g>` : "";
+  const notes = uniqueValues(rows
     .map((row) => row.comments)
     .filter(Boolean)
+  ).slice(0, 4);
+  const generatedNotes = (notes.length
+    ? notes
+    : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."]
+  );
+  if (sharedBundle) {
+    generatedNotes.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
+  }
+  const noteLines = uniqueValues(generatedNotes)
     .slice(0, 4)
-    .map((comment, index) => `<text class="sheet-note" x="68" y="${675 + index * 22}">${escapeXml(shortLabel(comment, 150))}</text>`)
+    .map((comment, index) => `<text class="sheet-note" x="68" y="${704 + index * 18}">${escapeXml(shortLabel(comment, 150))}</text>`)
     .join("");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -2611,6 +2696,7 @@ function buildSheetHarnessSvg(result) {
     ${buildBraidPatternDefs()}
     <style>
       .sheet { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 2; }
       .title { fill: #000000; font: 900 32px Aptos, Segoe UI, sans-serif; letter-spacing: 0.8px; }
       .subtitle { fill: #333333; font: 600 17px Aptos, Segoe UI, sans-serif; }
       .connector-box { fill: #ffffff; stroke: #000000; stroke-width: 3; }
@@ -2623,12 +2709,20 @@ function buildSheetHarnessSvg(result) {
       .sheet-pin-label { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .sheet-note-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; }
       .sheet-note { fill: #222222; font: 600 12px Aptos, Segoe UI, sans-serif; }
+      .template-notes-box, .title-block-box { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .title-block-label { fill: #000000; font: 700 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .title-block-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .meta { fill: #333333; font: 800 12px Aptos, Segoe UI, sans-serif; }
+      .sleeve-id-label { fill: #fffdf5; stroke: #111111; stroke-width: 1.4; }
+      .sleeve-id-text { fill: #111111; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; letter-spacing: 3px; }
+      .lead-callout { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .dimension-label { fill: #111111; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
   </defs>
   <rect class="sheet" x="0" y="0" width="${SVG_WIDTH}" height="${SVG_HEIGHT}" />
+  <rect class="border" x="12" y="12" width="1576" height="776" />
   <text class="title" x="46" y="58">${escapeXml(sheet.title)}</text>
   <text class="subtitle" x="46" y="92">${escapeXml(sheet.subtitle)}</text>
   <text class="meta" x="46" y="122">Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)</text>
@@ -2636,8 +2730,14 @@ function buildSheetHarnessSvg(result) {
   ${endpointBoxes(rightGroups, "right")}
   ${protectionBundles}
   ${rowLines}
-  <text class="sheet-note-title" x="68" y="648">SHEET NOTES</text>
-  ${notes || `<text class="sheet-note" x="68" y="675">No comments found in uploaded rows.</text>`}
+  ${sharedBundleOverlay}
+  <rect class="template-notes-box" x="46" y="650" width="920" height="100" />
+  <text class="sheet-note-title" x="68" y="682">TEMPLATE NOTES</text>
+  ${noteLines}
+  <rect class="title-block-box" x="1010" y="650" width="550" height="100" />
+  <text class="title-block-label" x="1285" y="686">DESCRIPTION:</text>
+  <text class="title-block-text" x="1285" y="708">${escapeXml(sheet.cableName || "WIRE HARNESS")}</text>
+  <text class="title-block-label" x="1285" y="732">DRAWN BY: DIGIWIRE | REV A</text>
 </svg>`;
 }
 
@@ -6864,11 +6964,14 @@ function buildSheetDrawioXml(result) {
   };
   const sheet = result.sheetHarness;
   const rows = sheet.rows.length ? sheet.rows : [{ wireName: "No drawable rows found", color: "Gray" }];
-  const routes = sheetRouteLayout(rows);
   const leftGroups = groupSheetEndpoints(rows, "left");
   const rightGroups = groupSheetEndpoints(rows, "right");
   const leftX = 260;
   const rightX = 1340;
+  const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
+  const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
+  const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
+  const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   add(mxCell({ id: "0" }));
   add(mxCell({ id: "1", parent: "0" }));
   addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
@@ -6885,37 +6988,55 @@ function buildSheetDrawioXml(result) {
   );
   const addEndpointGroups = (groups, side) => {
     groups.forEach((group, groupIndex) => {
-      const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
-      const top = Math.max(145, Math.min(...ys) - 13);
-      const bottom = Math.min(630, Math.max(...ys) + 13);
-      const height = Math.max(28, bottom - top);
-      const x = side === "left" ? 28 : 1366;
+      const box = sheetEndpointBoxLayout(group, routes, side);
       const detail = group.details.length ? `<br><font style="font-size:9px">${escapeHtml(group.details.join(" | "))}</font>` : "";
       addVertex(
         `${side}_endpoint_${groupIndex + 1}`,
         `<b>${escapeHtml(shortLabel(group.title, 28))}</b>${detail}`,
-        x,
-        top,
-        206,
-        height,
+        box.x,
+        box.top,
+        box.width,
+        box.height,
         "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=3;fontSize=11;fontStyle=1;align=center;"
       );
     });
   };
   addEndpointGroups(leftGroups, "left");
   addEndpointGroups(rightGroups, "right");
-  leftGroups.forEach((group, index) => {
-    const ys = group.rowIndexes.map((rowIndex) => routes[rowIndex].y);
+  if (sharedBundle) {
     addHorizontalDrawioProtection(addVertex, {
-      id: `leg_${index + 1}_protection`,
-      x1: leftX + 48,
-      x2: rightX - 48,
-      top: Math.min(...ys) - 13,
-      bottom: Math.max(...ys) + 13,
-      label: `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`,
-      bandWidth: 18
+      id: "shared_main_protection",
+      x1: sharedBundleGeometry.x1,
+      x2: sharedBundleGeometry.x2,
+      top: sharedBundleGeometry.top,
+      bottom: sharedBundleGeometry.bottom,
+      label: "",
+      bandWidth: 26
     });
-  });
+  } else {
+    leftGroups.forEach((group, index) => {
+      const bounds = sheetProtectionBounds(group, routes);
+      const label = `LEG ${group.leg || index + 1} EXPANDO + HEAT SHRINK`;
+      addHorizontalDrawioProtection(addVertex, {
+        id: `leg_${index + 1}_protection`,
+        x1: leftX + 48,
+        x2: rightX - 48,
+        top: bounds.top,
+        bottom: bounds.bottom,
+        label: "",
+        bandWidth: 18
+      });
+      addVertex(
+        `leg_${index + 1}_protection_label`,
+        escapeHtml(label),
+        (leftX + rightX) / 2 - 250,
+        Math.max(134, bounds.top - 25),
+        500,
+        18,
+        "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#1f2930;align=center;"
+      );
+    });
+  }
   routes.forEach((route) => {
     const { row, index, y } = route;
     const stroke = sheetColorToStroke(row.color);
@@ -6963,10 +7084,74 @@ function buildSheetDrawioXml(result) {
       );
     }
   });
+  if (sharedBundle) {
+    addVertex(
+      "shared_cable_id_label",
+      `<b>${escapeHtml(sheet.cableName || "CABLE ID")}</b>`,
+      sharedBundleGeometry.midX - 70,
+      sharedBundleGeometry.midY - 16,
+      140,
+      32,
+      "rounded=1;arcSize=25;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#111111;strokeWidth=1;fontSize=18;fontStyle=1;fontColor=#111111;align=center;spacing=0;"
+    );
+    addVertex(
+      "left_lead_exit_note",
+      "WIRE ENDS EXIT HEAT SHRINK TO LEFT CONNECTORS",
+      sharedBundleGeometry.leftLeadX - 170,
+      sharedBundleGeometry.bottom + 22,
+      340,
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;"
+    );
+    addVertex(
+      "right_lead_exit_note",
+      "WIRE ENDS EXIT HEAT SHRINK TO RIGHT CONNECTOR",
+      sharedBundleGeometry.rightLeadX - 170,
+      sharedBundleGeometry.bottom + 22,
+      340,
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;"
+    );
+    addVertex(
+      "left_heat_shrink_label",
+      "HEAT SHRINK",
+      sharedBundleGeometry.x1 - 72,
+      sharedBundleGeometry.bottom + 2,
+      144,
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;"
+    );
+    addVertex(
+      "right_heat_shrink_label",
+      "HEAT SHRINK",
+      sharedBundleGeometry.x2 - 72,
+      sharedBundleGeometry.bottom + 2,
+      144,
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;"
+    );
+    if (sharedLengthLabel) {
+      addVertex(
+        "pin_to_pin_length_note",
+        escapeHtml(sharedLengthLabel),
+        (leftX + rightX) / 2 - 240,
+        sharedBundleGeometry.bottom + 44,
+        480,
+        20,
+        "text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;fontColor=#111111;align=center;"
+      );
+    }
+  }
   const notes = uniqueValues(rows.map((row) => row.comments)).slice(0, 4);
+  const noteItems = notes.length
+    ? notes
+    : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."];
+  if (sharedBundle) {
+    noteItems.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
+  }
   addVertex(
     "sheet_notes",
-    `<b>TEMPLATE NOTES</b><br>${notes.length ? notes.map((note) => escapeHtml(note)).join("<br>") : "Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."}`,
+    `<b>TEMPLATE NOTES</b><br>${uniqueValues(noteItems).slice(0, 4).map((note) => escapeHtml(note)).join("<br>")}`,
     46,
     650,
     920,

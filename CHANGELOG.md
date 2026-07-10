@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.9 - 2026-07-10
+
+- Matched W124-style actual builds by drawing multiple left endpoints into one shared braided sleeve when they feed a single right connector.
+- Added sleeve-mounted cable ID labels, heat-shrink exit labels, exposed lead callouts, and pin-to-pin length callouts for shared-sleeve template drawings.
+- Kept one-row template endpoints tall enough for both endpoint names and housing details when the shared-sleeve drawing path is used.
+
 ## v2.0.8 - 2026-06-23
 
 - Removed the redundant `LEFT:` and `RIGHT:` prefixes from endpoint wire-name labels.
