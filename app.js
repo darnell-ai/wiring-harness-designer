@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.9";
+const APP_VERSION = "2.0.10";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1641,7 +1641,7 @@ function compileSheetHarnessResult(sheet, fileName) {
     paperBounds: null,
     sourceWidth: 0,
     sourceHeight: 0,
-    wires: drawableRows.map((row, index) => ({
+    wires: drawableRows.filter((row) => !isNoWireRow(row)).map((row, index) => ({
       id: `SHEET-W${index + 1}`,
       label: sheetRowWireName(row) || row.branchRole || `ROW ${row.rowNumber}`,
       color: sheetColorToStroke(row.color),
@@ -1859,8 +1859,18 @@ function isMeaningfulSheetValue(value) {
 }
 
 function isNoWireRow(row) {
-  const values = [row.awg, row.color, row.length, row.wireName, row.branchRole].map((value) => normalizeText(value));
-  return values.some((value) => value.includes("N/A") || value.includes("NO CONNECT") || value.includes("NC"));
+  const values = [
+    row.awg,
+    row.color,
+    row.length,
+    row.wireName,
+    row.rightWireName,
+    row.branchRole
+  ].map((value) => normalizeText(value));
+  return values.some((value) =>
+    value.includes("N/A") ||
+    /\b(?:NOT IN USE|NOT USED|UNUSED|DNP|DO NOT POPULATE|NO WIRE|NO CONNECT(?:ION)?|N\/C|NC)\b/.test(value)
+  );
 }
 
 function sheetColorToStroke(color) {
@@ -2597,7 +2607,8 @@ function buildSheetHarnessSvg(result) {
   if (kicadModel) {
     return buildKiCadHarnessSvg(result, kicadModel);
   }
-  const rows = sheet.rows.length ? sheet.rows : [{
+  const activeRows = sheet.rows.filter((row) => !isNoWireRow(row));
+  const rows = activeRows.length ? activeRows : [{
     wireName: "No drawable rows found",
     color: "Gray",
     length: "",
@@ -3151,15 +3162,17 @@ function buildDatasheetConnectorHarnessModel(sheet) {
   if (groupSheetEndpoints(sourceRows, "left").length !== 1 || groupSheetEndpoints(sourceRows, "right").length !== 1) {
     return null;
   }
-  const leftResolved = resolveDatasheetConnector(sourceRows, "left");
-  const rightResolved = resolveDatasheetConnector(sourceRows, "right");
+  const leftPositionRows = getKiCadConnectorPositionRows(sheet.rows, sourceRows, "left");
+  const rightPositionRows = getKiCadConnectorPositionRows(sheet.rows, sourceRows, "right");
+  const leftResolved = resolveDatasheetConnector(leftPositionRows, "left");
+  const rightResolved = resolveDatasheetConnector(rightPositionRows, "right");
   if (!leftResolved && !rightResolved) {
     return null;
   }
   const rows = sourceRows.slice(0, 16);
   const gauge = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
-  const left = leftResolved || buildGenericDatasheetConnector(rows, "left");
-  const right = rightResolved || buildGenericDatasheetConnector(rows, "right");
+  const left = leftResolved || buildGenericDatasheetConnector(leftPositionRows, "left");
+  const right = rightResolved || buildGenericDatasheetConnector(rightPositionRows, "right");
   const usesPowerpole = left.key === "powerpole1545" || right.key === "powerpole1545";
   const laneTop = usesPowerpole && rows.length <= 6 ? 340 : 166;
   const laneBottom = usesPowerpole && rows.length <= 6 ? 430 : 466;
@@ -4111,6 +4124,14 @@ function buildKiCadHarnessModel(sheet) {
   const rightType = firstFilled(rows, "rightHousingType");
   const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
   const awg = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
+  const leftPositionRows = getKiCadConnectorPositionRows(sheet.rows, rows, "left");
+  const rightPositionRows = getKiCadConnectorPositionRows(sheet.rows, rows, "right");
+  const leftPositionCount = inferKiCadConnectorPositionCount(leftPositionRows, rows, "left");
+  const rightPositionCount = inferKiCadConnectorPositionCount(rightPositionRows, rows, "right");
+  const leftUnusedPins = getKiCadUnusedConnectorPins(leftPositionRows, "left");
+  const rightUnusedPins = getKiCadUnusedConnectorPins(rightPositionRows, "right");
+  const leftActivePositionCount = countKiCadActiveConnectorPins(rows, "left");
+  const rightActivePositionCount = countKiCadActiveConnectorPins(rows, "right");
   const groups = buildKiCadWireGroups(rows);
   const isMultiGroup = groups.length >= 2 && rows.length > 4 && isMaestroStyleSheet(rows);
   if (groups.length >= 2 && !isMultiGroup) {
@@ -4163,7 +4184,12 @@ function buildKiCadHarnessModel(sheet) {
     leftConnector: {
       name: isMultiGroup ? "ESC PCB" : leftName,
       type: leftType && normalizeText(leftType) !== normalizeText(leftName) ? leftType : "",
-      positionText: isMultiGroup ? `${groups.length} x 3 POSITION` : `${rows.length} POSITION`,
+      positionText: isMultiGroup
+        ? `${groups.length} x 3 POSITION`
+        : formatKiCadConnectorPositionText(leftPositionCount, leftActivePositionCount, leftUnusedPins),
+      positionCount: leftPositionCount,
+      activePositionCount: leftActivePositionCount,
+      unusedPins: leftUnusedPins,
       view: normalizeText(leftType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
     },
     rightConnector: {
@@ -4175,10 +4201,71 @@ function buildKiCadHarnessModel(sheet) {
         ? `${groups.length} x 3 POSITION`
         : rightConnectorGroups.length > 1
           ? formatKiCadConnectorGroupSummary(rightConnectorGroups)
-          : `${rows.length} POSITION`,
+          : formatKiCadConnectorPositionText(rightPositionCount, rightActivePositionCount, rightUnusedPins),
+      positionCount: rightPositionCount,
+      activePositionCount: rightActivePositionCount,
+      unusedPins: rightUnusedPins,
       view: normalizeText(rightType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
     }
   };
+}
+
+function getKiCadConnectorPositionRows(sourceRows, activeRows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const activeSet = new Set(activeRows);
+  return sourceRows.filter((row) => {
+    if (activeSet.has(row)) {
+      return true;
+    }
+    if (isRepeatedHeaderSheetRow(row) || !isNoWireRow(row) || !isMeaningfulSheetValue(row[`${prefix}PinPos`])) {
+      return false;
+    }
+    return [
+      row[`${prefix}LegName`],
+      row[`${prefix}HousingType`],
+      row[`${prefix}HousingPart`],
+      row[`${prefix}PinPart`]
+    ].some(isMeaningfulSheetValue);
+  });
+}
+
+function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const pinLabels = uniqueValues(positionRows
+    .map((row) => String(row[`${prefix}PinPos`] || "").trim())
+    .filter(Boolean));
+  const numericPins = pinLabels.map(numericPin).filter(Number.isFinite);
+  const highestPin = numericPins.length ? Math.max(...numericPins) : 0;
+  const reasonableHighestPin = highestPin <= Math.max(16, pinLabels.length * 2) ? highestPin : 0;
+  return Math.max(
+    1,
+    pinLabels.length,
+    reasonableHighestPin,
+    countKiCadActiveConnectorPins(activeRows, side)
+  );
+}
+
+function countKiCadActiveConnectorPins(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const pins = uniqueValues(rows
+    .map((row) => String(row[`${prefix}PinPos`] || "").trim())
+    .filter(Boolean));
+  return pins.length || rows.length;
+}
+
+function getKiCadUnusedConnectorPins(positionRows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  return uniqueValues(positionRows
+    .filter(isNoWireRow)
+    .map((row) => String(row[`${prefix}PinPos`] || "").trim())
+    .filter(Boolean));
+}
+
+function formatKiCadConnectorPositionText(positionCount, activePositionCount, unusedPins) {
+  const positions = Math.max(1, Number(positionCount) || activePositionCount || 1);
+  return unusedPins.length
+    ? `${positions} POSITION (${activePositionCount} USED)`
+    : `${positions} POSITION`;
 }
 
 function inferKiCadRightConnectorGroups(wires) {
@@ -4567,12 +4654,15 @@ function buildKiCadHarnessSvg(result, model) {
       .pcb-label { fill: #ffffff; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pcb-pin-number { fill: #ffffff; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
       .cavity { fill: #f9f9f9; stroke: #000000; stroke-width: 1.5; }
+      .unused-cavity { fill: #d8dcde; stroke: #747b7f; stroke-width: 1.3; stroke-dasharray: 4 3; }
       .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
       .segmented-cavity { fill: #8d8d8d; stroke: #6b6b6b; stroke-width: 1; }
       .kicad-cpc-ring { fill: #30363a; stroke: #050606; stroke-width: 4; }
       .kicad-cpc-face { fill: #202528; stroke: #71797e; stroke-width: 3; }
       .kicad-cpc-cavity { fill: #080a0a; stroke: #d4d9dc; stroke-width: 1.2; }
+      .kicad-cpc-cavity-unused { fill: #596167; stroke: #aeb4b7; stroke-width: 1.2; stroke-dasharray: 3 2; }
       .kicad-cpc-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label-compact { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -4969,16 +5059,17 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
   if (isKiCadPcbConnector(connector)) {
     return buildKiCadPcbFaceSvg(x, wires, connector, side);
   }
-  if (isKiCadCpcConnector(connector)) {
-    return buildKiCadCircularCpcFaceSvg(x, wires, side);
+  if (isKiCadCircularConnector(connector)) {
+    return buildKiCadCircularConnectorFaceSvg(x, wires, connector, side);
   }
   if (side === "right" && connectorGroups.length > 1) {
     return buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups);
   }
-  const top = Math.max(162, wires[0].y - 42);
-  const bottom = wires[wires.length - 1].y + 42;
+  const slots = buildKiCadConnectorSlots(wires, connector, side);
+  const top = Math.max(162, slots[0].y - 42);
+  const bottom = slots[slots.length - 1].y + 42;
   const height = bottom - top;
-  const gap = wires.length > 1 ? Math.min(...wires.slice(1).map((wire, index) => wire.y - wires[index].y)) : 52;
+  const gap = slots.length > 1 ? Math.min(...slots.slice(1).map((slot, index) => slot.y - slots[index].y)) : 52;
   const compact = gap < 38;
   const bodyClass = side === "left" ? "connector-body-left" : "connector-body-right";
   const body = [
@@ -4987,27 +5078,44 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
     `<rect class="${bodyClass}" x="${x + 14}" y="${top - 14}" width="28" height="16" rx="3" />`,
     `<rect class="${bodyClass}" x="${x + 14}" y="${bottom - 2}" width="28" height="16" rx="3" />`
   ];
-  wires.forEach((wire) => {
+  slots.forEach(({ pin, wire, y }) => {
     if (compact) {
-      body.push(`<rect class="cavity-hole" x="${x + 24}" y="${wire.y - 9}" width="34" height="18" rx="4" />`);
+      body.push(`<rect class="${wire ? "cavity-hole" : "unused-cavity"}" x="${x + 24}" y="${y - 9}" width="34" height="18" rx="4" />`);
     } else {
-      body.push(`<rect class="cavity" x="${x + 16}" y="${wire.y - 24}" width="50" height="48" rx="4" />`);
-      body.push(`<rect class="cavity" x="${x + 24}" y="${wire.y - 16}" width="34" height="32" rx="5" />`);
-      body.push(`<rect class="cavity-hole" x="${x + 35}" y="${wire.y - 9}" width="14" height="18" rx="3" />`);
+      body.push(`<rect class="${wire ? "cavity" : "unused-cavity"}" x="${x + 16}" y="${y - 24}" width="50" height="48" rx="4" />`);
+      body.push(`<rect class="${wire ? "cavity" : "unused-cavity"}" x="${x + 24}" y="${y - 16}" width="34" height="32" rx="5" />`);
+      body.push(`<rect class="${wire ? "cavity-hole" : "unused-cavity"}" x="${x + 35}" y="${y - 9}" width="14" height="18" rx="3" />`);
     }
     if (side === "left") {
-      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="96" y="${wire.y + 4}">PIN ${escapeXml(wire.fromPin)}</text>`);
-      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="348" y="${wire.y + 4}">${escapeXml(wire.fromPin)}</text>`);
+      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="96" y="${y + 4}">PIN ${escapeXml(pin)}</text>`);
+      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="348" y="${y + 4}">${escapeXml(pin)}</text>`);
     } else {
-      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="1238" y="${wire.y + 4}">${escapeXml(wire.toPin)}</text>`);
-      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="1464" y="${wire.y + 4}">PIN ${escapeXml(wire.toPin)}</text>`);
+      body.push(`<text class="${compact ? "pin-label-compact" : "pin-label"}" x="1238" y="${y + 4}">${escapeXml(pin)}</text>`);
+      body.push(`<text class="${compact ? "pin-side-compact" : "pin-side"}" x="1464" y="${y + 4}">PIN ${escapeXml(pin)}</text>`);
     }
   });
   return body.join("");
 }
 
-function isKiCadCpcConnector(connector) {
-  return normalizeText(`${connector.name} ${connector.type} ${connector.positionText}`).includes("CPC");
+function buildKiCadConnectorSlots(wires, connector, side) {
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const positionCount = Math.max(wires.length, Number(connector.positionCount) || wires.length);
+  if (positionCount <= wires.length) {
+    return wires.map((wire) => ({ pin: wire[pinKey], wire, y: wire.y }));
+  }
+  const firstY = wires[0].y;
+  const lastY = wires[wires.length - 1].y;
+  const gap = wires.length > 1 ? (lastY - firstY) / (wires.length - 1) : 52;
+  return Array.from({ length: positionCount }, (_, index) => {
+    const pin = String(index + 1);
+    const wire = wires.find((candidate) => numericPin(candidate[pinKey]) === index + 1);
+    return { pin, wire, y: wire?.y ?? firstY + index * gap };
+  });
+}
+
+function isKiCadCircularConnector(connector) {
+  const text = normalizeText(`${connector.name} ${connector.type} ${connector.positionText}`);
+  return text.includes("CPC") || text.includes("SUBCON") || text.includes("PBOF");
 }
 
 function isKiCadPcbConnector(connector) {
@@ -5050,17 +5158,20 @@ function buildKiCadPcbFaceSvg(x, wires, connector, side) {
   return output.join("");
 }
 
-function buildKiCadCircularCpcFaceSvg(x, wires, side) {
+function buildKiCadCircularConnectorFaceSvg(x, wires, connector, side) {
   const centerX = x + 44;
   const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const positionCount = Math.max(wires.length, Number(connector.positionCount) || wires.length);
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
   const output = [
     `<circle class="kicad-cpc-ring" cx="${centerX}" cy="${centerY}" r="105" />`,
     `<circle class="kicad-cpc-face" cx="${centerX}" cy="${centerY}" r="91" />`,
     `<path d="M ${centerX - 13} ${centerY - 103} H ${centerX + 13} L ${centerX + 9} ${centerY - 90} H ${centerX - 9} Z" fill="#050606" />`
   ];
-  for (let pin = 1; pin <= wires.length; pin += 1) {
-    const point = kiCadCircularCpcPinPoint(pin, wires.length, centerX, centerY);
-    output.push(`<circle class="kicad-cpc-cavity" cx="${point.x}" cy="${point.y}" r="10" />`);
+  for (let pin = 1; pin <= positionCount; pin += 1) {
+    const point = kiCadCircularCpcPinPoint(pin, positionCount, centerX, centerY);
+    output.push(`<circle class="${activePins.has(pin) ? "kicad-cpc-cavity" : "kicad-cpc-cavity-unused"}" cx="${point.x}" cy="${point.y}" r="10" />`);
     output.push(`<text class="kicad-cpc-number" x="${point.x}" y="${point.y + 3}">${pin}</text>`);
   }
   wires.forEach((wire) => {
@@ -5068,6 +5179,9 @@ function buildKiCadCircularCpcFaceSvg(x, wires, side) {
     const pinX = side === "left" ? 348 : 1238;
     output.push(`<text class="pin-label-compact" x="${pinX}" y="${wire.y + 4}">${escapeXml(pin)}</text>`);
   });
+  if (connector.unusedPins?.length) {
+    output.push(`<text class="connector-unused-note" x="${centerX}" y="${centerY + 120}">PIN${connector.unusedPins.length === 1 ? "" : "S"} ${escapeXml(connector.unusedPins.join(", "))}: NOT IN USE</text>`);
+  }
   return output.join("");
 }
 
@@ -6963,7 +7077,8 @@ function buildSheetDrawioXml(result) {
     add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
   };
   const sheet = result.sheetHarness;
-  const rows = sheet.rows.length ? sheet.rows : [{ wireName: "No drawable rows found", color: "Gray" }];
+  const activeRows = sheet.rows.filter((row) => !isNoWireRow(row));
+  const rows = activeRows.length ? activeRows : [{ wireName: "No drawable rows found", color: "Gray" }];
   const leftGroups = groupSheetEndpoints(rows, "left");
   const rightGroups = groupSheetEndpoints(rows, "right");
   const leftX = 260;
@@ -7698,14 +7813,14 @@ function buildKiCadHarnessDrawioXml(result, model) {
     top: model.wires[0].y - 30,
     bottom: model.wires[model.wires.length - 1].y + 30
   });
-  const leftIsCpc = isKiCadCpcConnector(model.leftConnector);
+  const leftIsCircular = isKiCadCircularConnector(model.leftConnector);
   addKiCadDrawioLeftConnectorFace(addVertex, model);
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
     const crossoverX = 880 + index * 10;
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
-    if (!leftIsCpc && !leftIsPcb) {
+    if (!leftIsCircular && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
     if (!leftIsPcb) {
@@ -7809,24 +7924,38 @@ function addKiCadDrawioLeftConnectorFace(addVertex, model) {
     addKiCadDrawioPcbFace(addVertex, model.leftConnector, model.wires, "left");
     return;
   }
-  if (!isKiCadCpcConnector(model.leftConnector)) {
+  if (!isKiCadCircularConnector(model.leftConnector)) {
+    const slots = buildKiCadConnectorSlots(model.wires, model.leftConnector, "left");
     addVertex(
       "left_face",
       model.leftConnector.name,
       170,
-      Math.max(162, model.wires[0].y - 42),
+      Math.max(162, slots[0].y - 42),
       88,
-      model.wires[model.wires.length - 1].y - model.wires[0].y + 84,
+      slots[slots.length - 1].y - slots[0].y + 84,
       "rounded=1;whiteSpace=wrap;html=1;fillColor=#d7d7d7;strokeColor=#000000;strokeWidth=2;fontStyle=1;"
     );
+    slots.filter((slot) => !slot.wire).forEach((slot, index) => {
+      addVertex(
+        `left_unused_cavity_${index + 1}`,
+        slot.pin,
+        194,
+        slot.y - 17,
+        38,
+        34,
+        "rounded=1;whiteSpace=wrap;html=1;fillColor=#d8dcde;strokeColor=#747b7f;strokeWidth=1;dashed=1;dashPattern=4 3;fontColor=#4b5357;fontStyle=1;fontSize=9;"
+      );
+    });
     return;
   }
   const centerX = 214;
   const centerY = (model.wires[0].y + model.wires[model.wires.length - 1].y) / 2;
   addVertex("left_cpc_ring", "", centerX - 105, centerY - 105, 210, 210, "ellipse;whiteSpace=wrap;html=1;fillColor=#30363a;strokeColor=#050606;strokeWidth=4;");
   addVertex("left_cpc_face", "", centerX - 91, centerY - 91, 182, 182, "ellipse;whiteSpace=wrap;html=1;fillColor=#202528;strokeColor=#71797e;strokeWidth=3;");
-  for (let pin = 1; pin <= model.wires.length; pin += 1) {
-    const point = kiCadCircularCpcPinPoint(pin, model.wires.length, centerX, centerY);
+  const positionCount = Math.max(model.wires.length, Number(model.leftConnector.positionCount) || model.wires.length);
+  const activePins = new Set(model.wires.map((wire) => numericPin(wire.fromPin)).filter(Number.isFinite));
+  for (let pin = 1; pin <= positionCount; pin += 1) {
+    const point = kiCadCircularCpcPinPoint(pin, positionCount, centerX, centerY);
     addVertex(
       `left_cpc_pin_${pin}`,
       String(pin),
@@ -7834,7 +7963,20 @@ function addKiCadDrawioLeftConnectorFace(addVertex, model) {
       point.y - 10,
       20,
       20,
-      "ellipse;whiteSpace=wrap;html=1;fillColor=#080a0a;strokeColor=#d4d9dc;strokeWidth=1;fontColor=#ffffff;fontStyle=1;fontSize=7;"
+      activePins.has(pin)
+        ? "ellipse;whiteSpace=wrap;html=1;fillColor=#080a0a;strokeColor=#d4d9dc;strokeWidth=1;fontColor=#ffffff;fontStyle=1;fontSize=7;"
+        : "ellipse;whiteSpace=wrap;html=1;fillColor=#596167;strokeColor=#aeb4b7;strokeWidth=1;dashed=1;dashPattern=3 2;fontColor=#ffffff;fontStyle=1;fontSize=7;"
+    );
+  }
+  if (model.leftConnector.unusedPins?.length) {
+    addVertex(
+      "left_unused_note",
+      `PIN${model.leftConnector.unusedPins.length === 1 ? "" : "S"} ${escapeHtml(model.leftConnector.unusedPins.join(", "))}: NOT IN USE`,
+      centerX - 105,
+      centerY + 108,
+      210,
+      20,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#4b5357;align=center;"
     );
   }
 }
@@ -7844,21 +7986,25 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
     addKiCadDrawioPcbFace(addVertex, model.rightConnector, model.wires, "right");
     return;
   }
-  if (isKiCadCpcConnector(model.rightConnector)) {
+  if (isKiCadCircularConnector(model.rightConnector)) {
     const centerX = 1344;
     const centerY = (model.wires[0].y + model.wires[model.wires.length - 1].y) / 2;
     addVertex("right_cpc_ring", "", centerX - 105, centerY - 105, 210, 210, "ellipse;whiteSpace=wrap;html=1;fillColor=#30363a;strokeColor=#050606;strokeWidth=4;");
     addVertex("right_cpc_face", "", centerX - 91, centerY - 91, 182, 182, "ellipse;whiteSpace=wrap;html=1;fillColor=#202528;strokeColor=#71797e;strokeWidth=3;");
-    for (let pin = 1; pin <= model.wires.length; pin += 1) {
-      const point = kiCadCircularCpcPinPoint(pin, model.wires.length, centerX, centerY);
+    const positionCount = Math.max(model.wires.length, Number(model.rightConnector.positionCount) || model.wires.length);
+    const activePins = new Set(model.wires.map((wire) => numericPin(wire.toPin)).filter(Number.isFinite));
+    for (let pin = 1; pin <= positionCount; pin += 1) {
+      const point = kiCadCircularCpcPinPoint(pin, positionCount, centerX, centerY);
       addVertex(
         `right_cpc_pin_${pin}`,
-        "",
+        String(pin),
         point.x - 10,
         point.y - 10,
         20,
         20,
-        "ellipse;whiteSpace=wrap;html=1;fillColor=#080a0a;strokeColor=#d4d9dc;strokeWidth=1;fontColor=#ffffff;fontStyle=1;fontSize=7;"
+        activePins.has(pin)
+          ? "ellipse;whiteSpace=wrap;html=1;fillColor=#080a0a;strokeColor=#d4d9dc;strokeWidth=1;fontColor=#ffffff;fontStyle=1;fontSize=7;"
+          : "ellipse;whiteSpace=wrap;html=1;fillColor=#596167;strokeColor=#aeb4b7;strokeWidth=1;dashed=1;dashPattern=3 2;fontColor=#ffffff;fontStyle=1;fontSize=7;"
       );
     }
     return;

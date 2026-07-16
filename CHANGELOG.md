@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.10 - 2026-07-16
+
+- Added case-insensitive `Not in use` placeholder rows that reserve physical connector positions without creating live wires or terminals.
+- Kept unused positions in connector counts while reporting the separate number of populated positions.
+- Rendered Subcon/PBOF endpoints as circular connector faces and marked their unused cavities in both the live drawing and Draw.io export.
+- Preserved active-only wire totals, right-side connector grouping, wiring tables, and contact quantities when placeholder rows are present.
+
 ## v2.0.9 - 2026-07-10
 
 - Matched W124-style actual builds by drawing multiple left endpoints into one shared braided sleeve when they feed a single right connector.
