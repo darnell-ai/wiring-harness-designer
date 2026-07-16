@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.11**
+Current release: **v2.0.12**
 
 ## Use The App
 
@@ -27,6 +27,7 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.
 - Renders two-color wire descriptions in order as striped conductors; for example, `green / white` is a green wire with a repeating white tracer stripe, while `orange / white` is orange with a white tracer.
+- Keeps every declared position in grouped right-side housings; an 8-pin front-lock connector with four active wires displays unused filler cavities for pins 5 through 8.
 - Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
 - Keeps generic template drawings readable with larger single-row endpoint boxes, separated expando labels, template notes, and a title block.
 - Draws actual-build shared sleeves when multiple left connectors feed one right connector, including sleeve ID labels, heat-shrink exits, exposed lead callouts, and pin-to-pin length callouts.

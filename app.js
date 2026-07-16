@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.11";
+const APP_VERSION = "2.0.12";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -4203,7 +4203,7 @@ function buildKiCadHarnessModel(sheet) {
     leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
     maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
   }));
-  const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires);
+  const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires, rightPositionRows);
   const hasMultipleRightConnectors = !isMultiGroup && rightConnectorGroups.length > 1;
   groups.forEach((group) => {
     group.wires = wires.filter((wire) => wire.groupKey === group.key);
@@ -4260,6 +4260,7 @@ function getKiCadConnectorPositionRows(sourceRows, activeRows, side) {
       return false;
     }
     return [
+      row[`${prefix}Leg`],
       row[`${prefix}LegName`],
       row[`${prefix}HousingType`],
       row[`${prefix}HousingPart`],
@@ -4276,12 +4277,35 @@ function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
   const numericPins = pinLabels.map(numericPin).filter(Number.isFinite);
   const highestPin = numericPins.length ? Math.max(...numericPins) : 0;
   const reasonableHighestPin = highestPin <= Math.max(16, pinLabels.length * 2) ? highestPin : 0;
+  const declaredPositions = inferKiCadDeclaredPositionCount([...positionRows, ...activeRows], side);
   return Math.max(
     1,
     pinLabels.length,
     reasonableHighestPin,
+    declaredPositions,
     countKiCadActiveConnectorPins(activeRows, side)
   );
+}
+
+function inferKiCadDeclaredPositionCount(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const counts = [];
+  rows.forEach((row) => {
+    [
+      row[`${prefix}LegName`],
+      row[`${prefix}HousingType`],
+      row[`${prefix}HousingPart`]
+    ].forEach((value) => {
+      const text = normalizeText(value);
+      for (const match of text.matchAll(/\b(\d{1,2})\s*(?:PIN|PINS|POS|POSITION|POSITIONS)\b/g)) {
+        const count = Number(match[1]);
+        if (count >= 1 && count <= 64) {
+          counts.push(count);
+        }
+      }
+    });
+  });
+  return counts.length ? Math.max(...counts) : 0;
 }
 
 function countKiCadActiveConnectorPins(rows, side) {
@@ -4307,7 +4331,7 @@ function formatKiCadConnectorPositionText(positionCount, activePositionCount, un
     : `${positions} POSITION`;
 }
 
-function inferKiCadRightConnectorGroups(wires) {
+function inferKiCadRightConnectorGroups(wires, positionRows = []) {
   const groups = [];
   const hasExplicitLegs = wires.some((wire) => isMeaningfulSheetValue(wire.row.rightLeg));
   if (hasExplicitLegs) {
@@ -4343,6 +4367,21 @@ function inferKiCadRightConnectorGroups(wires) {
   groups.forEach((group) => {
     group.name = inferKiCadRightConnectorGroupName(group, groups.length);
     group.palette = RIGHT_HOUSING_PALETTE[group.index % RIGHT_HOUSING_PALETTE.length];
+    const activeRows = group.wires.map((wire) => wire.row);
+    const activeSet = new Set(activeRows);
+    group.positionRows = positionRows.filter((row) => {
+      if (activeSet.has(row)) {
+        return true;
+      }
+      const leg = String(row.rightLeg || "").trim();
+      if (hasExplicitLegs && isMeaningfulSheetValue(leg)) {
+        return group.key === `LEG:${normalizeText(leg)}`;
+      }
+      const legName = normalizeText(row.rightLegName);
+      return Boolean(legName && normalizeText(group.name) === legName);
+    });
+    group.positionCount = inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
+    group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right");
   });
   assignKiCadRightConnectorLayout(groups);
   return groups;
@@ -4391,12 +4430,31 @@ function assignKiCadRightConnectorLayout(groups) {
       numericPin(left.toPin) - numericPin(right.toPin) ||
       numericPin(left.fromPin) - numericPin(right.fromPin)
     );
+    const positionCount = Math.max(group.sortedWires.length, Number(group.positionCount) || group.sortedWires.length);
+    const slotGap = positionCount > 6 ? 28 : 34;
+    const assignedWires = new Set();
     group.top = cursorY;
-    group.sortedWires.forEach((wire, index) => {
-      wire.rightTargetY = cursorY + 18 + index * 34;
-      wire.rightConnectorIndex = group.index;
+    group.slots = Array.from({ length: positionCount }, (_, index) => {
+      const pin = index + 1;
+      const wire = group.sortedWires.find((candidate) => numericPin(candidate.toPin) === pin);
+      if (wire) {
+        assignedWires.add(wire);
+      }
+      return { pin: String(pin), wire: wire || null, y: cursorY + 18 + index * slotGap };
     });
-    group.bottom = cursorY + group.sortedWires.length * 34 + 4;
+    group.sortedWires.filter((wire) => !assignedWires.has(wire)).forEach((wire) => {
+      const slot = group.slots.find((candidate) => !candidate.wire);
+      if (slot) {
+        slot.wire = wire;
+      }
+    });
+    group.slots.forEach((slot) => {
+      if (slot.wire) {
+        slot.wire.rightTargetY = slot.y;
+        slot.wire.rightConnectorIndex = group.index;
+      }
+    });
+    group.bottom = cursorY + 38 + Math.max(0, positionCount - 1) * slotGap;
     cursorY = group.bottom + 8;
   });
 }
@@ -4418,7 +4476,7 @@ function rightHousingPalette(name) {
 function formatKiCadConnectorGroupSummary(groups) {
   const counts = new Map();
   groups.forEach((group) => {
-    const positions = group.wires.length;
+    const positions = Math.max(group.wires.length, Number(group.positionCount) || group.wires.length);
     counts.set(positions, (counts.get(positions) || 0) + 1);
   });
   return Array.from(counts.entries())
@@ -4696,6 +4754,8 @@ function buildKiCadHarnessSvg(result, model) {
       .unused-cavity { fill: #d8dcde; stroke: #747b7f; stroke-width: 1.3; stroke-dasharray: 4 3; }
       .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
       .segmented-cavity { fill: #8d8d8d; stroke: #6b6b6b; stroke-width: 1; }
+      .segmented-cavity-unused { fill: #d8dcde; stroke: #747b7f; stroke-width: 1; stroke-dasharray: 4 3; }
+      .connector-filler-pin { fill: #4b5357; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .kicad-cpc-ring { fill: #30363a; stroke: #050606; stroke-width: 4; }
       .kicad-cpc-face { fill: #202528; stroke: #71797e; stroke-width: 3; }
       .kicad-cpc-cavity { fill: #080a0a; stroke: #d4d9dc; stroke-width: 1.2; }
@@ -5248,20 +5308,26 @@ function kiCadCircularCpcPinPoint(pin, positions, centerX, centerY) {
 function buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups) {
   const output = [];
   connectorGroups.forEach((group) => {
-    const top = group.wires[0].y - 11;
-    const bottom = group.wires[group.wires.length - 1].y + 11;
+    const slots = group.slots?.length
+      ? group.slots
+      : group.wires.map((wire) => ({ pin: wire.toPin, wire, y: wire.rightTargetY || wire.y }));
+    const top = group.top ?? slots[0].y - 18;
+    const bottom = group.bottom ?? slots[slots.length - 1].y + 20;
     const height = bottom - top;
     const centerY = (top + bottom) / 2;
     const palette = group.palette || rightHousingPalette(group.name);
     output.push(`<rect class="connector-body-right" x="${x}" y="${top}" width="88" height="${height}" rx="8" style="fill:${palette.fill};stroke:${palette.stroke}" />`);
     output.push(`<rect class="cavity" x="${x + 8}" y="${top + 5}" width="72" height="${Math.max(1, height - 10)}" rx="7" />`);
-    group.wires.forEach((wire) => {
-      output.push(`<rect class="segmented-cavity" x="${x + 25}" y="${wire.y - 8}" width="38" height="16" rx="4" />`);
+    slots.forEach((slot) => {
+      output.push(`<rect class="${slot.wire ? "segmented-cavity" : "segmented-cavity-unused"}" x="${x + 25}" y="${slot.y - 8}" width="38" height="16" rx="4" />`);
+      if (!slot.wire) {
+        output.push(`<text class="connector-filler-pin" x="${x + 44}" y="${slot.y + 3}">${escapeXml(slot.pin)}</text>`);
+      }
     });
     output.push(`<text class="connector-group-label" x="${x + 96}" y="${centerY + 4}">${escapeXml(group.name)}</text>`);
   });
   wires.forEach((wire) => {
-    output.push(`<text class="pin-label-compact" x="1238" y="${wire.y + 4}">${escapeXml(wire.toPin)}</text>`);
+    output.push(`<text class="pin-label-compact" x="1238" y="${(wire.rightTargetY || wire.y) + 4}">${escapeXml(wire.toPin)}</text>`);
   });
   return output.join("");
 }
@@ -8095,15 +8161,20 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
       bottom - top,
       `rounded=1;whiteSpace=wrap;html=1;fillColor=${palette.fill};strokeColor=${palette.stroke};strokeWidth=2;fontStyle=1;`
     );
-    (group?.sortedWires || model.wires).forEach((wire, wireIndex) => {
+    const slots = group?.slots?.length
+      ? group.slots
+      : (group?.sortedWires || model.wires).map((wire) => ({ pin: wire.toPin, wire, y: wire.rightTargetY || wire.y }));
+    slots.forEach((slot, slotIndex) => {
       addVertex(
-        `right_group_0_cavity_${wireIndex + 1}`,
-        "",
+        `right_group_0_cavity_${slotIndex + 1}`,
+        slot.wire ? "" : escapeHtml(slot.pin),
         1325,
-        (wire.rightTargetY || wire.y) - 14,
+        slot.y - 14,
         38,
         28,
-        "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#8d8d8d;strokeColor=#6b6b6b;strokeWidth=1;"
+        slot.wire
+          ? "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#8d8d8d;strokeColor=#6b6b6b;strokeWidth=1;"
+          : "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#d8dcde;strokeColor=#747b7f;strokeWidth=1;dashed=1;dashPattern=4 3;fontColor=#4b5357;fontStyle=1;fontSize=9;"
       );
     });
     addVertex(
@@ -8131,15 +8202,20 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
       height,
       `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${palette.fill};strokeColor=${palette.stroke};strokeWidth=2;`
     );
-    group.sortedWires.forEach((wire, wireIndex) => {
+    const slots = group.slots?.length
+      ? group.slots
+      : group.sortedWires.map((wire) => ({ pin: wire.toPin, wire, y: wire.rightTargetY || wire.y }));
+    slots.forEach((slot, slotIndex) => {
       addVertex(
-        `right_group_${group.index}_cavity_${wireIndex + 1}`,
-        "",
+        `right_group_${group.index}_cavity_${slotIndex + 1}`,
+        slot.wire ? "" : escapeHtml(slot.pin),
         1325,
-        wire.rightTargetY - 14,
+        slot.y - 14,
         38,
         28,
-        "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#8d8d8d;strokeColor=#6b6b6b;strokeWidth=1;"
+        slot.wire
+          ? "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#8d8d8d;strokeColor=#6b6b6b;strokeWidth=1;"
+          : "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#d8dcde;strokeColor=#747b7f;strokeWidth=1;dashed=1;dashPattern=4 3;fontColor=#4b5357;fontStyle=1;fontSize=9;"
       );
     });
     addVertex(

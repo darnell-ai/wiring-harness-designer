@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.12 - 2026-07-16
+
+- Preserved declared connector capacity such as `8 PIN FRONT LOCK CONNECTOR` when a grouped right-side housing has fewer active wires.
+- Added labeled unused filler cavities for unpopulated connector positions, including W126 right-side pins 5 through 8.
+- Associated `Not in use` placeholder rows with their right-leg connector group so position summaries report the physical housing size.
+
 ## v2.0.11 - 2026-07-16
 
 - Rendered compound wire colors as base-color conductors with repeating tracer stripes in Draw.io and SVG drawings.
