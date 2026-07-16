@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.11 - 2026-07-16
+
+- Rendered compound wire colors as base-color conductors with repeating tracer stripes in Draw.io and SVG drawings.
+- Preserved color order so `green / white` draws green with white stripes and `orange / white` draws orange with white stripes.
+- Displayed the complete two-color description in wire labels and manufacturing tables while keeping electrical color logic tied to the base color.
+
 ## v2.0.10 - 2026-07-16
 
 - Added case-insensitive `Not in use` placeholder rows that reserve physical connector positions without creating live wires or terminals.

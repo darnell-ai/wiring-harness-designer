@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.10";
+const APP_VERSION = "2.0.11";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -1873,19 +1873,51 @@ function isNoWireRow(row) {
   );
 }
 
-function sheetColorToStroke(color) {
+const WIRE_COLOR_STROKES = Object.freeze({
+  RED: "#d62828",
+  BLACK: "#050505",
+  YELLOW: "#ffd400",
+  GREEN: "#008a13",
+  BLUE: "#0b64d8",
+  WHITE: "#d9d9d9",
+  ORANGE: "#f77f00",
+  BROWN: "#7f4f24",
+  VIOLET: "#7b2cbf",
+  GRAY: "#777777",
+  PINK: "#e88aad"
+});
+
+function wireColorSpec(color) {
   const value = normalizeText(color);
-  if (value.includes("RED")) return "#d62828";
-  if (value.includes("BLACK")) return "#050505";
-  if (value.includes("YELLOW")) return "#ffd400";
-  if (value.includes("GREEN")) return "#008a13";
-  if (value.includes("BLUE")) return "#0b64d8";
-  if (value.includes("WHITE")) return "#d9d9d9";
-  if (value.includes("ORANGE")) return "#f77f00";
-  if (value.includes("BROWN")) return "#7f4f24";
-  if (value.includes("PURPLE") || value.includes("VIOLET")) return "#7b2cbf";
-  if (value.includes("GRAY") || value.includes("GREY") || value.includes("N/A")) return "#777777";
-  return "#4a5560";
+  const aliases = {
+    GREY: "GRAY",
+    PURPLE: "VIOLET",
+    YELLO: "YELLOW"
+  };
+  const names = [];
+  for (const match of value.matchAll(/\b(?:BLACK|WHITE|RED|YELLOW|YELLO|GREEN|BLUE|ORANGE|BROWN|PURPLE|VIOLET|GRAY|GREY|PINK)\b/g)) {
+    const name = aliases[match[0]] || match[0];
+    if (!names.includes(name)) {
+      names.push(name);
+    }
+  }
+  const baseName = names[0] || (value && value !== "N/A" ? value : "WIRE");
+  const stripeName = names.slice(1).find((name) => name !== baseName) || "";
+  return {
+    baseName,
+    baseStroke: WIRE_COLOR_STROKES[baseName] || "#4a5560",
+    stripeName,
+    stripeStroke: stripeName === "WHITE" ? "#ffffff" : (WIRE_COLOR_STROKES[stripeName] || ""),
+    label: stripeName ? `${baseName} / ${stripeName}` : baseName
+  };
+}
+
+function sheetColorToStroke(color) {
+  return wireColorSpec(color).baseStroke;
+}
+
+function normalizeWireColorLabel(color) {
+  return wireColorSpec(color).label;
 }
 
 function buildBraidPatternDefs() {
@@ -2626,7 +2658,8 @@ function buildSheetHarnessSvg(result) {
   const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   const rowLines = routes.map((route) => {
     const { row, index, y } = route;
-    const color = sheetColorToStroke(row.color);
+    const colorSpec = wireColorSpec(row.color);
+    const color = colorSpec.baseStroke;
     const dashed = isNoWireRow(row) ? ` stroke-dasharray="12 9"` : "";
     const label = escapeXml(route.label);
     const lengthText = row.length ? `${formatLengthInches(row.length)} in` : "";
@@ -2634,6 +2667,7 @@ function buildSheetHarnessSvg(result) {
     return `
       <g class="sheet-row">
         <line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${color}"${dashed} />
+        ${colorSpec.stripeStroke ? `<line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${colorSpec.stripeStroke}" stroke-width="2.5" stroke-dasharray="11 9" />` : ""}
         <circle class="sheet-pin" cx="${leftX}" cy="${y}" r="4" />
         <circle class="sheet-pin" cx="${rightX}" cy="${y}" r="4" />
         <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 6}">${label}</text>
@@ -3190,6 +3224,7 @@ function buildDatasheetConnectorHarnessModel(sheet) {
     leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
     rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
     colorName: normalizeColorName(row.color),
+    colorLabel: normalizeWireColorLabel(row.color),
     stroke: sheetColorToStroke(row.color),
     awg: row.awg || gauge,
     length: row.length || dominantSheetValue(rows, "length") || "",
@@ -3919,11 +3954,13 @@ function isDarkDatasheetColor(colorName) {
 function buildDatasheetConnectorHarnessSvg(result, model) {
   const routes = buildDatasheetWireRoutes(model);
   const wireSvg = routes.map(({ wire, leftPoint, rightPoint, points }) => {
+    const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
     return `
       <path class="ds-wire" d="${roundedSvgPolylinePath(points)}" stroke="${wire.stroke}" />
+      ${colorSpec.stripeStroke ? `<path class="ds-wire-stripe" d="${roundedSvgPolylinePath(points)}" stroke="${colorSpec.stripeStroke}" />` : ""}
       <circle class="ds-terminal" cx="${leftPoint.x}" cy="${leftPoint.y}" r="4.5" />
       <circle class="ds-terminal" cx="${rightPoint.x}" cy="${rightPoint.y}" r="4.5" />
-      <text class="ds-wire-label" x="640" y="${leftPoint.y - 5}">${escapeXml(`${wire.name} | ${wire.colorName} | ${formatWireLengthLabel(wire.length)}`)}</text>`;
+      <text class="ds-wire-label" x="640" y="${leftPoint.y - 5}">${escapeXml(`${wire.name} | ${wire.colorLabel || wire.colorName} | ${formatWireLengthLabel(wire.length)}`)}</text>`;
   }).join("");
   const routeYs = routes.flatMap((route) => route.points.map((point) => point.y));
   const protectionPadding = clamp(58 - model.wires.length * 2, 24, 48);
@@ -3934,7 +3971,7 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
   const tableRows = (wires) => wires.map((wire) => [
     wire.fromPin,
     wire.name,
-    wire.colorName,
+    wire.colorLabel || wire.colorName,
     wire.awg || model.gauge || "",
     formatLengthInches(wire.length || model.length),
     wire.toPin
@@ -3985,6 +4022,7 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       .cpc-pin-contact { fill: #d8b967; stroke: #fff2b8; stroke-width: 1.2; }
       .cpc-pin-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #000000; stroke-width: 2; }
       .ds-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+      .ds-wire-stripe { fill: none; stroke-width: 2.2; stroke-linecap: butt; stroke-linejoin: round; stroke-dasharray: 10 9; }
       .ds-terminal { fill: #ffffff; stroke: #000000; stroke-width: 1.8; }
       .ds-wire-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
       .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 1.3; }
@@ -4149,6 +4187,7 @@ function buildKiCadHarnessModel(sheet) {
     leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
     rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
     colorName: normalizeColorName(row.color),
+    colorLabel: normalizeWireColorLabel(row.color),
     stroke: sheetColorToStroke(row.color),
     awg: row.awg || awg,
     length: row.length || length,
@@ -4589,7 +4628,7 @@ function buildKiCadHarnessSvg(result, model) {
   const wiringRows = displayModel.wires.map((wire) => [
     wire.fromPin,
     wire.name,
-    { text: wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
+    { text: wire.colorLabel || wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
     wire.awg || displayModel.awg || "",
     formatLengthInches(wire.length || displayModel.length),
     wire.toPin
@@ -4669,6 +4708,8 @@ function buildKiCadHarnessSvg(result, model) {
       .pin-side-compact { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .wire-line { fill: none; stroke-width: 8; stroke-linecap: square; }
       .wire-line-compact { fill: none; stroke-width: 6; stroke-linecap: square; }
+      .wire-stripe { fill: none; stroke-width: 3; stroke-linecap: butt; stroke-dasharray: 11 9; }
+      .wire-stripe-compact { fill: none; stroke-width: 2.4; stroke-linecap: butt; stroke-dasharray: 9 8; }
       .terminal { stroke: #000000; stroke-width: 1.8; }
       .terminal-mark { stroke: #000000; stroke-width: 1.2; fill: none; }
       .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
@@ -4779,7 +4820,7 @@ function buildKiCadDenseDocumentationSvg(model) {
 function buildKiCadCompactWiringTableSvg(x, y, width, height, model) {
   const rowGap = 8.2;
   const rows = model.wires.map((wire, index) =>
-    `<text class="compact-doc-text" x="${x + 12}" y="${y + 43 + index * rowGap}">${escapeXml(`${wire.fromPin} | ${wire.name} | ${wire.colorName} | ${wire.awg || model.awg || ""} | ${formatLengthInches(wire.length || model.length)} in | ${wire.toPin}`)}</text>`
+    `<text class="compact-doc-text" x="${x + 12}" y="${y + 43 + index * rowGap}">${escapeXml(`${wire.fromPin} | ${wire.name} | ${wire.colorLabel || wire.colorName} | ${wire.awg || model.awg || ""} | ${formatLengthInches(wire.length || model.length)} in | ${wire.toPin}`)}</text>`
   ).join("");
   return `
     <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
@@ -4843,7 +4884,7 @@ function buildKiCadMultiGroupSvg(result, model) {
     wire.row.leftLegName || "",
     wire.fromPin,
     wire.name,
-    { text: wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
+    { text: wire.colorLabel || wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
     wire.awg || model.awg || "",
     formatLengthInches(wire.length || model.length),
     formatBoardPin(wire)
@@ -4877,6 +4918,7 @@ function buildKiCadMultiGroupSvg(result, model) {
       .group-label { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .grid-label { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .wire-line { fill: none; stroke-width: 7; stroke-linecap: square; }
+      .wire-stripe { fill: none; stroke-width: 2.6; stroke-linecap: butt; stroke-dasharray: 10 9; }
       .terminal { stroke: #000000; stroke-width: 1.6; }
       .terminal-mark { stroke: #000000; stroke-width: 1.1; fill: none; }
       .wire-label { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
@@ -5020,15 +5062,18 @@ function buildKiCadMaestroGridSvg(model) {
 
 function buildKiCadMultiWireSvg(wire) {
   const color = wire.stroke;
+  const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+  const colorLabel = wire.colorLabel || colorSpec.label;
   const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
   const wireRole = wire.maestroRole?.code ? `${wire.name} ${wire.maestroRole.code}` : wire.name;
   return `
   <rect class="terminal" x="350" y="${wire.y - 11}" width="42" height="22" fill="${color}" />
   <rect class="terminal" x="1136" y="${wire.y - 11}" width="42" height="22" fill="${color}" />
   <line class="wire-line" x1="392" y1="${wire.y}" x2="1136" y2="${wire.y}" stroke="${color}" />
+  ${colorSpec.stripeStroke ? `<line class="wire-stripe" x1="392" y1="${wire.y}" x2="1136" y2="${wire.y}" stroke="${colorSpec.stripeStroke}" />` : ""}
   <path class="terminal-mark" d="M 371 ${wire.y - 5} L 371 ${wire.y + 5} M 366 ${wire.y} L 376 ${wire.y}" />
   <path class="terminal-mark" d="M 1157 ${wire.y - 5} L 1157 ${wire.y + 5} M 1152 ${wire.y} L 1162 ${wire.y}" />
-  <text class="wire-label" x="760" y="${wire.y - 10}">${escapeXml(wireRole)} (${escapeXml(wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}</text>
+  <text class="wire-label" x="760" y="${wire.y - 10}">${escapeXml(wireRole)} (${escapeXml(colorLabel)}) ${escapeXml(formatWireLengthLabel(wire.length))}</text>
   <text class="${textColorClass}" x="371" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
   <text class="${textColorClass}" x="1157" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>
   <text class="pin-label" x="1212" y="${wire.y + 4}">${escapeXml(formatBoardPin(wire))}</text>`;
@@ -5233,6 +5278,7 @@ function buildKiCadWireSvg(wire, {
   const markHalf = compact ? 4 : 7;
   const wireStartX = leftPcb ? 300 : 426;
   const wireEndX = rightPcb ? 1316 : 1164;
+  const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
   const leftTerminal = leftPcb ? "" : `
   <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
   <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
@@ -5245,7 +5291,8 @@ function buildKiCadWireSvg(wire, {
   ${leftTerminal}
   ${rightTerminal}
   <line class="${compact ? "wire-line-compact" : "wire-line"}" x1="${wireStartX}" y1="${wire.y}" x2="${wireEndX}" y2="${wire.y}" stroke="${color}" />
-  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}</text>
+  ${colorSpec.stripeStroke ? `<line class="${compact ? "wire-stripe-compact" : "wire-stripe"}" x1="${wireStartX}" y1="${wire.y}" x2="${wireEndX}" y2="${wire.y}" stroke="${colorSpec.stripeStroke}" />` : ""}
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}</text>
   `;
 }
 
@@ -5453,17 +5500,7 @@ function dominantSheetValue(rows, key) {
 }
 
 function normalizeColorName(color) {
-  const value = normalizeText(color);
-  if (value.includes("RED")) return "RED";
-  if (value.includes("BLACK")) return "BLACK";
-  if (value.includes("YELLOW")) return "YELLOW";
-  if (value.includes("GREEN")) return "GREEN";
-  if (value.includes("BLUE")) return "BLUE";
-  if (value.includes("WHITE")) return "WHITE";
-  if (value.includes("ORANGE")) return "ORANGE";
-  if (value.includes("BROWN")) return "BROWN";
-  if (value.includes("PURPLE") || value.includes("VIOLET")) return "VIOLET";
-  return color ? value : "WIRE";
+  return wireColorSpec(color).baseName;
 }
 
 function formatLengthInches(length) {
@@ -7154,13 +7191,14 @@ function buildSheetDrawioXml(result) {
   }
   routes.forEach((route) => {
     const { row, index, y } = route;
-    const stroke = sheetColorToStroke(row.color);
+    const colorSpec = wireColorSpec(row.color);
+    const stroke = colorSpec.baseStroke;
     const dashed = isNoWireRow(row) ? "dashed=1;dashPattern=12 9;" : "";
     const leftWireName = sheetRowLeftWireName(row, route.label);
     const rightWireName = sheetRowRightWireName(row, route.label);
     const hasDistinctNames = wireNamesDiffer(leftWireName, rightWireName);
     const details = [
-      row.color ? normalizeColorName(row.color) : "",
+      row.color ? colorSpec.label : "",
       formatWireLengthLabel(row.length),
       sheetRouteBranchLabel(row)
     ].filter(Boolean).join(" | ");
@@ -7175,6 +7213,17 @@ function buildSheetDrawioXml(result) {
       y,
       `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
     );
+    if (colorSpec.stripeStroke) {
+      addEdge(
+        `sheet_wire_stripe_${index + 1}`,
+        "",
+        leftX,
+        y,
+        rightX,
+        y,
+        `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`
+      );
+    }
     if (hasDistinctNames) {
       const leftLabelWidth = drawioLabelWidth(leftWireName, 10, 64, 210);
       const rightLabelWidth = drawioLabelWidth(rightWireName, 10, 64, 210);
@@ -7539,13 +7588,22 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
   addDatasheetConnectorDrawioFace(addVertex, model.right, "right");
   routes.forEach(({ wire, points }, index) => {
     const hasDistinctNames = wireNamesDiffer(wire.leftName, wire.rightName);
-    const wireDetails = `${escapeHtml(wire.colorName)} | ${escapeHtml(formatWireLengthLabel(wire.length, model.length))}`;
+    const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+    const wireDetails = `${escapeHtml(wire.colorLabel || colorSpec.label)} | ${escapeHtml(formatWireLengthLabel(wire.length, model.length))}`;
     addEdge(
       `datasheet_wire_${index + 1}`,
       hasDistinctNames ? wireDetails : `${escapeHtml(wire.leftName)} | ${wireDetails}`,
       points,
       `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=8;fontStyle=1;fontSize=10;`
     );
+    if (colorSpec.stripeStroke) {
+      addEdge(
+        `datasheet_wire_stripe_${index + 1}`,
+        "",
+        points,
+        `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=8;`
+      );
+    }
     if (hasDistinctNames) {
       const y = wire.laneY - 10;
       const leftLabelWidth = drawioLabelWidth(wire.leftName, 10, 64, 210);
@@ -7819,6 +7877,15 @@ function buildKiCadHarnessDrawioXml(result, model) {
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
     const crossoverX = 880 + index * 10;
+    const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+    const wirePoints = [
+      [leftIsPcb ? 300 : 426, wire.y],
+      [700, wire.y],
+      [crossoverX, wire.y],
+      [crossoverX, targetY],
+      [1100, targetY],
+      [rightIsPcb ? 1316 : 1164, targetY]
+    ];
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     if (!leftIsCircular && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
@@ -7832,21 +7899,25 @@ function buildKiCadHarnessDrawioXml(result, model) {
     addRoutedEdge(
       `wire_${index}`,
       "",
-      [
-        [leftIsPcb ? 300 : 426, wire.y],
-        [700, wire.y],
-        [crossoverX, wire.y],
-        [crossoverX, targetY],
-        [1100, targetY],
-        [rightIsPcb ? 1316 : 1164, targetY]
-      ],
+      wirePoints,
       `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
     );
+    if (colorSpec.stripeStroke) {
+      addRoutedEdge(
+        `wire_stripe_${index}`,
+        "",
+        wirePoints,
+        `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=3;dashed=1;dashPattern=11 9;fixDash=1;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
+      );
+    }
     if (!rightIsPcb) {
       addEdge(`right_stub_${index}`, "", 1220, targetY, 1300, targetY, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;`);
+      if (colorSpec.stripeStroke) {
+        addEdge(`right_stub_stripe_${index}`, "", 1220, targetY, 1300, targetY, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=3;dashed=1;dashPattern=11 9;fixDash=1;endArrow=none;startArrow=none;`);
+      }
     }
     const leftLabel = wire.leftName;
-    const detailLabel = `${wire.colorName} | ${formatWireLengthLabel(wire.length, model.length)}`;
+    const detailLabel = `${wire.colorLabel || colorSpec.label} | ${formatWireLengthLabel(wire.length, model.length)}`;
     const rightLabel = wire.rightName;
     const leftLabelWidth = drawioLabelWidth(leftLabel, 11, 72, 220);
     const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
@@ -8181,13 +8252,18 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
   });
   model.wires.forEach((wire, index) => {
     const hasDistinctNames = wireNamesDiffer(wire.leftName, wire.rightName);
+    const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+    const colorLabel = wire.colorLabel || colorSpec.label;
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     addVertex(`left_pin_num_${index}`, wire.fromPin, 320, wire.y - 12, 45, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`right_pin_num_${index}`, formatBoardPin(wire), 1190, wire.y - 12, 90, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=13;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 350, wire.y - 11, 42, 22, terminalStyle);
     addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1136, wire.y - 11, 42, 22, terminalStyle);
     const wireRole = wire.maestroRole?.code ? `${wire.leftName} ${wire.maestroRole.code}` : wire.leftName;
-    addEdge(`wire_${index}`, hasDistinctNames ? `${wire.colorName} | ${formatWireLengthLabel(wire.length, model.length)}` : `${wireRole} (${wire.colorName}) ${formatWireLengthLabel(wire.length, model.length)}`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+    addEdge(`wire_${index}`, hasDistinctNames ? `${colorLabel} | ${formatWireLengthLabel(wire.length, model.length)}` : `${wireRole} (${colorLabel}) ${formatWireLengthLabel(wire.length, model.length)}`, 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=7;endArrow=none;startArrow=none;fontStyle=1;fontSize=13;`);
+    if (colorSpec.stripeStroke) {
+      addEdge(`wire_stripe_${index}`, "", 392, wire.y, 1136, wire.y, `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.6;dashed=1;dashPattern=10 9;endArrow=none;startArrow=none;`);
+    }
     if (hasDistinctNames) {
       const leftLabelWidth = drawioLabelWidth(wire.leftName, 10, 64, 210);
       const rightLabelWidth = drawioLabelWidth(wire.rightName, 10, 64, 210);
@@ -8196,7 +8272,7 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
       addVertex(`right_wire_name_${index}`, escapeHtml(wire.rightName), 1118 - rightLabelWidth, wire.y - 10, rightLabelWidth, 20, `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`);
     }
   });
-  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT END", "LEFT PIN", "LEFT WIRE", "RIGHT WIRE", "COLOR", "AWG", "LEN", "RIGHT PIN"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.leftName, wire.rightName, wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;");
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT END", "LEFT PIN", "LEFT WIRE", "RIGHT WIRE", "COLOR", "AWG", "LEN", "RIGHT PIN"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.leftName, wire.rightName, wire.colorLabel || wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;");
   addVertex("bom", buildKiCadDrawioTableText("BILL OF MATERIALS", ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"], buildKiCadBomRows(model)), 830, 538, 730, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;");
   addVertex("notes", `<b>NOTES:</b><br>Micro Maestro servo header: 1=GND edge, 2=V+ servo power, 3=SIG inside board.<br>${uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 1).join("<br>") || "Verify pin orientation before final assembly."}`, 830, 672, 730, 48, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=left;");
   addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 830, 724, 730, 54, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
