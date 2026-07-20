@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.13";
+const APP_VERSION = "2.0.14";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -406,7 +406,8 @@ async function loadPastedHarnessTable(inputText = dom.tablePasteInput.value) {
     }
     const result = applyHarnessSheet(sheet, "Pasted Harness Table");
     closePasteTablePanel();
-    setStatus(`Loaded ${result.tableRows.length} pasted row${result.tableRows.length === 1 ? "" : "s"}.`);
+    const loadedRowCount = result.sheetHarness?.rows.length || result.tableRows.length;
+    setStatus(`Loaded ${loadedRowCount} harness row${loadedRowCount === 1 ? "" : "s"}.`);
   } catch (error) {
     console.error(error);
     setStatus("The pasted table could not be read. Copy the header row and data rows together, then try again.");
@@ -1632,7 +1633,7 @@ function compileSheetHarnessResult(sheet, fileName) {
   const drawableRows = sheet.objects
     .map((row, index) => ({ ...row, rowNumber: index + 2 }))
     .filter(isDrawableSheetRow)
-    .slice(0, 32);
+    .slice(0, 128);
   const sheetHarness = {
     title: `${cableName} HARNESS ASSEMBLY`,
     subtitle: "Generated from uploaded prefilled harness sheet",
@@ -2732,6 +2733,10 @@ function buildSheetHarnessSvg(result) {
   }
   if (isMolexUartJetsonSheet(sheet.rows)) {
     return buildMolexUartJetsonSvg(result);
+  }
+  const largeCircularPairModel = buildLargeCircularPairHarnessModel(sheet);
+  if (largeCircularPairModel) {
+    return buildLargeCircularPairHarnessSvg(result, largeCircularPairModel);
   }
   const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(sheet);
   if (powerBoardIsolatorModel) {
@@ -4275,6 +4280,160 @@ function buildDatasheetPartsPanelLines(model) {
   return lines.slice(0, 11);
 }
 
+function buildLargeCircularPairHarnessModel(sheet) {
+  const rows = getKiCadWireRows(sheet.rows);
+  const rawGroups = buildKiCadWireGroups(rows);
+  if (rows.length < 36 || rawGroups.length < 3 || rawGroups.some((group) => group.rows.length < 12)) {
+    return null;
+  }
+  const circularRowCount = rows.filter((row) => {
+    const leftText = normalizeText([row.leftLegName, row.leftHousingType, row.leftHousingPart].join(" "));
+    const rightText = normalizeText([row.rightLegName, row.rightHousingType, row.rightHousingPart].join(" "));
+    return isCircularConnectorText(leftText) && isCircularConnectorText(rightText);
+  }).length;
+  if (circularRowCount < Math.ceil(rows.length * 0.75)) {
+    return null;
+  }
+
+  const groupHeight = 410;
+  const groups = rawGroups.map((group, groupIndex) => {
+    const sortedRows = [...group.rows].sort((left, right) => {
+      const leftPin = numericPin(left.leftPinPos);
+      const rightPin = numericPin(right.leftPinPos);
+      return (Number.isFinite(leftPin) ? leftPin : 999) - (Number.isFinite(rightPin) ? rightPin : 999);
+    });
+    const groupTop = 100 + groupIndex * groupHeight;
+    const wires = sortedRows.map((row, index) => ({
+      index,
+      row,
+      y: groupTop + 75 + index * 20,
+      name: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
+      rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
+      colorName: normalizeColorName(row.color),
+      colorLabel: normalizeWireColorLabel(row.color),
+      stroke: sheetColorToStroke(row.color),
+      fromPin: row.leftPinPos || String(index + 1),
+      toPin: row.rightPinPos || String(index + 1),
+      length: row.length || ""
+    }));
+    const leftLegName = firstFilled(sortedRows, "leftLegName") || `PB${groupIndex + 1}`;
+    const rightLegName = firstFilled(sortedRows, "rightLegName") || `CPC${groupIndex + 1}`;
+    return {
+      ...group,
+      groupTop,
+      wires,
+      pairAnalysis: analyzeSheetTwistedPairs(wires),
+      leftName: compactCircularConnectorName(leftLegName, "left", groupIndex),
+      rightName: compactCircularConnectorName(rightLegName, "right", groupIndex),
+      leftType: firstFilled(sortedRows, "leftHousingType") || "16 PIN SUBCON",
+      rightType: firstFilled(sortedRows, "rightHousingType") || "16 PIN CPC"
+    };
+  });
+  return {
+    cableName: firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS",
+    length: dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "",
+    rows,
+    groups,
+    width: 2200,
+    height: 120 + groups.length * groupHeight,
+    totalWires: rows.length
+  };
+}
+
+function isCircularConnectorText(value) {
+  const text = normalizeText(value);
+  return text.includes("CPC") || text.includes("SUBCON") || text.includes("SUB CONNECTOR") || text.includes("PBOF") || text.includes("CIRCULAR");
+}
+
+function compactCircularConnectorName(value, side, index) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  const parts = text.split(/\s+TO\s+/i).map((part) => part.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return side === "left" ? parts[0] : parts[parts.length - 1];
+  }
+  return text || `${side === "left" ? "PB" : "CPC"}${index + 1}`;
+}
+
+function buildLargeCircularPairHarnessSvg(result, model) {
+  const leftFaceX = 145;
+  const rightFaceX = model.width - 145;
+  const leftWireX = 360;
+  const rightWireX = model.width - 360;
+  const groupSvg = model.groups.map((group) => {
+    const firstY = group.wires[0].y;
+    const lastY = group.wires[group.wires.length - 1].y;
+    const centerY = (firstY + lastY) / 2;
+    const wires = group.wires.map((wire) => {
+      const geometry = sheetWireRouteGeometry(wire, group.pairAnalysis, leftWireX, rightWireX);
+      const colorSpec = wireColorSpec(wire.row.color || wire.colorLabel || wire.colorName);
+      const pairId = sheetTwistedPairId(wire.row);
+      const label = [wire.name, colorSpec.label, pairId ? `TWISTED PAIR ${pairId}` : ""].filter(Boolean).join(" | ");
+      return `
+        <path class="large-wire" d="${geometry.svgPath}" stroke="${wire.stroke}" />
+        ${colorSpec.stripeStroke ? `<path class="large-wire-stripe" d="${geometry.svgPath}" stroke="${colorSpec.stripeStroke}" />` : ""}
+        <circle class="wire-end" cx="${leftWireX}" cy="${wire.y}" r="4" />
+        <circle class="wire-end" cx="${rightWireX}" cy="${wire.y}" r="4" />
+        <text class="large-left-pin" x="${leftWireX - 18}" y="${wire.y + 4}">${escapeXml(wire.fromPin)}</text>
+        <text class="large-right-pin" x="${rightWireX + 18}" y="${wire.y + 4}">${escapeXml(wire.toPin)}</text>
+        <text class="large-wire-label" x="${model.width / 2}" y="${wire.y - 4}">${escapeXml(label)}</text>`;
+    }).join("");
+    return `
+      <g class="large-connector-group">
+        <text class="large-group-title" x="${model.width / 2}" y="${group.groupTop + 28}">${escapeXml(group.leftName)} TO ${escapeXml(group.rightName)} | ${group.wires.length} WIRES</text>
+        <rect class="large-protection" x="${leftWireX + 28}" y="${firstY - 12}" width="${rightWireX - leftWireX - 56}" height="${lastY - firstY + 24}" rx="34" />
+        <rect class="large-collar" x="${leftWireX + 18}" y="${firstY - 18}" width="24" height="${lastY - firstY + 36}" rx="8" />
+        <rect class="large-collar" x="${rightWireX - 42}" y="${firstY - 18}" width="24" height="${lastY - firstY + 36}" rx="8" />
+        ${buildLargeCircularFaceSvg(leftFaceX, centerY, group.leftName, group.leftType)}
+        ${buildLargeCircularFaceSvg(rightFaceX, centerY, group.rightName, group.rightType)}
+        ${wires}
+      </g>`;
+  }).join("");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${model.width} ${model.height}" role="img" aria-label="${escapeXml(model.cableName)} ${model.totalWires} wire circular connector harness">
+  <style>
+    .page { fill: #ffffff; }
+    .border { fill: none; stroke: #111111; stroke-width: 2; }
+    .large-title { fill: #111111; font: 900 34px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    .large-subtitle { fill: #333333; font: 800 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    .large-group-title { fill: #111111; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    .large-protection { fill: #d7dde0; fill-opacity: .32; stroke: #68737a; stroke-width: 2; stroke-dasharray: 8 6; }
+    .large-collar { fill: #171717; stroke: #000000; stroke-width: 1; }
+    .large-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
+    .large-wire-stripe { fill: none; stroke-width: 2.2; stroke-linecap: butt; stroke-dasharray: 10 8; }
+    .large-wire-label { fill: #111111; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    .large-left-pin { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: end; }
+    .large-right-pin { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
+    .wire-end { fill: #ffffff; stroke: #111111; stroke-width: 1.5; }
+    .connector-shell { fill: #eeeeee; stroke: #111111; stroke-width: 3; }
+    .connector-key { fill: #111111; }
+    .connector-cavity { fill: #f9f9f9; stroke: #111111; stroke-width: 1.4; }
+    .connector-pin { fill: #111111; font: 800 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    .connector-name { fill: #111111; font: 900 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+    .connector-type { fill: #333333; font: 800 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+  </style>
+  <rect class="page" x="0" y="0" width="${model.width}" height="${model.height}" />
+  <rect class="border" x="12" y="12" width="${model.width - 24}" height="${model.height - 24}" />
+  <text class="large-title" x="${model.width / 2}" y="52">${escapeXml(model.cableName)} — ${model.totalWires} CONDUCTORS</text>
+  <text class="large-subtitle" x="${model.width / 2}" y="78">${model.groups.length} × 16-PIN CIRCULAR CONNECTOR LEGS${model.length ? ` | ${escapeXml(formatWireLengthLabel(model.length))}` : ""}</text>
+  ${groupSvg}
+</svg>`;
+}
+
+function buildLargeCircularFaceSvg(cx, cy, name, type) {
+  const cavities = CPC_17_16_PIN_LAYOUT.map((position) => `
+    <circle class="connector-cavity" cx="${cx + position.dx}" cy="${cy + position.dy}" r="11" />
+    <text class="connector-pin" x="${cx + position.dx}" y="${cy + position.dy + 3}">${position.pin}</text>`).join("");
+  return `
+    <g class="large-circular-face">
+      <text class="connector-name" x="${cx}" y="${cy - 116}">${escapeXml(name)}</text>
+      <text class="connector-type" x="${cx}" y="${cy - 98}">${escapeXml(type)} (FRONT VIEW)</text>
+      <circle class="connector-shell" cx="${cx}" cy="${cy}" r="92" />
+      <rect class="connector-key" x="${cx - 16}" y="${cy - 94}" width="32" height="10" rx="3" />
+      ${cavities}
+    </g>`;
+}
+
 function buildKiCadHarnessModel(sheet) {
   const rows = getKiCadWireRows(sheet.rows);
   if (rows.length < 2) {
@@ -4624,7 +4783,7 @@ function isMaestroStyleSheet(rows) {
   ].join(" ")).join(" "));
   return text.includes("MAESTRO") ||
     text.includes("SERVO HEADER") ||
-    (text.includes("ESC") && (text.includes("GND") || text.includes("V+") || text.includes("SIG")));
+    (/\bESC\b/.test(text) && (text.includes("GND") || text.includes("V+") || text.includes("SIG")));
 }
 
 function getKiCadWireRows(rows) {
@@ -7301,6 +7460,10 @@ function buildSheetDrawioXml(result) {
   if (isMolexUartJetsonSheet(result.sheetHarness.rows)) {
     return buildMolexUartJetsonDrawioXml(result);
   }
+  const largeCircularPairModel = buildLargeCircularPairHarnessModel(result.sheetHarness);
+  if (largeCircularPairModel) {
+    return buildLargeCircularPairHarnessDrawioXml(result, largeCircularPairModel);
+  }
   const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(result.sheetHarness);
   if (powerBoardIsolatorModel) {
     return buildPowerBoardIsolatorSheetDrawioXml(result, powerBoardIsolatorModel);
@@ -8062,6 +8225,88 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
     22,
     "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#3d4448;align=center;"
   );
+}
+
+function buildLargeCircularPairHarnessDrawioXml(result, model) {
+  const cells = [];
+  const add = (cell) => cells.push(cell);
+  const addVertex = (id, value, x, y, width, height, style) => {
+    add(mxCell({ id, value, style, vertex: 1, parent: "1" }, mxGeometry({ x, y, width, height, as: "geometry" })));
+  };
+  const addEdge = (id, value, points, style) => {
+    const intermediate = points.slice(1, -1)
+      .map((point) => `<mxPoint x="${formatDrawioCoordinate(point[0])}" y="${formatDrawioCoordinate(point[1])}" />`)
+      .join("");
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry(
+      { relative: 1, as: "geometry" },
+      `${mxPoint(points[0][0], points[0][1], "sourcePoint")}${mxPoint(points[points.length - 1][0], points[points.length - 1][1], "targetPoint")}${intermediate ? `<Array as="points">${intermediate}</Array>` : ""}`
+    )));
+  };
+  const leftFaceX = 145;
+  const rightFaceX = model.width - 145;
+  const leftWireX = 360;
+  const rightWireX = model.width - 360;
+  add(mxCell({ id: "0" }));
+  add(mxCell({ id: "1", parent: "0" }));
+  addVertex("border", "", 12, 12, model.width - 24, model.height - 24, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#111111;strokeWidth=2;");
+  addVertex("title", `${escapeHtml(model.cableName)} — ${model.totalWires} CONDUCTORS`, model.width / 2 - 480, 24, 960, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=34;fontStyle=1;fontColor=#111111;align=center;");
+  addVertex("subtitle", `${model.groups.length} × 16-PIN CIRCULAR CONNECTOR LEGS${model.length ? ` | ${escapeHtml(formatWireLengthLabel(model.length))}` : ""}`, model.width / 2 - 430, 65, 860, 26, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#333333;align=center;");
+
+  model.groups.forEach((group, groupIndex) => {
+    const firstY = group.wires[0].y;
+    const lastY = group.wires[group.wires.length - 1].y;
+    const centerY = (firstY + lastY) / 2;
+    addVertex(`group_${groupIndex}_title`, `<b>${escapeHtml(group.leftName)} TO ${escapeHtml(group.rightName)} | ${group.wires.length} WIRES</b>`, model.width / 2 - 360, group.groupTop + 8, 720, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#111111;align=center;");
+    addVertex(`group_${groupIndex}_sleeve`, "", leftWireX + 28, firstY - 12, rightWireX - leftWireX - 56, lastY - firstY + 24, "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#d7dde0;opacity=32;strokeColor=#68737a;strokeWidth=2;dashed=1;dashPattern=8 6;");
+    addVertex(`group_${groupIndex}_left_collar`, "", leftWireX + 18, firstY - 18, 24, lastY - firstY + 36, "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#171717;strokeColor=#000000;strokeWidth=1;");
+    addVertex(`group_${groupIndex}_right_collar`, "", rightWireX - 42, firstY - 18, 24, lastY - firstY + 36, "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#171717;strokeColor=#000000;strokeWidth=1;");
+    addLargeCircularDrawioFace(addVertex, `group_${groupIndex}_left`, leftFaceX, centerY, group.leftName, group.leftType);
+    addLargeCircularDrawioFace(addVertex, `group_${groupIndex}_right`, rightFaceX, centerY, group.rightName, group.rightType);
+
+    group.wires.forEach((wire, wireIndex) => {
+      const geometry = sheetWireRouteGeometry(wire, group.pairAnalysis, leftWireX, rightWireX);
+      const colorSpec = wireColorSpec(wire.row.color || wire.colorLabel || wire.colorName);
+      const pairId = sheetTwistedPairId(wire.row);
+      const label = [wire.name, colorSpec.label, pairId ? `TWISTED PAIR ${pairId}` : ""].filter(Boolean).join(" | ");
+      const baseStyle = geometry.twisted
+        ? `edgeStyle=none;curved=1;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=5.5;endArrow=none;startArrow=none;`
+        : `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5.5;endArrow=none;startArrow=none;`;
+      addEdge(`group_${groupIndex}_wire_${wireIndex}`, "", geometry.points, baseStyle);
+      if (colorSpec.stripeStroke) {
+        addEdge(
+          `group_${groupIndex}_wire_${wireIndex}_stripe`,
+          "",
+          geometry.points,
+          `${geometry.twisted ? "edgeStyle=none;curved=1;rounded=1" : "edgeStyle=orthogonalEdgeStyle;rounded=0"};html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 8;fixDash=1;endArrow=none;startArrow=none;`
+        );
+      }
+      addVertex(`group_${groupIndex}_left_pin_${wireIndex}`, escapeHtml(wire.fromPin), leftWireX - 48, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=right;");
+      addVertex(`group_${groupIndex}_right_pin_${wireIndex}`, escapeHtml(wire.toPin), rightWireX + 14, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=left;");
+      addVertex(`group_${groupIndex}_wire_label_${wireIndex}`, escapeHtml(label), model.width / 2 - 245, wire.y - 9, 490, 18, "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=9;fontStyle=1;fontColor=#111111;align=center;verticalAlign=middle;spacing=0;");
+    });
+  });
+
+  const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
+  <diagram id="${drawioId(diagram)}" name="${diagram}">
+    <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="${model.width}" pageHeight="${model.height}" math="0" shadow="0">
+      <root>
+        ${cells.join("\n        ")}
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>`;
+}
+
+function addLargeCircularDrawioFace(addVertex, id, cx, cy, name, type) {
+  addVertex(`${id}_name`, `<b>${escapeHtml(name)}</b>`, cx - 105, cy - 128, 210, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#111111;align=center;");
+  addVertex(`${id}_type`, `${escapeHtml(type)} (FRONT VIEW)`, cx - 120, cy - 106, 240, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#333333;align=center;");
+  addVertex(`${id}_shell`, "", cx - 92, cy - 92, 184, 184, "ellipse;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#111111;strokeWidth=3;");
+  addVertex(`${id}_key`, "", cx - 16, cy - 94, 32, 10, "rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;strokeWidth=1;");
+  CPC_17_16_PIN_LAYOUT.forEach((position) => {
+    addVertex(`${id}_pin_${position.pin}`, String(position.pin), cx + position.dx - 11, cy + position.dy - 11, 22, 22, "ellipse;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#111111;strokeWidth=1.4;fontSize=8;fontStyle=1;fontColor=#111111;align=center;");
+  });
 }
 
 function buildKiCadHarnessDrawioXml(result, model) {

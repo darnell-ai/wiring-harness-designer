@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.14 - 2026-07-20
+
+- Added a full-page large-harness renderer for three or more 16-pin circular connector legs, including six 16-cavity mating faces and every conductor route.
+- Removed wiring, BOM, notes, and description tables from this large-harness layout so the drawing can use the complete page.
+- Increased the sheet row capacity from 32 to 128, preserving W127's complete 48-wire definition and repeated section headers.
+- Fixed `Descent` falsely matching the legacy `ESC` board detector and collapsing 16-pin connector groups into three-position servo rows.
+- Reported the number of drawable harness rows instead of counting repeated header rows in the load status.
+
 ## v2.0.13 - 2026-07-20
 
 - Added the `Twisted Pair ID` sheet column; matching IDs on exactly two rows define a pair without changing existing sheet layouts.
