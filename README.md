@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.12**
+Current release: **v2.0.13**
 
 ## Use The App
 
@@ -13,6 +13,18 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor.
 
 The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
+
+## Define Twisted Pairs
+
+Add a `Twisted Pair ID` column anywhere in the sheet. Enter the same ID on exactly two conductor rows and leave the column blank for ordinary wires. Keep the two paired rows next to each other when practical so the drawing stays easy to read.
+
+| Wire Name | Left Pin Pos # | Right Pin Pos # | Color | Twisted Pair ID |
+| --- | ---: | ---: | --- | --- |
+| S_Horz A | 1 | 1 | BLUE | TP1 |
+| S_Horz B | 2 | 2 | WHITE | TP1 |
+| S_Horz C | 3 | 3 | GREEN | |
+
+DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the preview and editable Draw.io file. An ID used on fewer or more than two rows produces a template note instead of a false twisted-pair drawing. The crossings are schematic; put the required manufacturing lay or twist rate in `Comments`, for example `TWIST 1 TURN PER INCH`.
 
 ## Features
 
@@ -27,6 +39,7 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.
 - Renders two-color wire descriptions in order as striped conductors; for example, `green / white` is a green wire with a repeating white tracer stripe, while `orange / white` is orange with a white tracer.
+- Accepts a `Twisted Pair ID` column and renders every valid two-row pair as editable intertwined conductors in SVG and Draw.io, with validation notes for incomplete or overfilled pair IDs.
 - Keeps every declared position in grouped right-side housings; an 8-pin front-lock connector with four active wires displays unused filler cavities for pins 5 through 8.
 - Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
 - Keeps generic template drawings readable with larger single-row endpoint boxes, separated expando labels, template notes, and a title block.

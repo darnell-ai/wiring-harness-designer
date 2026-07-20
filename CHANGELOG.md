@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.13 - 2026-07-20
+
+- Added the `Twisted Pair ID` sheet column; matching IDs on exactly two rows define a pair without changing existing sheet layouts.
+- Rendered paired conductors as smooth repeated crossovers in the generic SVG drawing and as editable curved waypoint routes in Draw.io.
+- Added visible twisted-pair labels, metadata, and validation notes when an ID is not assigned to exactly two conductors.
+- Added twisted-pair IDs to generated CAN-H/CAN-L table rows and documented how to specify manufacturing twist rate in `Comments`.
+
 ## v2.0.12 - 2026-07-16
 
 - Preserved declared connector capacity such as `8 PIN FRONT LOCK CONNECTOR` when a grouped right-side housing has fewer active wires.

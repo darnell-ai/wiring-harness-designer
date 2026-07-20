@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.12";
+const APP_VERSION = "2.0.13";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -562,6 +562,11 @@ function normalizeSheetKey(header) {
     AWGGAUGE: "awg",
     AWG: "awg",
     COLOR: "color",
+    TWISTEDPAIRID: "twistedPairId",
+    TWISTPAIRID: "twistedPairId",
+    TWISTEDPAIR: "twistedPairId",
+    TWISTPAIR: "twistedPairId",
+    PAIRID: "twistedPairId",
     LENGTHINCHES: "length",
     TAPPOSITIONINCHES: "tapPosition",
     BRANCHID: "branchId",
@@ -1415,6 +1420,7 @@ function getHarnessTableColumns() {
     { key: "leftPinPart", label: "Left Pin P#" },
     { key: "awg", label: "AWGuage" },
     { key: "color", label: "Color" },
+    { key: "twistedPairId", label: "Twisted Pair ID" },
     { key: "length", label: "Length inches" },
     { key: "tapPosition", label: "Tap Position inches" },
     { key: "branchId", label: "Branch ID" },
@@ -1451,6 +1457,7 @@ function buildCanHarnessTableRows(columns, branches, signals) {
       leftPinPart: wire.signal,
       awg: "22",
       color: wire.color,
+      twistedPairId: ["CAN-H", "CAN-L"].includes(wire.signal) ? "CAN-TRUNK" : "",
       length: "20",
       branchId: "MAIN",
       branchRole: "MAIN TRUNK",
@@ -1522,6 +1529,7 @@ function buildCanHarnessTableRows(columns, branches, signals) {
         leftPinPart: wire.signal,
         awg: "22",
         color: wire.color,
+        twistedPairId: ["CAN-H", "CAN-L"].includes(wire.signal) ? `${branch.id}-CAN` : "",
         length: String(branch.dropLength),
         tapPosition: String(branch.tapPosition),
         branchId: branch.id,
@@ -1668,6 +1676,7 @@ function isDrawableSheetRow(row) {
     row.leftHousingPart ||
     sheetRowWireName(row) ||
     row.color ||
+    row.twistedPairId ||
     row.branchRole ||
     row.comments ||
     row.leftLegName ||
@@ -1839,8 +1848,105 @@ function sheetRouteLayout(rows, {
   }));
 }
 
+function sheetTwistedPairId(row) {
+  const value = String(row?.twistedPairId || "").trim();
+  return isMeaningfulSheetValue(value) ? value : "";
+}
+
+function analyzeSheetTwistedPairs(routes) {
+  const groupsById = new Map();
+  routes.forEach((route) => {
+    const id = sheetTwistedPairId(route.row);
+    if (!id) {
+      return;
+    }
+    const key = normalizeText(id);
+    let group = groupsById.get(key);
+    if (!group) {
+      group = { id, key, routes: [], valid: false };
+      groupsById.set(key, group);
+    }
+    group.routes.push(route);
+  });
+  const groups = Array.from(groupsById.values());
+  const byRouteIndex = new Map();
+  groups.forEach((group) => {
+    group.routes.sort((left, right) => left.index - right.index);
+    group.valid = group.routes.length === 2;
+    if (group.valid) {
+      group.routes.forEach((route, memberIndex) => {
+        byRouteIndex.set(route.index, { group, memberIndex });
+      });
+    }
+  });
+  return {
+    groups,
+    validGroups: groups.filter((group) => group.valid),
+    invalidGroups: groups.filter((group) => !group.valid),
+    byRouteIndex
+  };
+}
+
+function sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX) {
+  const membership = pairAnalysis.byRouteIndex.get(route.index);
+  if (!membership) {
+    return {
+      twisted: false,
+      points: [[leftX, route.y], [rightX, route.y]],
+      svgPath: `M ${leftX} ${route.y} L ${rightX} ${route.y}`
+    };
+  }
+  const { group, memberIndex } = membership;
+  const pairMidY = average(group.routes.map((item) => item.y));
+  const separation = Math.abs(group.routes[0].y - group.routes[1].y);
+  const amplitude = clamp(separation * 0.36, 7, 12);
+  const sign = memberIndex === 0 ? -1 : 1;
+  const twistStartX = leftX + 105;
+  const twistEndX = rightX - 105;
+  const halfWaveCount = 14;
+  const halfWaveWidth = (twistEndX - twistStartX) / halfWaveCount;
+  const wavePoints = Array.from({ length: halfWaveCount + 1 }, (_, index) => [
+    twistStartX + index * halfWaveWidth,
+    pairMidY + sign * amplitude * (index % 2 ? -1 : 1)
+  ]);
+  const points = [[leftX, route.y], ...wavePoints, [rightX, route.y]];
+  return {
+    twisted: true,
+    points,
+    svgPath: smoothTwistedPairSvgPath(points)
+  };
+}
+
+function smoothTwistedPairSvgPath(points) {
+  const first = points[0];
+  const last = points[points.length - 1];
+  const wavePoints = points.slice(1, -1);
+  let path = `M ${first[0]} ${first[1]} L ${wavePoints[0][0]} ${wavePoints[0][1]}`;
+  for (let index = 1; index < wavePoints.length; index += 1) {
+    const previous = wavePoints[index - 1];
+    const current = wavePoints[index];
+    const controlX = (previous[0] + current[0]) / 2;
+    path += ` C ${controlX} ${previous[1]}, ${controlX} ${current[1]}, ${current[0]} ${current[1]}`;
+  }
+  return `${path} L ${last[0]} ${last[1]}`;
+}
+
+function twistedPairValidationNote(pairAnalysis) {
+  if (!pairAnalysis.invalidGroups.length) {
+    return "";
+  }
+  const details = pairAnalysis.invalidGroups
+    .map((group) => `${group.id} (${group.routes.length} row${group.routes.length === 1 ? "" : "s"})`)
+    .join(", ");
+  return `Twisted Pair ID must appear on exactly two wire rows. Check: ${details}.`;
+}
+
 function sheetRouteBranchLabel(row) {
   const parts = [];
+  const twistedPairId = sheetTwistedPairId(row);
+  if (twistedPairId) {
+    parts.push(`TWISTED PAIR ${twistedPairId}`);
+  }
   if (isMeaningfulSheetValue(row.branchId)) {
     parts.push(`BRANCH ${row.branchId}`);
   }
@@ -2654,6 +2760,7 @@ function buildSheetHarnessSvg(result) {
   const rightX = 1340;
   const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
   const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
+  const pairAnalysis = analyzeSheetTwistedPairs(routes);
   const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
   const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   const rowLines = routes.map((route) => {
@@ -2664,10 +2771,11 @@ function buildSheetHarnessSvg(result) {
     const label = escapeXml(route.label);
     const lengthText = row.length ? `${formatLengthInches(row.length)} in` : "";
     const branchText = sheetRouteBranchLabel(row);
+    const geometry = sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX);
     return `
       <g class="sheet-row">
-        <line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${color}"${dashed} />
-        ${colorSpec.stripeStroke ? `<line class="sheet-wire" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" stroke="${colorSpec.stripeStroke}" stroke-width="2.5" stroke-dasharray="11 9" />` : ""}
+        <path class="sheet-wire${geometry.twisted ? " sheet-wire-twisted" : ""}" d="${geometry.svgPath}" stroke="${color}"${dashed} />
+        ${colorSpec.stripeStroke ? `<path class="sheet-wire" d="${geometry.svgPath}" stroke="${colorSpec.stripeStroke}" stroke-width="2.5" stroke-dasharray="11 9" />` : ""}
         <circle class="sheet-pin" cx="${leftX}" cy="${y}" r="4" />
         <circle class="sheet-pin" cx="${rightX}" cy="${y}" r="4" />
         <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 6}">${label}</text>
@@ -2676,6 +2784,15 @@ function buildSheetHarnessSvg(result) {
         <text class="sheet-pin-label" x="${rightX + 18}" y="${y + 5}">${escapeXml(route.rightPin)}</text>
       </g>
     `;
+  }).join("");
+  const twistedPairCallouts = pairAnalysis.validGroups.map((group, index) => {
+    const midY = average(group.routes.map((route) => route.y));
+    const x = leftX + 126 + index % 2 * 154;
+    return `
+      <g class="twisted-pair-callout">
+        <rect class="twisted-pair-tag" x="${x}" y="${midY - 12}" width="140" height="24" rx="12" />
+        <text class="twisted-pair-tag-text" x="${x + 70}" y="${midY + 4}">TWISTED PAIR ${escapeXml(group.id)}</text>
+      </g>`;
   }).join("");
   const endpointBoxes = (groups, side) => groups.map((group, groupIndex) => {
     const box = sheetEndpointBoxLayout(group, routes, side);
@@ -2727,6 +2844,10 @@ function buildSheetHarnessSvg(result) {
     ? notes
     : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."]
   );
+  const pairValidationNote = twistedPairValidationNote(pairAnalysis);
+  if (pairValidationNote) {
+    generatedNotes.unshift(pairValidationNote);
+  }
   if (sharedBundle) {
     generatedNotes.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
   }
@@ -2748,6 +2869,7 @@ function buildSheetHarnessSvg(result) {
       .connector-title { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .connector-detail { fill: #333333; font: 700 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .sheet-wire { fill: none; stroke-width: 5.5; stroke-linecap: round; }
+      .sheet-wire-twisted { stroke-linejoin: round; }
       .sheet-pin { fill: #ffffff; stroke: #000000; stroke-width: 2; }
       .sheet-wire-label { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .sheet-small { fill: #333333; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
@@ -2762,6 +2884,8 @@ function buildSheetHarnessSvg(result) {
       .sleeve-id-text { fill: #111111; font: 900 18px Aptos, Segoe UI, sans-serif; text-anchor: middle; letter-spacing: 3px; }
       .lead-callout { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
       .dimension-label { fill: #111111; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .twisted-pair-tag { fill: #fffdf5; stroke: #5c4b17; stroke-width: 1.4; }
+      .twisted-pair-tag-text { fill: #3c3210; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
       .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
     </style>
@@ -2770,11 +2894,12 @@ function buildSheetHarnessSvg(result) {
   <rect class="border" x="12" y="12" width="1576" height="776" />
   <text class="title" x="46" y="58">${escapeXml(sheet.title)}</text>
   <text class="subtitle" x="46" y="92">${escapeXml(sheet.subtitle)}</text>
-  <text class="meta" x="46" y="122">Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)</text>
+  <text class="meta" x="46" y="122">Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)${pairAnalysis.validGroups.length ? ` | ${pairAnalysis.validGroups.length} twisted pair(s)` : ""}</text>
   ${endpointBoxes(leftGroups, "left")}
   ${endpointBoxes(rightGroups, "right")}
   ${protectionBundles}
   ${rowLines}
+  ${twistedPairCallouts}
   ${sharedBundleOverlay}
   <rect class="template-notes-box" x="46" y="650" width="920" height="100" />
   <text class="sheet-note-title" x="68" y="682">TEMPLATE NOTES</text>
@@ -4182,6 +4307,7 @@ function buildKiCadHarnessModel(sheet) {
   const wireStartY = isMultiGroup ? 205 : rows.length > 12 ? 180 : 208;
   const wireGap = rows.length > 12 ? 38 : rows.length > 8 ? 44 : rows.length <= 4 ? 66 : 52;
   const wires = rows.map((row, index) => ({
+    index,
     row,
     name: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
     leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
@@ -4203,6 +4329,7 @@ function buildKiCadHarnessModel(sheet) {
     leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
     maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
   }));
+  const twistedPairAnalysis = analyzeSheetTwistedPairs(wires);
   const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires, rightPositionRows);
   const hasMultipleRightConnectors = !isMultiGroup && rightConnectorGroups.length > 1;
   groups.forEach((group) => {
@@ -4217,6 +4344,7 @@ function buildKiCadHarnessModel(sheet) {
     length,
     awg,
     wires,
+    twistedPairAnalysis,
     groups,
     rightConnectorGroups,
     isMultiGroup,
@@ -4679,7 +4807,8 @@ function buildKiCadHarnessSvg(result, model) {
   const wireSvg = displayModel.wires.map((wire) => buildKiCadWireSvg(wire, {
     compact: denseLayout,
     leftPcb,
-    rightPcb
+    rightPcb,
+    pairAnalysis: displayModel.twistedPairAnalysis
   })).join("");
   const protectionTop = displayModel.wires[0].y - (denseLayout ? 18 : 30);
   const protectionBottom = displayModel.wires[displayModel.wires.length - 1].y + (denseLayout ? 18 : 30);
@@ -4853,9 +4982,11 @@ function buildKiCadSvgDisplayModel(model) {
     ...wire,
     y: top + index * gap
   }));
+  const twistedPairAnalysis = analyzeSheetTwistedPairs(wires);
   return {
     ...model,
     wires,
+    twistedPairAnalysis,
     rightConnectorGroups: (model.rightConnectorGroups || []).map((group) => ({
       ...group,
       wires: group.wires.map((wire) => wires[model.wires.indexOf(wire)]).filter(Boolean)
@@ -5335,7 +5466,8 @@ function buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups) {
 function buildKiCadWireSvg(wire, {
   compact = false,
   leftPcb = false,
-  rightPcb = false
+  rightPcb = false,
+  pairAnalysis = { byRouteIndex: new Map() }
 } = {}) {
   const color = wire.stroke;
   const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
@@ -5345,6 +5477,8 @@ function buildKiCadWireSvg(wire, {
   const wireStartX = leftPcb ? 300 : 426;
   const wireEndX = rightPcb ? 1316 : 1164;
   const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+  const routeGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
+  const twistedPairId = sheetTwistedPairId(wire.row);
   const leftTerminal = leftPcb ? "" : `
   <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
   <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
@@ -5356,9 +5490,9 @@ function buildKiCadWireSvg(wire, {
   return `
   ${leftTerminal}
   ${rightTerminal}
-  <line class="${compact ? "wire-line-compact" : "wire-line"}" x1="${wireStartX}" y1="${wire.y}" x2="${wireEndX}" y2="${wire.y}" stroke="${color}" />
-  ${colorSpec.stripeStroke ? `<line class="${compact ? "wire-stripe-compact" : "wire-stripe"}" x1="${wireStartX}" y1="${wire.y}" x2="${wireEndX}" y2="${wire.y}" stroke="${colorSpec.stripeStroke}" />` : ""}
-  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}</text>
+  <path class="${compact ? "wire-line-compact" : "wire-line"}" d="${routeGeometry.svgPath}" stroke="${color}" />
+  ${colorSpec.stripeStroke ? `<path class="${compact ? "wire-stripe-compact" : "wire-stripe"}" d="${routeGeometry.svgPath}" stroke="${colorSpec.stripeStroke}" />` : ""}
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}${twistedPairId ? ` | TWISTED PAIR ${escapeXml(twistedPairId)}` : ""}</text>
   `;
 }
 
@@ -5411,8 +5545,16 @@ function buildKiCadBomRows(model) {
 
 function buildKiCadNotes(model) {
   const comments = model.wires.map((wire) => wire.row.comments).filter(Boolean);
-  if (comments.length) {
-    return comments.slice(0, 5).map((comment) => shortLabel(comment, 90));
+  const pairNotes = [];
+  const validationNote = twistedPairValidationNote(model.twistedPairAnalysis || { invalidGroups: [] });
+  if (validationNote) {
+    pairNotes.push(validationNote);
+  }
+  if (model.twistedPairAnalysis?.validGroups.length) {
+    pairNotes.push(`TWISTED PAIR ${model.twistedPairAnalysis.validGroups.map((group) => group.id).join(", ")}: CROSSOVERS ARE SCHEMATIC; SEE COMMENTS FOR REQUIRED LAY.`);
+  }
+  if (comments.length || pairNotes.length) {
+    return [...pairNotes, ...comments].slice(0, 6).map((comment) => shortLabel(comment, 90));
   }
   return [
     `ALL WIRES TO BE ${model.awg || "SPECIFIED"} AWG, PVC INSULATED.`,
@@ -7179,6 +7321,15 @@ function buildSheetDrawioXml(result) {
   const addEdge = (id, value, x1, y1, x2, y2, style) => {
     add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry({ relative: 1, as: "geometry" }, `${mxPoint(x1, y1, "sourcePoint")}${mxPoint(x2, y2, "targetPoint")}`)));
   };
+  const addRoutedEdge = (id, value, points, style) => {
+    const intermediate = points.slice(1, -1)
+      .map((point) => `<mxPoint x="${formatDrawioCoordinate(point[0])}" y="${formatDrawioCoordinate(point[1])}" />`)
+      .join("");
+    add(mxCell({ id, value, style, edge: 1, parent: "1" }, mxGeometry(
+      { relative: 1, as: "geometry" },
+      `${mxPoint(points[0][0], points[0][1], "sourcePoint")}${mxPoint(points[points.length - 1][0], points[points.length - 1][1], "targetPoint")}${intermediate ? `<Array as="points">${intermediate}</Array>` : ""}`
+    )));
+  };
   const sheet = result.sheetHarness;
   const activeRows = sheet.rows.filter((row) => !isNoWireRow(row));
   const rows = activeRows.length ? activeRows : [{ wireName: "No drawable rows found", color: "Gray" }];
@@ -7188,6 +7339,7 @@ function buildSheetDrawioXml(result) {
   const rightX = 1340;
   const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
   const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
+  const pairAnalysis = analyzeSheetTwistedPairs(routes);
   const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
   const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   add(mxCell({ id: "0" }));
@@ -7197,7 +7349,7 @@ function buildSheetDrawioXml(result) {
   addVertex("subtitle", sheet.subtitle, 46, 72, 720, 30, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontColor=#333333;align=left;");
   addVertex(
     "template_meta",
-    `Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)`,
+    `Template-driven harness | ${leftGroups.length} left endpoint(s) | ${rightGroups.length} right endpoint(s) | ${rows.length} routed row(s)${pairAnalysis.validGroups.length ? ` | ${pairAnalysis.validGroups.length} twisted pair(s)` : ""}`,
     46,
     108,
     850,
@@ -7268,27 +7420,27 @@ function buildSheetDrawioXml(result) {
       formatWireLengthLabel(row.length),
       sheetRouteBranchLabel(row)
     ].filter(Boolean).join(" | ");
+    const geometry = sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX);
     addVertex(`left_pin_${index + 1}`, route.leftPin, leftX - 42, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
     addVertex(`right_pin_${index + 1}`, route.rightPin, rightX + 8, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
-    addEdge(
-      `sheet_wire_${index + 1}`,
-      `${hasDistinctNames ? "" : escapeHtml(leftWireName)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`,
-      leftX,
-      y,
-      rightX,
-      y,
-      `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
-    );
+    const wireLabel = `${hasDistinctNames ? "" : escapeHtml(leftWireName)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`;
+    const wireStyle = geometry.twisted
+      ? `edgeStyle=none;curved=1;rounded=1;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
+      : `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`;
+    if (geometry.twisted) {
+      addRoutedEdge(`sheet_wire_${index + 1}`, wireLabel, geometry.points, wireStyle);
+    } else {
+      addEdge(`sheet_wire_${index + 1}`, wireLabel, leftX, y, rightX, y, wireStyle);
+    }
     if (colorSpec.stripeStroke) {
-      addEdge(
-        `sheet_wire_stripe_${index + 1}`,
-        "",
-        leftX,
-        y,
-        rightX,
-        y,
-        `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`
-      );
+      const stripeStyle = geometry.twisted
+        ? `edgeStyle=none;curved=1;rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`
+        : `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`;
+      if (geometry.twisted) {
+        addRoutedEdge(`sheet_wire_stripe_${index + 1}`, "", geometry.points, stripeStyle);
+      } else {
+        addEdge(`sheet_wire_stripe_${index + 1}`, "", leftX, y, rightX, y, stripeStyle);
+      }
     }
     if (hasDistinctNames) {
       const leftLabelWidth = drawioLabelWidth(leftWireName, 10, 64, 210);
@@ -7313,6 +7465,18 @@ function buildSheetDrawioXml(result) {
         `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`
       );
     }
+  });
+  pairAnalysis.validGroups.forEach((group, index) => {
+    const midY = average(group.routes.map((route) => route.y));
+    addVertex(
+      `twisted_pair_${index + 1}_label`,
+      `<b>TWISTED PAIR ${escapeHtml(group.id)}</b>`,
+      leftX + 126 + index % 2 * 154,
+      midY - 12,
+      140,
+      24,
+      "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#5c4b17;strokeWidth=1;fontSize=9;fontStyle=1;fontColor=#3c3210;align=center;spacing=0;"
+    );
   });
   if (sharedBundle) {
     addVertex(
@@ -7376,6 +7540,10 @@ function buildSheetDrawioXml(result) {
   const noteItems = notes.length
     ? notes
     : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."];
+  const pairValidationNote = twistedPairValidationNote(pairAnalysis);
+  if (pairValidationNote) {
+    noteItems.unshift(pairValidationNote);
+  }
   if (sharedBundle) {
     noteItems.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
   }
@@ -7938,20 +8106,31 @@ function buildKiCadHarnessDrawioXml(result, model) {
     bottom: model.wires[model.wires.length - 1].y + 30
   });
   const leftIsCircular = isKiCadCircularConnector(model.leftConnector);
+  const pairAnalysis = model.twistedPairAnalysis || analyzeSheetTwistedPairs(model.wires);
   addKiCadDrawioLeftConnectorFace(addVertex, model);
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
     const crossoverX = 880 + index * 10;
     const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
-    const wirePoints = [
-      [leftIsPcb ? 300 : 426, wire.y],
-      [700, wire.y],
-      [crossoverX, wire.y],
-      [crossoverX, targetY],
-      [1100, targetY],
-      [rightIsPcb ? 1316 : 1164, targetY]
-    ];
+    const wireStartX = leftIsPcb ? 300 : 426;
+    const twistGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, 820);
+    const wirePoints = twistGeometry.twisted
+      ? [
+          ...twistGeometry.points,
+          [crossoverX, wire.y],
+          [crossoverX, targetY],
+          [1100, targetY],
+          [rightIsPcb ? 1316 : 1164, targetY]
+        ]
+      : [
+          [wireStartX, wire.y],
+          [700, wire.y],
+          [crossoverX, wire.y],
+          [crossoverX, targetY],
+          [1100, targetY],
+          [rightIsPcb ? 1316 : 1164, targetY]
+        ];
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     if (!leftIsCircular && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
@@ -7966,14 +8145,14 @@ function buildKiCadHarnessDrawioXml(result, model) {
       `wire_${index}`,
       "",
       wirePoints,
-      `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
+      `${twistGeometry.twisted ? "edgeStyle=none;curved=1" : "edgeStyle=orthogonalEdgeStyle"};rounded=1;html=1;strokeColor=${wire.stroke};strokeWidth=8;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
     );
     if (colorSpec.stripeStroke) {
       addRoutedEdge(
         `wire_stripe_${index}`,
         "",
         wirePoints,
-        `edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=3;dashed=1;dashPattern=11 9;fixDash=1;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
+        `${twistGeometry.twisted ? "edgeStyle=none;curved=1" : "edgeStyle=orthogonalEdgeStyle"};rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=3;dashed=1;dashPattern=11 9;fixDash=1;endArrow=none;startArrow=none;jumpStyle=arc;jumpSize=10;`
       );
     }
     if (!rightIsPcb) {
@@ -7983,7 +8162,8 @@ function buildKiCadHarnessDrawioXml(result, model) {
       }
     }
     const leftLabel = wire.leftName;
-    const detailLabel = `${wire.colorLabel || colorSpec.label} | ${formatWireLengthLabel(wire.length, model.length)}`;
+    const twistedPairId = sheetTwistedPairId(wire.row);
+    const detailLabel = `${wire.colorLabel || colorSpec.label} | ${formatWireLengthLabel(wire.length, model.length)}${twistedPairId ? ` | TWISTED PAIR ${twistedPairId}` : ""}`;
     const rightLabel = wire.rightName;
     const leftLabelWidth = drawioLabelWidth(leftLabel, 11, 72, 220);
     const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
@@ -8016,6 +8196,18 @@ function buildKiCadHarnessDrawioXml(result, model) {
       rightLabelWidth,
       22,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`
+    );
+  });
+  pairAnalysis.validGroups.forEach((group, index) => {
+    const midY = average(group.routes.map((wire) => wire.y));
+    addVertex(
+      `twisted_pair_${index + 1}_label`,
+      `<b>TWISTED PAIR ${escapeHtml(group.id)}</b>`,
+      520 + index % 2 * 154,
+      midY - 12,
+      140,
+      24,
+      "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#5c4b17;strokeWidth=1;fontSize=9;fontStyle=1;fontColor=#3c3210;align=center;spacing=0;"
     );
   });
   // Add pin numbers last so they remain above wires, terminals, and connector faces.
