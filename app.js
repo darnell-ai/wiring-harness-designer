@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.14";
+const APP_VERSION = "2.0.15";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -6894,7 +6894,12 @@ function maskToCanvas(mask, width, height) {
 function renderDrawioDiagram(result) {
   const fileName = fileBase(result.fileName || appState.fileName || "digiwire");
   dom.drawingTitle.textContent = result.fileName || "Editable Draw.io harness";
-  queueDrawioDiagram(buildDrawioXml(result), `${fileName}.drawio`, `${fileName}.pdf`);
+  queueDrawioDiagram(stripGeneratedDocumentationPanels(buildDrawioXml(result)), `${fileName}.drawio`, `${fileName}.pdf`);
+}
+
+function stripGeneratedDocumentationPanels(xml) {
+  const documentationCell = /<mxCell\b(?=[^>]*\bid="(?:[^"]*(?:wiring_table|route_table)[^"]*|bom|datasheet_parts|split_notes)")[\s\S]*?<\/mxCell>\s*/gi;
+  return String(xml || "").replace(documentationCell, "");
 }
 
 function renderFacts(result) {

@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.15 - 2026-07-24
+
+- Removed generated wiring-table panels from every future Draw.io harness style.
+- Removed BOM, datasheet-parts/crimp-tool, and split-harness parts/build panels so drawings contain only the harness geometry and essential labels.
+
 ## v2.0.14 - 2026-07-20
 
 - Added a full-page large-harness renderer for three or more 16-pin circular connector legs, including six 16-cavity mating faces and every conductor route.

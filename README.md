@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.14**
+Current release: **v2.0.15**
 
 ## Use The App
 
@@ -41,6 +41,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Renders two-color wire descriptions in order as striped conductors; for example, `green / white` is a green wire with a repeating white tracer stripe, while `orange / white` is orange with a white tracer.
 - Accepts a `Twisted Pair ID` column and renders every valid two-row pair as editable intertwined conductors in SVG and Draw.io, with validation notes for incomplete or overfilled pair IDs.
 - Gives large multi-leg circular harnesses a dedicated full-page drawing: all conductors remain visible, each 16-pin Subcon/CPC mating face is drawn, and documentation tables are omitted to maximize routing space.
+- Keeps all newly generated Draw.io harnesses drawing-only by omitting wiring tables, bills of materials, datasheet-parts/crimp-tool panels, and split-harness parts blocks.
 - Keeps every declared position in grouped right-side housings; an 8-pin front-lock connector with four active wires displays unused filler cavities for pins 5 through 8.
 - Groups arbitrary left and right leg IDs into separate endpoints and applies independent expando and heat-shrink bundles without requiring a cable-name-specific renderer.
 - Keeps generic template drawings readable with larger single-row endpoint boxes, separated expando labels, template notes, and a title block.
