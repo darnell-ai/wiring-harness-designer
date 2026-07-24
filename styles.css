@@ -36,7 +36,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -202,6 +203,100 @@ h1 {
   min-width: 180px;
 }
 
+.designer-panel {
+  margin: 12px 16px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fbfcf7;
+  display: grid;
+  gap: 14px;
+}
+
+.designer-panel[hidden] {
+  display: none;
+}
+
+.designer-panel-head,
+.designer-layout-row,
+.designer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.designer-panel-head strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.designer-panel-head button {
+  min-height: 34px;
+  padding: 5px 11px;
+}
+
+.designer-layout-row {
+  align-items: end;
+}
+
+.designer-layout-row label {
+  width: min(360px, 100%);
+}
+
+.layout-detection {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.connector-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.connector-editor-grid fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.connector-editor-grid legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 950;
+}
+
+.designer-panel label {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  display: grid;
+  gap: 5px;
+}
+
+.designer-panel input,
+.designer-panel select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 7px 9px;
+}
+
+.designer-actions {
+  justify-content: flex-end;
+}
+
 .pane-head strong,
 .panel-label,
 #engineBadge,
@@ -352,6 +447,10 @@ button.primary:hover:not(:disabled) {
   .drawing-pane {
     min-height: 660px;
   }
+
+  .connector-editor-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
@@ -377,6 +476,16 @@ button.primary:hover:not(:disabled) {
   #engineBadge {
     display: none;
   }
+
+  .designer-layout-row,
+  .designer-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connector-editor-grid fieldset {
+    grid-template-columns: 1fr 1fr;
+  }
 }
 
 @media print {
@@ -385,7 +494,9 @@ button.primary:hover:not(:disabled) {
   }
 
   .topbar,
-  .pane-head {
+  .pane-head,
+  .paste-table-panel,
+  .designer-panel {
     display: none !important;
   }
 

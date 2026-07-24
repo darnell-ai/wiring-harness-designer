@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.16 - 2026-07-24
+
+- Added smart paste recovery for headerless rows, repeated headers, title rows above the header, and common one-column shifts, with clear recovery feedback.
+- Added a left/right connector editor with endpoint labels, connector family, position count, front/rear view, connector sex, and key orientation.
+- Added automatic layout classification plus manual overrides for simple cables, multi-leg breakouts, large circular harnesses, and twisted-pair harnesses.
+
 ## v2.0.15 - 2026-07-24
 
 - Removed generated wiring-table panels from every future Draw.io harness style.

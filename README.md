@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.15**
+Current release: **v2.0.16**
 
 ## Use The App
 
@@ -32,6 +32,9 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
 - Loads tab-delimited rows copied from Excel, Google Sheets, or a text table immediately when Paste table is clicked.
+- Recovers headerless DIGIWIRE rows, skips repeated header rows, tolerates notes above the header, and realigns common one-column paste shifts while reporting each repair.
+- Provides a connector editor for left and right endpoint labels, connector families, 1-64 positions, front/rear view, plug/receptacle sex, and key orientation.
+- Detects simple, multi-leg, large circular, and twisted-pair layouts automatically, with a Configure control for manually choosing the drawing style.
 - Treats the first `Wire Name` column as the left-side name and a second `Wire Name` column as the right-side name, while also accepting explicit `Left Wire Name` and `Right Wire Name` headers.
 - Shows separate left and right conductor labels in Draw.io when motherboard or connector net names differ; matching names remain a single clean label.
 - Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
@@ -71,7 +74,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Warns when CPC contact sexes will not mate or when the non-sealed bare 17-14 housings are treated as IP rated.
 - Validates wire gauge against official contact ranges. Unsupported combinations such as 16 AWG Micro-Fit or 22 AWG PP15/45 are shown as red manufacturing warnings instead of being assigned an unsafe crimp contact.
 - Recognizes DC barrel power cable sheets and draws the barrel plug, center pin, outer sleeve/shell, heat-shrink ends, and wire-wrap sleeve around the conductors.
-- Recognizes straight connector-to-connector cable sheets and renders KiCad-style manufacturing drawings with connector face views, pin numbers, wire labels, wiring table, BOM, notes, and title block.
+- Recognizes straight connector-to-connector cable sheets and renders KiCad-style manufacturing drawings with connector face views, pin numbers, wire labels, and a clean drawing-only layout.
 - Recognizes multi-leg board-to-Dupont sheets and draws compact board harnesses with horizontal 1-2-3 Maestro/Dupont pin rows.
 - Applies Micro Maestro servo-header roles so Maestro/Dupont drawings label pin 1 as GND, pin 2 as V+ servo power, and pin 3 as SIG.
 - Supports the original CAN bus sketch style with CAN-H, CAN-L, GND, JST drops, no-connect PWR pins, and 120 ohm termination when detected.

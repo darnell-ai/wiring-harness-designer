@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.15";
+const APP_VERSION = "2.0.16";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -11,6 +11,19 @@ const XLSX_READER_URL = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full
 const MAX_IMAGE_SIDE = 1600;
 const SVG_WIDTH = 1600;
 const SVG_HEIGHT = 800;
+
+const CONNECTOR_EDITOR_LIBRARY = Object.freeze({
+  auto: Object.freeze({ label: "Use sheet value", shape: "auto" }),
+  microFitFront: Object.freeze({ label: "Molex Micro-Fit front lock", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MICRO-FIT FRONT LOCK` }),
+  microFitSide: Object.freeze({ label: "Molex Micro-Fit side lock", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MICRO-FIT SIDE LOCK` }),
+  miniFitJr: Object.freeze({ label: "Molex Mini-Fit Jr.", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MINI-FIT JR` }),
+  cpc: Object.freeze({ label: "TE CPC circular", shape: "circular", type: (positions) => `${positions} PIN CPC CIRCULAR CONNECTOR` }),
+  subcon: Object.freeze({ label: "Subcon / PBOF circular", shape: "circular", type: (positions) => `${positions} PIN SUBCON PBOF CIRCULAR CONNECTOR` }),
+  terminalBlock: Object.freeze({ label: "Terminal block", shape: "rectangular", type: (positions) => `${positions} POS TERMINAL BLOCK` }),
+  pcb: Object.freeze({ label: "PCB termination", shape: "pcb", type: (positions) => `${positions} POSITION PCB` }),
+  customCircular: Object.freeze({ label: "Custom circular", shape: "circular", type: (positions) => `${positions} PIN CUSTOM CIRCULAR CONNECTOR` }),
+  customRectangular: Object.freeze({ label: "Custom rectangular", shape: "rectangular", type: (positions) => `${positions} POS CUSTOM RECTANGULAR CONNECTOR` })
+});
 
 const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
   microFitFront: Object.freeze({
@@ -153,6 +166,25 @@ const POWERPOLE_HOUSING_PARTS = Object.freeze({
 
 const dom = {
   tablePasteButton: document.querySelector("#tablePasteButton"),
+  configureButton: document.querySelector("#configureButton"),
+  designerPanel: document.querySelector("#designerPanel"),
+  closeDesignerButton: document.querySelector("#closeDesignerButton"),
+  layoutModeSelect: document.querySelector("#layoutModeSelect"),
+  layoutDetectionText: document.querySelector("#layoutDetectionText"),
+  leftConnectorLabel: document.querySelector("#leftConnectorLabel"),
+  leftConnectorFamily: document.querySelector("#leftConnectorFamily"),
+  leftConnectorPositions: document.querySelector("#leftConnectorPositions"),
+  leftConnectorView: document.querySelector("#leftConnectorView"),
+  leftConnectorSex: document.querySelector("#leftConnectorSex"),
+  leftConnectorKey: document.querySelector("#leftConnectorKey"),
+  rightConnectorLabel: document.querySelector("#rightConnectorLabel"),
+  rightConnectorFamily: document.querySelector("#rightConnectorFamily"),
+  rightConnectorPositions: document.querySelector("#rightConnectorPositions"),
+  rightConnectorView: document.querySelector("#rightConnectorView"),
+  rightConnectorSex: document.querySelector("#rightConnectorSex"),
+  rightConnectorKey: document.querySelector("#rightConnectorKey"),
+  applyDesignerButton: document.querySelector("#applyDesignerButton"),
+  resetDesignerButton: document.querySelector("#resetDesignerButton"),
   pasteTablePanel: document.querySelector("#pasteTablePanel"),
   tablePasteInput: document.querySelector("#tablePasteInput"),
   closePasteTableButton: document.querySelector("#closePasteTableButton"),
@@ -182,7 +214,10 @@ let appState = {
   dataUrl: "",
   image: null,
   manualRotation: 0,
-  result: null
+  result: null,
+  sheet: null,
+  sourceName: "",
+  designerConfig: defaultDesignerConfig()
 };
 
 let ocrWorkerPromise = null;
@@ -218,6 +253,10 @@ function init() {
 
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
   dom.tablePasteButton.addEventListener("click", () => void pasteClipboardTable());
+  dom.configureButton.addEventListener("click", toggleDesignerPanel);
+  dom.closeDesignerButton.addEventListener("click", closeDesignerPanel);
+  dom.applyDesignerButton.addEventListener("click", applyDesignerConfiguration);
+  dom.resetDesignerButton.addEventListener("click", resetDesignerConfiguration);
   dom.tablePasteInput.addEventListener("input", () => {
     clearTimeout(pastedTableLoadTimer);
     const text = dom.tablePasteInput.value;
@@ -232,6 +271,8 @@ function init() {
     void handlePasteEvent(event);
   });
 
+  populateConnectorEditorLibrary();
+  writeDesignerControls(defaultDesignerConfig());
   initializeDrawioEditor();
   renderEmpty();
 }
@@ -255,8 +296,12 @@ async function loadDrawingAsset(dataUrl, fileName, revokeAfterLoad = false) {
       dataUrl,
       image,
       manualRotation: 0,
-      result: null
+      result: null,
+      sheet: null,
+      sourceName: "",
+      designerConfig: defaultDesignerConfig()
     };
+    writeDesignerControls(appState.designerConfig);
     dom.pasteButton.disabled = false;
     dom.sourceTitle.textContent = appState.fileName;
     renderSourcePreview();
@@ -317,12 +362,13 @@ async function loadHarnessSheetFile(file) {
 
     const sheet = await readHarnessSheetFile(file);
     if (!sheet.rows.length) {
-      setStatus("That sheet did not contain any data rows.");
+      setStatus(sheet.importError || "That sheet did not contain any data rows.");
       return;
     }
 
     const result = applyHarnessSheet(sheet, file.name);
-    setStatus(`Loaded ${result.tableRows.length} sheet row${result.tableRows.length === 1 ? "" : "s"} from ${file.name}.`);
+    const recovery = result.importMessages?.length ? ` ${result.importMessages.join(" ")}` : "";
+    setStatus(`Loaded ${result.tableRows.length} sheet row${result.tableRows.length === 1 ? "" : "s"} from ${file.name}.${recovery}`);
   } catch (error) {
     console.error(error);
     setStatus(error.message || "The sheet could not be loaded. Try CSV, TSV, or a standard .xlsx file.");
@@ -346,20 +392,232 @@ async function readHarnessSheetFile(file) {
 }
 
 function applyHarnessSheet(sheet, sourceName) {
-  const result = compileSheetHarnessResult(sheet, sourceName);
+  const designerConfig = designerConfigForSheet(sheet);
+  const result = compileConfiguredHarnessResult(sheet, sourceName, designerConfig);
   appState = {
     fileName: cleanFileName(sourceName),
     dataUrl: "",
     image: null,
     manualRotation: 0,
-    result
+    result,
+    sheet,
+    sourceName,
+    designerConfig
   };
+  writeDesignerControls(designerConfig);
+  updateDetectedLayout(result);
   dom.sourceTitle.textContent = cleanFileName(sourceName);
   renderDrawioDiagram(result);
   renderFacts(result);
   renderFindings(result.findings);
   renderSourcePreview(result);
   return result;
+}
+
+function defaultDesignerConfig() {
+  return {
+    layoutMode: "auto",
+    left: defaultConnectorEditorSide(),
+    right: defaultConnectorEditorSide()
+  };
+}
+
+function defaultConnectorEditorSide() {
+  return {
+    label: "",
+    family: "auto",
+    positions: 2,
+    view: "Front",
+    sex: "",
+    key: ""
+  };
+}
+
+function designerConfigForSheet(sheet) {
+  const config = defaultDesignerConfig();
+  ["left", "right"].forEach((side) => {
+    const prefix = side === "left" ? "left" : "right";
+    const pins = sheet.objects.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
+    config[side].positions = pins.length ? Math.max(...pins) : 2;
+  });
+  return config;
+}
+
+function populateConnectorEditorLibrary() {
+  const options = Object.values(CONNECTOR_EDITOR_LIBRARY)
+    .map((definition) => `<option value="${escapeHtml(definition === CONNECTOR_EDITOR_LIBRARY.auto ? "auto" : definitionKeyForEditor(definition))}">${escapeHtml(definition.label)}</option>`)
+    .join("");
+  dom.leftConnectorFamily.innerHTML = options;
+  dom.rightConnectorFamily.innerHTML = options;
+}
+
+function definitionKeyForEditor(definition) {
+  return Object.entries(CONNECTOR_EDITOR_LIBRARY).find(([, value]) => value === definition)?.[0] || "auto";
+}
+
+function toggleDesignerPanel() {
+  dom.designerPanel.hidden = !dom.designerPanel.hidden;
+}
+
+function closeDesignerPanel() {
+  dom.designerPanel.hidden = true;
+}
+
+function readDesignerControls() {
+  return {
+    layoutMode: dom.layoutModeSelect.value || "auto",
+    left: readConnectorEditorSide("left"),
+    right: readConnectorEditorSide("right")
+  };
+}
+
+function readConnectorEditorSide(side) {
+  const isLeft = side === "left";
+  return {
+    label: (isLeft ? dom.leftConnectorLabel : dom.rightConnectorLabel).value.trim(),
+    family: (isLeft ? dom.leftConnectorFamily : dom.rightConnectorFamily).value || "auto",
+    positions: clamp(Number((isLeft ? dom.leftConnectorPositions : dom.rightConnectorPositions).value) || 1, 1, 64),
+    view: (isLeft ? dom.leftConnectorView : dom.rightConnectorView).value || "Front",
+    sex: (isLeft ? dom.leftConnectorSex : dom.rightConnectorSex).value || "",
+    key: (isLeft ? dom.leftConnectorKey : dom.rightConnectorKey).value || ""
+  };
+}
+
+function writeDesignerControls(config) {
+  dom.layoutModeSelect.value = config.layoutMode || "auto";
+  writeConnectorEditorSide("left", config.left);
+  writeConnectorEditorSide("right", config.right);
+}
+
+function writeConnectorEditorSide(side, config) {
+  const isLeft = side === "left";
+  (isLeft ? dom.leftConnectorLabel : dom.rightConnectorLabel).value = config.label || "";
+  (isLeft ? dom.leftConnectorFamily : dom.rightConnectorFamily).value = config.family || "auto";
+  (isLeft ? dom.leftConnectorPositions : dom.rightConnectorPositions).value = String(config.positions || 2);
+  (isLeft ? dom.leftConnectorView : dom.rightConnectorView).value = config.view || "Front";
+  (isLeft ? dom.leftConnectorSex : dom.rightConnectorSex).value = config.sex || "";
+  (isLeft ? dom.leftConnectorKey : dom.rightConnectorKey).value = config.key || "";
+}
+
+function applyDesignerConfiguration() {
+  if (!appState.sheet) {
+    setStatus("Paste a harness table before applying drawing settings.");
+    return;
+  }
+  appState.designerConfig = readDesignerControls();
+  const result = compileConfiguredHarnessResult(appState.sheet, appState.sourceName, appState.designerConfig);
+  appState.result = result;
+  updateDetectedLayout(result);
+  renderDrawioDiagram(result);
+  renderFacts(result);
+  setStatus(`Applied ${layoutModeLabel(result.resolvedLayoutMode)} layout and connector settings.`);
+}
+
+function resetDesignerConfiguration() {
+  if (!appState.sheet) {
+    const config = defaultDesignerConfig();
+    appState.designerConfig = config;
+    writeDesignerControls(config);
+    setStatus("Drawing settings reset.");
+    return;
+  }
+  const config = designerConfigForSheet(appState.sheet);
+  appState.designerConfig = config;
+  writeDesignerControls(config);
+  const result = compileConfiguredHarnessResult(appState.sheet, appState.sourceName, config);
+  appState.result = result;
+  updateDetectedLayout(result);
+  renderDrawioDiagram(result);
+  renderFacts(result);
+  setStatus("Using connector and layout values from the sheet.");
+}
+
+function compileConfiguredHarnessResult(sheet, sourceName, config) {
+  const configuredSheet = applyConnectorEditorToSheet(sheet, config);
+  const result = compileSheetHarnessResult(configuredSheet, sourceName);
+  result.designerConfig = config;
+  result.resolvedLayoutMode = config.layoutMode === "auto"
+    ? classifySheetLayout(configuredSheet)
+    : config.layoutMode;
+  result.importMessages = sheet.importMessages || [];
+  return result;
+}
+
+function applyConnectorEditorToSheet(sheet, config) {
+  const objects = sheet.objects.map((row) => {
+    const output = { ...row };
+    applyConnectorEditorSideToRow(output, "left", config.left);
+    applyConnectorEditorSideToRow(output, "right", config.right);
+    return output;
+  });
+  return { ...sheet, objects };
+}
+
+function applyConnectorEditorSideToRow(row, side, config) {
+  const prefix = side === "left" ? "left" : "right";
+  row[`${prefix}ConnectorPositionCount`] = config.positions;
+  if (config.label) {
+    row[`${prefix}LegName`] = config.label;
+  }
+  const definition = CONNECTOR_EDITOR_LIBRARY[config.family] || CONNECTOR_EDITOR_LIBRARY.auto;
+  let type = definition.type
+    ? definition.type(config.positions)
+    : row[`${prefix}HousingType`] || "";
+  const hasPresentationOverride =
+    config.family !== "auto" ||
+    Boolean(config.sex) ||
+    Boolean(config.key) ||
+    config.view !== "Front";
+  const presentation = [
+    config.sex ? config.sex.toUpperCase() : "",
+    config.key ? `KEY ${config.key.toUpperCase()}` : "",
+    hasPresentationOverride && config.view ? `${config.view.toUpperCase()} VIEW` : ""
+  ].filter(Boolean);
+  if (presentation.length) {
+    type = `${type} ${presentation.join(" ")}`.replace(/\s+/g, " ").trim();
+  }
+  if (type) {
+    row[`${prefix}HousingType`] = type;
+  }
+}
+
+function classifySheetLayout(sheet) {
+  const rows = getKiCadWireRows(sheet.objects || sheet.rows || []);
+  if (buildLargeCircularPairHarnessModel({ rows })) {
+    return "largeCircular";
+  }
+  const groups = buildKiCadWireGroups(rows);
+  if (groups.length > 1) {
+    return "multiLeg";
+  }
+  const pairRoutes = rows.map((row, index) => ({ row, index, y: index * 24 }));
+  if (analyzeSheetTwistedPairs(pairRoutes).validGroups.length) {
+    return "twisted";
+  }
+  return rows.length <= 4 ? "simple" : "standard";
+}
+
+function layoutModeLabel(mode) {
+  return {
+    auto: "Automatic",
+    simple: "Simple cable",
+    multiLeg: "Multi-leg breakout",
+    largeCircular: "Large circular harness",
+    twisted: "Twisted-pair harness",
+    standard: "Standard harness"
+  }[mode] || "Standard harness";
+}
+
+function updateDetectedLayout(result) {
+  const requested = result.designerConfig?.layoutMode || "auto";
+  const resolved = result.resolvedLayoutMode || "standard";
+  dom.layoutDetectionText.textContent = requested === "auto"
+    ? `Detected: ${layoutModeLabel(resolved)}`
+    : `Manual override: ${layoutModeLabel(requested)}`;
+  const badge = document.querySelector("#engineBadge");
+  badge.textContent = requested === "auto"
+    ? `Auto: ${layoutModeLabel(resolved)}`
+    : `Manual: ${layoutModeLabel(requested)}`;
 }
 
 async function pasteClipboardTable() {
@@ -401,13 +659,14 @@ async function loadPastedHarnessTable(inputText = dom.tablePasteInput.value) {
     await waitForFrame();
     const sheet = normalizeSheetMatrix(parseDelimitedText(text));
     if (!sheet.rows.length) {
-      setStatus("The pasted table needs a header row and at least one data row.");
+      setStatus(sheet.importError || "No drawable wire rows were found. Include the standard header or paste complete DIGIWIRE rows.");
       return;
     }
     const result = applyHarnessSheet(sheet, "Pasted Harness Table");
     closePasteTablePanel();
     const loadedRowCount = result.sheetHarness?.rows.length || result.tableRows.length;
-    setStatus(`Loaded ${loadedRowCount} harness row${loadedRowCount === 1 ? "" : "s"}.`);
+    const recovery = result.importMessages?.length ? ` ${result.importMessages.join(" ")}` : "";
+    setStatus(`Loaded ${loadedRowCount} harness row${loadedRowCount === 1 ? "" : "s"}.${recovery}`);
   } catch (error) {
     console.error(error);
     setStatus("The pasted table could not be read. Copy the header row and data rows together, then try again.");
@@ -482,16 +741,125 @@ function normalizeSheetMatrix(matrix) {
     .map((row) => Array.from(row || []).map((cell) => String(cell ?? "").trim()))
     .filter((row) => row.some((cell) => cell !== ""));
   if (!usefulRows.length) {
-    return { headers: [], rows: [], objects: [] };
+    return { headers: [], rows: [], objects: [], importMessages: [], importError: "No table rows were found." };
+  }
+  const importMessages = [];
+  const headerIndex = usefulRows.findIndex((row, index) => index < 8 && isLikelySheetHeaderRow(row));
+  let headerRow;
+  let dataRows;
+  if (headerIndex >= 0) {
+    headerRow = usefulRows[headerIndex];
+    dataRows = usefulRows.slice(headerIndex + 1);
+    if (headerIndex > 0) {
+      importMessages.push(`Ignored ${headerIndex} row${headerIndex === 1 ? "" : "s"} above the detected header.`);
+    }
+  } else {
+    const maximumColumns = Math.max(...usefulRows.map((row) => row.length));
+    headerRow = inferredHarnessHeaders(maximumColumns, usefulRows);
+    if (!headerRow.length) {
+      return {
+        headers: [],
+        rows: [],
+        objects: [],
+        importMessages,
+        importError: `Header row missing and ${maximumColumns} columns could not be matched to the DIGIWIRE template.`
+      };
+    }
+    dataRows = usefulRows;
+    importMessages.push(`Header row missing — recovered ${usefulRows.length} data row${usefulRows.length === 1 ? "" : "s"} using the standard DIGIWIRE columns.`);
   }
   const headers = disambiguateSheetHeaders(
-    usefulRows[0].map((header) => normalizeSheetHeaderLabel(header))
+    headerRow.map((header) => normalizeSheetHeaderLabel(header))
   );
-  const rows = usefulRows.slice(1)
-    .map((row) => padRow(row, headers.length))
+  let repairedRows = 0;
+  const rows = dataRows
+    .filter((row) => !isLikelySheetHeaderRow(row))
+    .map((row) => {
+      const repaired = repairShiftedHarnessRow(row, headers);
+      if (repaired.changed) {
+        repairedRows += 1;
+      }
+      return repaired.row;
+    })
     .filter((row) => row.some((cell) => cell !== ""));
   const objects = rows.map((row) => sheetRowToObject(headers, row));
-  return { headers, rows, objects };
+  if (repairedRows) {
+    importMessages.push(`Realigned ${repairedRows} shifted row${repairedRows === 1 ? "" : "s"}.`);
+  }
+  return { headers, rows, objects, importMessages, importError: "" };
+}
+
+function isLikelySheetHeaderRow(row) {
+  const keys = row.map((value) => normalizeSheetKey(value)).filter(Boolean);
+  const normalized = row.map((value) => normalizeText(value).replace(/[^A-Z0-9]+/g, ""));
+  return keys.length >= 4 &&
+    (normalized.includes("WIRENAME") || normalized.includes("LEFTWIRENAME")) &&
+    normalized.some((value) => value.includes("PINPOS"));
+}
+
+function inferredHarnessHeaders(columnCount, sampleRows = []) {
+  const standard = getHarnessTableColumns().map((column) => column.label);
+  if (columnCount < standard.length - 1 || columnCount > standard.length + 2) {
+    return [];
+  }
+  const chartOrder = [
+    "Cable Name", "Left Leg", "Left Leg Name", "Wire Name", "Left Pin Pos #",
+    "Left Housing Type", "Left Housing Part #", "Left Pin P#", "AWGuage", "Color",
+    "Twisted Pair ID", "Length inches", "Tap Position inches", "Branch ID", "",
+    "Branch Role", "Right Leg", "Right Leg Name", "Wire Name", "Right Pin Pos #",
+    "Right Housing Type", "Right Housing Part #", "Right Pin P#", "Tool used", "Comments"
+  ];
+  const candidates = [standard, chartOrder].flatMap((headers) => [
+    headers,
+    headers.filter((header) => normalizeSheetKey(header) !== "twistedPairId")
+  ]);
+  const scored = candidates.map((headers) => {
+    const normalizedHeaders = disambiguateSheetHeaders(headers.map(normalizeSheetHeaderLabel));
+    const score = sampleRows.slice(0, 12).reduce(
+      (total, row) => total + scoreHarnessRowAlignment(padRow(row, normalizedHeaders.length), normalizedHeaders),
+      0
+    );
+    return { headers, score };
+  });
+  scored.sort((left, right) => right.score - left.score);
+  return scored[0].headers;
+}
+
+function repairShiftedHarnessRow(row, headers) {
+  const normal = {
+    row: padRow(row, headers.length),
+    changed: false
+  };
+  const candidates = [
+    normal,
+    { row: padRow(["", ...row], headers.length), changed: true },
+    { row: padRow(row.slice(1), headers.length), changed: true }
+  ];
+  const scored = candidates.map((candidate) => ({
+    ...candidate,
+    score: scoreHarnessRowAlignment(candidate.row, headers)
+  })).sort((left, right) => right.score - left.score);
+  const normalScore = scoreHarnessRowAlignment(normal.row, headers);
+  const best = scored[0];
+  return best.changed && best.score < normalScore + 4 ? normal : best;
+}
+
+function scoreHarnessRowAlignment(row, headers) {
+  const object = sheetRowToObject(headers, row);
+  let score = 0;
+  if (isMeaningfulSheetValue(object.cableName)) score += 1;
+  if (isMeaningfulSheetValue(object.leftLeg)) score += 1;
+  if (isMeaningfulSheetValue(object.leftLegName)) score += 2;
+  if (isMeaningfulSheetValue(object.wireName)) score += 4;
+  if (Number.isFinite(numericPin(object.leftPinPos))) score += 3;
+  if (isMeaningfulSheetValue(object.leftHousingType)) score += 1;
+  if (Number.isFinite(Number(String(object.awg || "").match(/\d+/)?.[0]))) score += 2;
+  if (isMeaningfulSheetValue(object.color)) score += 2;
+  if (isMeaningfulSheetValue(object.length)) score += 1;
+  if (isMeaningfulSheetValue(object.rightLegName)) score += 2;
+  if (isMeaningfulSheetValue(object.rightWireName)) score += 2;
+  if (Number.isFinite(numericPin(object.rightPinPos))) score += 3;
+  return score;
 }
 
 function normalizeSheetHeaderLabel(header) {
@@ -2728,26 +3096,30 @@ function buildGenericImageHarnessSvg(result) {
 
 function buildSheetHarnessSvg(result) {
   const sheet = result.sheetHarness;
-  if (isBarrelPowerCableSheet(sheet.rows)) {
+  const requestedLayout = result.designerConfig?.layoutMode || "auto";
+  const forceGeneric = requestedLayout === "multiLeg";
+  const preferStandard = requestedLayout === "simple" || requestedLayout === "twisted";
+  const allowLargeCircular = requestedLayout === "auto" || requestedLayout === "largeCircular";
+  if (!forceGeneric && !preferStandard && isBarrelPowerCableSheet(sheet.rows)) {
     return buildBarrelPowerCableSvg(result);
   }
-  if (isMolexUartJetsonSheet(sheet.rows)) {
+  if (!forceGeneric && !preferStandard && isMolexUartJetsonSheet(sheet.rows)) {
     return buildMolexUartJetsonSvg(result);
   }
   const largeCircularPairModel = buildLargeCircularPairHarnessModel(sheet);
-  if (largeCircularPairModel) {
+  if (allowLargeCircular && largeCircularPairModel) {
     return buildLargeCircularPairHarnessSvg(result, largeCircularPairModel);
   }
   const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(sheet);
-  if (powerBoardIsolatorModel) {
+  if (!forceGeneric && !preferStandard && powerBoardIsolatorModel) {
     return buildPowerBoardIsolatorSheetSvg(result, powerBoardIsolatorModel);
   }
   const datasheetModel = buildDatasheetConnectorHarnessModel(sheet);
-  if (datasheetModel) {
+  if (!forceGeneric && !preferStandard && datasheetModel) {
     return buildDatasheetConnectorHarnessSvg(result, datasheetModel);
   }
   const kicadModel = buildKiCadHarnessModel(sheet);
-  if (kicadModel) {
+  if (!forceGeneric && kicadModel) {
     return buildKiCadHarnessSvg(result, kicadModel);
   }
   const activeRows = sheet.rows.filter((row) => !isNoWireRow(row));
@@ -3493,6 +3865,10 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
   const highestPin = pins.length ? Math.max(...pins) : rows.length;
   const compact = text.replace(/[^A-Z0-9]+/g, "");
   let requestedPositions = 0;
+  const editorPositionCount = Math.max(
+    0,
+    ...rows.map((row) => Number(row[`${prefix}ConnectorPositionCount`]) || 0)
+  );
   if (definition.key === "microFitFront") {
     requestedPositions = Number(compact.match(/43645(\d{2})\d{2}/)?.[1] || 0);
   } else if (definition.key === "microFitSide") {
@@ -3511,8 +3887,8 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
     requestedPositions = Number(positionMatch?.[1] || highestPin || definition.minPositions);
   }
   requestedPositions = definition.key === "powerpole1545"
-    ? Math.max(requestedPositions, definition.minPositions)
-    : Math.max(requestedPositions, highestPin, definition.minPositions);
+    ? Math.max(requestedPositions, definition.minPositions, editorPositionCount)
+    : Math.max(requestedPositions, highestPin, definition.minPositions, editorPositionCount);
   let positions = requestedPositions;
   const warnings = [];
   if (definition.positionStep === 2 && positions % 2) {
@@ -4427,7 +4803,7 @@ function buildLargeCircularFaceSvg(cx, cy, name, type) {
   return `
     <g class="large-circular-face">
       <text class="connector-name" x="${cx}" y="${cy - 116}">${escapeXml(name)}</text>
-      <text class="connector-type" x="${cx}" y="${cy - 98}">${escapeXml(type)} (FRONT VIEW)</text>
+      <text class="connector-type" x="${cx}" y="${cy - 98}">${escapeXml(connectorTypeWithDefaultView(type))}</text>
       <circle class="connector-shell" cx="${cx}" cy="${cy}" r="92" />
       <rect class="connector-key" x="${cx - 16}" y="${cy - 94}" width="32" height="10" rx="3" />
       ${cavities}
@@ -4516,7 +4892,7 @@ function buildKiCadHarnessModel(sheet) {
       positionCount: leftPositionCount,
       activePositionCount: leftActivePositionCount,
       unusedPins: leftUnusedPins,
-      view: normalizeText(leftType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
+      view: connectorViewFromType(leftType)
     },
     rightConnector: {
       name: hasMultipleRightConnectors ? `${rightConnectorGroups.length} RIGHT CONNECTORS` : rightName,
@@ -4531,9 +4907,20 @@ function buildKiCadHarnessModel(sheet) {
       positionCount: rightPositionCount,
       activePositionCount: rightActivePositionCount,
       unusedPins: rightUnusedPins,
-      view: normalizeText(rightType) === "PCB" ? "SOLDER SIDE" : "FRONT VIEW"
+      view: connectorViewFromType(rightType)
     }
   };
+}
+
+function connectorViewFromType(type) {
+  const text = normalizeText(type);
+  if (text.includes("REAR VIEW")) {
+    return "REAR VIEW";
+  }
+  if (text === "PCB" || text.includes("SOLDER VIEW") || text.includes("SOLDER SIDE")) {
+    return "SOLDER SIDE";
+  }
+  return "FRONT VIEW";
 }
 
 function getKiCadConnectorPositionRows(sourceRows, activeRows, side) {
@@ -4576,7 +4963,9 @@ function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
 
 function inferKiCadDeclaredPositionCount(rows, side) {
   const prefix = side === "left" ? "left" : "right";
-  const counts = [];
+  const counts = rows
+    .map((row) => Number(row[`${prefix}ConnectorPositionCount`]) || 0)
+    .filter((count) => count >= 1 && count <= 64);
   rows.forEach((row) => {
     [
       row[`${prefix}LegName`],
@@ -5510,7 +5899,7 @@ function buildKiCadConnectorSlots(wires, connector, side) {
 
 function isKiCadCircularConnector(connector) {
   const text = normalizeText(`${connector.name} ${connector.type} ${connector.positionText}`);
-  return text.includes("CPC") || text.includes("SUBCON") || text.includes("PBOF");
+  return text.includes("CPC") || text.includes("SUBCON") || text.includes("PBOF") || text.includes("CIRCULAR");
 }
 
 function isKiCadPcbConnector(connector) {
@@ -6998,12 +7387,19 @@ function resetApp() {
     dataUrl: "",
     image: null,
     manualRotation: 0,
-    result: null
+    result: null,
+    sheet: null,
+    sourceName: "",
+    designerConfig: defaultDesignerConfig()
   };
+  writeDesignerControls(appState.designerConfig);
   dom.pasteButton.disabled = false;
   dom.tablePasteButton.disabled = false;
   dom.pasteTablePanel.hidden = true;
+  dom.designerPanel.hidden = true;
   dom.tablePasteInput.value = "";
+  dom.layoutDetectionText.textContent = "Paste a harness table to detect a layout.";
+  document.querySelector("#engineBadge").textContent = "Multi-cable engine";
   setStatus("Cleared. Paste the next Excel table or image.");
   renderEmpty();
 }
@@ -7459,26 +7855,30 @@ function buildGenericImageDrawioXml(result) {
 }
 
 function buildSheetDrawioXml(result) {
-  if (isBarrelPowerCableSheet(result.sheetHarness.rows)) {
+  const requestedLayout = result.designerConfig?.layoutMode || "auto";
+  const forceGeneric = requestedLayout === "multiLeg";
+  const preferStandard = requestedLayout === "simple" || requestedLayout === "twisted";
+  const allowLargeCircular = requestedLayout === "auto" || requestedLayout === "largeCircular";
+  if (!forceGeneric && !preferStandard && isBarrelPowerCableSheet(result.sheetHarness.rows)) {
     return buildBarrelPowerDrawioXml(result);
   }
-  if (isMolexUartJetsonSheet(result.sheetHarness.rows)) {
+  if (!forceGeneric && !preferStandard && isMolexUartJetsonSheet(result.sheetHarness.rows)) {
     return buildMolexUartJetsonDrawioXml(result);
   }
   const largeCircularPairModel = buildLargeCircularPairHarnessModel(result.sheetHarness);
-  if (largeCircularPairModel) {
+  if (allowLargeCircular && largeCircularPairModel) {
     return buildLargeCircularPairHarnessDrawioXml(result, largeCircularPairModel);
   }
   const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(result.sheetHarness);
-  if (powerBoardIsolatorModel) {
+  if (!forceGeneric && !preferStandard && powerBoardIsolatorModel) {
     return buildPowerBoardIsolatorSheetDrawioXml(result, powerBoardIsolatorModel);
   }
   const datasheetModel = buildDatasheetConnectorHarnessModel(result.sheetHarness);
-  if (datasheetModel) {
+  if (!forceGeneric && !preferStandard && datasheetModel) {
     return buildDatasheetConnectorHarnessDrawioXml(result, datasheetModel);
   }
   const kicadModel = buildKiCadHarnessModel(result.sheetHarness);
-  if (kicadModel) {
+  if (!forceGeneric && kicadModel) {
     return buildKiCadHarnessDrawioXml(result, kicadModel);
   }
   const cells = [];
@@ -8285,8 +8685,8 @@ function buildLargeCircularPairHarnessDrawioXml(result, model) {
           `${geometry.twisted ? "edgeStyle=none;curved=1;rounded=1" : "edgeStyle=orthogonalEdgeStyle;rounded=0"};html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 8;fixDash=1;endArrow=none;startArrow=none;`
         );
       }
-      addVertex(`group_${groupIndex}_left_pin_${wireIndex}`, escapeHtml(wire.fromPin), leftWireX - 48, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=right;");
-      addVertex(`group_${groupIndex}_right_pin_${wireIndex}`, escapeHtml(wire.toPin), rightWireX + 14, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=left;");
+      addVertex(`group_${groupIndex}_wire_left_pin_${wireIndex}`, escapeHtml(wire.fromPin), leftWireX - 48, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=right;");
+      addVertex(`group_${groupIndex}_wire_right_pin_${wireIndex}`, escapeHtml(wire.toPin), rightWireX + 14, wire.y - 10, 34, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#111111;align=left;");
       addVertex(`group_${groupIndex}_wire_label_${wireIndex}`, escapeHtml(label), model.width / 2 - 245, wire.y - 9, 490, 18, "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=9;fontStyle=1;fontColor=#111111;align=center;verticalAlign=middle;spacing=0;");
     });
   });
@@ -8306,12 +8706,19 @@ function buildLargeCircularPairHarnessDrawioXml(result, model) {
 
 function addLargeCircularDrawioFace(addVertex, id, cx, cy, name, type) {
   addVertex(`${id}_name`, `<b>${escapeHtml(name)}</b>`, cx - 105, cy - 128, 210, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#111111;align=center;");
-  addVertex(`${id}_type`, `${escapeHtml(type)} (FRONT VIEW)`, cx - 120, cy - 106, 240, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#333333;align=center;");
+  addVertex(`${id}_type`, escapeHtml(connectorTypeWithDefaultView(type)), cx - 120, cy - 106, 240, 20, "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#333333;align=center;");
   addVertex(`${id}_shell`, "", cx - 92, cy - 92, 184, 184, "ellipse;whiteSpace=wrap;html=1;fillColor=#eeeeee;strokeColor=#111111;strokeWidth=3;");
   addVertex(`${id}_key`, "", cx - 16, cy - 94, 32, 10, "rounded=1;arcSize=30;whiteSpace=wrap;html=1;fillColor=#111111;strokeColor=#111111;strokeWidth=1;");
   CPC_17_16_PIN_LAYOUT.forEach((position) => {
     addVertex(`${id}_pin_${position.pin}`, String(position.pin), cx + position.dx - 11, cy + position.dy - 11, 22, 22, "ellipse;whiteSpace=wrap;html=1;fillColor=#f9f9f9;strokeColor=#111111;strokeWidth=1.4;fontSize=8;fontStyle=1;fontColor=#111111;align=center;");
   });
+}
+
+function connectorTypeWithDefaultView(type) {
+  const value = String(type || "").trim();
+  return /\b(?:FRONT|REAR|SOLDER)\s+VIEW\b/i.test(value)
+    ? value
+    : `${value} (FRONT VIEW)`.trim();
 }
 
 function buildKiCadHarnessDrawioXml(result, model) {
