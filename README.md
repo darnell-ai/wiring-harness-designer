@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.17**
+Current release: **v2.0.18**
 
 ## Use The App
 
@@ -33,6 +33,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
 - Loads tab-delimited rows copied from Excel, Google Sheets, or a text table immediately when Paste table is clicked.
 - Recovers headerless DIGIWIRE rows, skips repeated header rows, tolerates notes above the header, and realigns common one-column paste shifts while reporting each repair.
+- Treats an explicitly pasted header as authoritative and only pads missing trailing cells, preventing short Excel rows from being shifted into the wrong harness fields.
 - Provides a connector editor for left and right endpoint labels, connector families, 1-64 positions, front/rear view, plug/receptacle sex, and key orientation.
 - Detects simple, multi-leg, large circular, and twisted-pair layouts automatically, with a Configure control for manually choosing the drawing style.
 - Treats the first `Wire Name` column as the left-side name and a second `Wire Name` column as the right-side name, while also accepting explicit `Left Wire Name` and `Right Wire Name` headers.

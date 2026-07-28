@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.17";
+const APP_VERSION = "2.0.18";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -773,6 +773,7 @@ function normalizeSheetMatrix(matrix) {
   }
   const importMessages = [];
   const headerIndex = usefulRows.findIndex((row, index) => index < 8 && isLikelySheetHeaderRow(row));
+  const hasExplicitHeader = headerIndex >= 0;
   let headerRow;
   let dataRows;
   if (headerIndex >= 0) {
@@ -803,7 +804,9 @@ function normalizeSheetMatrix(matrix) {
   const rows = dataRows
     .filter((row) => !isLikelySheetHeaderRow(row))
     .map((row) => {
-      const repaired = repairShiftedHarnessRow(row, headers);
+      const repaired = hasExplicitHeader
+        ? { row: padRow(row, headers.length), changed: false }
+        : repairShiftedHarnessRow(row, headers);
       if (repaired.changed) {
         repairedRows += 1;
       }
@@ -955,8 +958,11 @@ function normalizeSheetKey(header) {
     HOUSINGPART: "rightHousingPart",
     RIGHTHOUSINGPART: "rightHousingPart",
     LEFTPINP: "leftPinPart",
+    LEFTPINPART: "leftPinPart",
     PINP: "rightPinPart",
+    PINPART: "rightPinPart",
     RIGHTPINP: "rightPinPart",
+    RIGHTPINPART: "rightPinPart",
     RIGHTWIRENAME: "rightWireName",
     AWGUAGE: "awg",
     AWGGAUGE: "awg",

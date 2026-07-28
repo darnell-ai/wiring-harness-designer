@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.18 - 2026-07-28
+
+- Fixed W320 falling back to the generic 16-wire template when Excel omitted trailing blank cells from individual rows.
+- Made an explicitly pasted header authoritative so shorter rows are padded but never shifted into different columns.
+- Added `Left Pin Part#`, `Right Pin Part#`, and `Pin Part#` aliases to match the production sheet headers.
+
 ## v2.0.17 - 2026-07-28
 
 - Added the exact 13-pin PBOF 3-4-4-2 mating-face layout used by W320.
