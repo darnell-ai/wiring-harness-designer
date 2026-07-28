@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.16**
+Current release: **v2.0.17**
 
 ## Use The App
 
@@ -41,6 +41,9 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.
+- Draws 13-pin PBOF mating faces in the physical 3-4-4-2 cavity arrangement and ignores out-of-housing DNP rows above the declared 13-position capacity.
+- Recognizes RJ45 endpoints as eight-position T568B top views, showing all eight contact colors while highlighting the populated pins.
+- Automatically twists the orange/white-orange and green/white-green Ethernet pairs as TP1 and TP2 when an RJ45 endpoint is present, even if the pair IDs were left blank.
 - Renders two-color wire descriptions in order as striped conductors; for example, `green / white` is a green wire with a repeating white tracer stripe, while `orange / white` is orange with a white tracer.
 - Accepts a `Twisted Pair ID` column and renders every valid two-row pair as editable intertwined conductors in SVG and Draw.io, with validation notes for incomplete or overfilled pair IDs.
 - Gives large multi-leg circular harnesses a dedicated full-page drawing: all conductors remain visible, each 16-pin Subcon/CPC mating face is drawn, and documentation tables are omitted to maximize routing space.

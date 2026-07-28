@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.0.17 - 2026-07-28
+
+- Added the exact 13-pin PBOF 3-4-4-2 mating-face layout used by W320.
+- Added an eight-contact RJ45 T568B top-view face with the correct color order and populated-pin highlighting.
+- Limited placeholder pins to the connector capacity declared by the housing, so W320 pins 14-16 no longer expand the PBOF beyond 13 positions.
+- Automatically inferred TP1 for the orange pair and TP2 for the green pair on RJ45 harnesses when the sheet leaves `Twisted Pair ID` blank.
+- Preserved correctly aligned 25-column rows without reporting or applying a false column shift.
+
 ## v2.0.16 - 2026-07-24
 
 - Added smart paste recovery for headerless rows, repeated headers, title rows above the header, and common one-column shifts, with clear recovery feedback.

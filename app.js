@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.16";
+const APP_VERSION = "2.0.17";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -133,6 +133,33 @@ const CPC_17_16_PIN_LAYOUT = Object.freeze([
   Object.freeze({ pin: 14, dx: 60, dy: 35 }),
   Object.freeze({ pin: 15, dx: -24, dy: 70 }),
   Object.freeze({ pin: 16, dx: 24, dy: 70 })
+]);
+
+const PBOF_13_PIN_LAYOUT = Object.freeze([
+  Object.freeze({ pin: 1, dx: -54, dy: -60 }),
+  Object.freeze({ pin: 2, dx: 0, dy: -68 }),
+  Object.freeze({ pin: 3, dx: 54, dy: -60 }),
+  Object.freeze({ pin: 7, dx: -70, dy: -20 }),
+  Object.freeze({ pin: 6, dx: -24, dy: -22 }),
+  Object.freeze({ pin: 5, dx: 24, dy: -22 }),
+  Object.freeze({ pin: 4, dx: 70, dy: -20 }),
+  Object.freeze({ pin: 8, dx: -70, dy: 24 }),
+  Object.freeze({ pin: 9, dx: -24, dy: 24 }),
+  Object.freeze({ pin: 10, dx: 24, dy: 24 }),
+  Object.freeze({ pin: 11, dx: 70, dy: 24 }),
+  Object.freeze({ pin: 13, dx: -30, dy: 64 }),
+  Object.freeze({ pin: 12, dx: 30, dy: 64 })
+]);
+
+const RJ45_T568B_CONTACTS = Object.freeze([
+  Object.freeze({ pin: 1, label: "W/O", fill: "#ffffff", stripe: "#ff8c00" }),
+  Object.freeze({ pin: 2, label: "O", fill: "#ff8c00" }),
+  Object.freeze({ pin: 3, label: "W/G", fill: "#ffffff", stripe: "#009b35" }),
+  Object.freeze({ pin: 4, label: "BL", fill: "#1769d2" }),
+  Object.freeze({ pin: 5, label: "W/BL", fill: "#ffffff", stripe: "#1769d2" }),
+  Object.freeze({ pin: 6, label: "G", fill: "#009b35" }),
+  Object.freeze({ pin: 7, label: "W/BR", fill: "#ffffff", stripe: "#7b4b22" }),
+  Object.freeze({ pin: 8, label: "BR", fill: "#7b4b22" })
 ]);
 
 const RIGHT_HOUSING_PALETTE = Object.freeze([
@@ -438,7 +465,8 @@ function designerConfigForSheet(sheet) {
   ["left", "right"].forEach((side) => {
     const prefix = side === "left" ? "left" : "right";
     const pins = sheet.objects.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
-    config[side].positions = pins.length ? Math.max(...pins) : 2;
+    const declaredPositions = inferKiCadDeclaredPositionCount(sheet.objects, side);
+    config[side].positions = declaredPositions || (pins.length ? Math.max(...pins) : 2);
   });
   return config;
 }
@@ -830,6 +858,9 @@ function repairShiftedHarnessRow(row, headers) {
     row: padRow(row, headers.length),
     changed: false
   };
+  if (row.length === headers.length) {
+    return normal;
+  }
   const candidates = [
     normal,
     { row: padRow(["", ...row], headers.length), changed: true },
@@ -2219,7 +2250,26 @@ function sheetRouteLayout(rows, {
 
 function sheetTwistedPairId(row) {
   const value = String(row?.twistedPairId || "").trim();
-  return isMeaningfulSheetValue(value) ? value : "";
+  if (isMeaningfulSheetValue(value)) {
+    return value;
+  }
+  const endpointText = normalizeText([
+    row?.leftLegName,
+    row?.leftHousingType,
+    row?.rightLegName,
+    row?.rightHousingType
+  ].join(" "));
+  if (!endpointText.includes("RJ45")) {
+    return "";
+  }
+  const color = normalizeText(row?.color || row?.wireName || row?.rightWireName);
+  if (color.includes("ORANGE")) {
+    return "TP1";
+  }
+  if (color.includes("GREEN")) {
+    return "TP2";
+  }
+  return "";
 }
 
 function analyzeSheetTwistedPairs(routes) {
@@ -4826,8 +4876,8 @@ function buildKiCadHarnessModel(sheet) {
   const rightPositionRows = getKiCadConnectorPositionRows(sheet.rows, rows, "right");
   const leftPositionCount = inferKiCadConnectorPositionCount(leftPositionRows, rows, "left");
   const rightPositionCount = inferKiCadConnectorPositionCount(rightPositionRows, rows, "right");
-  const leftUnusedPins = getKiCadUnusedConnectorPins(leftPositionRows, "left");
-  const rightUnusedPins = getKiCadUnusedConnectorPins(rightPositionRows, "right");
+  const leftUnusedPins = getKiCadUnusedConnectorPins(leftPositionRows, "left", leftPositionCount);
+  const rightUnusedPins = getKiCadUnusedConnectorPins(rightPositionRows, "right", rightPositionCount);
   const leftActivePositionCount = countKiCadActiveConnectorPins(rows, "left");
   const rightActivePositionCount = countKiCadActiveConnectorPins(rows, "right");
   const groups = buildKiCadWireGroups(rows);
@@ -4914,6 +4964,9 @@ function buildKiCadHarnessModel(sheet) {
 
 function connectorViewFromType(type) {
   const text = normalizeText(type);
+  if (text.includes("RJ45")) {
+    return "TOP VIEW";
+  }
   if (text.includes("REAR VIEW")) {
     return "REAR VIEW";
   }
@@ -4945,13 +4998,20 @@ function getKiCadConnectorPositionRows(sourceRows, activeRows, side) {
 
 function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
   const prefix = side === "left" ? "left" : "right";
-  const pinLabels = uniqueValues(positionRows
+  const declaredPositions = inferKiCadDeclaredPositionCount([...positionRows, ...activeRows], side);
+  const activeSet = new Set(activeRows);
+  const capacityRows = declaredPositions
+    ? positionRows.filter((row) => {
+        const pin = numericPin(row[`${prefix}PinPos`]);
+        return activeSet.has(row) || !Number.isFinite(pin) || pin <= declaredPositions;
+      })
+    : positionRows;
+  const pinLabels = uniqueValues(capacityRows
     .map((row) => String(row[`${prefix}PinPos`] || "").trim())
     .filter(Boolean));
   const numericPins = pinLabels.map(numericPin).filter(Number.isFinite);
   const highestPin = numericPins.length ? Math.max(...numericPins) : 0;
   const reasonableHighestPin = highestPin <= Math.max(16, pinLabels.length * 2) ? highestPin : 0;
-  const declaredPositions = inferKiCadDeclaredPositionCount([...positionRows, ...activeRows], side);
   return Math.max(
     1,
     pinLabels.length,
@@ -4967,6 +5027,14 @@ function inferKiCadDeclaredPositionCount(rows, side) {
     .map((row) => Number(row[`${prefix}ConnectorPositionCount`]) || 0)
     .filter((count) => count >= 1 && count <= 64);
   rows.forEach((row) => {
+    const connectorText = normalizeText([
+      row[`${prefix}LegName`],
+      row[`${prefix}HousingType`],
+      row[`${prefix}HousingPart`]
+    ].join(" "));
+    if (connectorText.includes("RJ45")) {
+      counts.push(8);
+    }
     [
       row[`${prefix}LegName`],
       row[`${prefix}HousingType`],
@@ -4992,17 +5060,23 @@ function countKiCadActiveConnectorPins(rows, side) {
   return pins.length || rows.length;
 }
 
-function getKiCadUnusedConnectorPins(positionRows, side) {
+function getKiCadUnusedConnectorPins(positionRows, side, positionCount = 0) {
   const prefix = side === "left" ? "left" : "right";
   return uniqueValues(positionRows
     .filter(isNoWireRow)
     .map((row) => String(row[`${prefix}PinPos`] || "").trim())
-    .filter(Boolean));
+    .filter((pin) => {
+      if (!pin) {
+        return false;
+      }
+      const numeric = numericPin(pin);
+      return !positionCount || !Number.isFinite(numeric) || numeric <= positionCount;
+    }));
 }
 
 function formatKiCadConnectorPositionText(positionCount, activePositionCount, unusedPins) {
   const positions = Math.max(1, Number(positionCount) || activePositionCount || 1);
-  return unusedPins.length
+  return unusedPins.length || activePositionCount < positions
     ? `${positions} POSITION (${activePositionCount} USED)`
     : `${positions} POSITION`;
 }
@@ -5057,7 +5131,7 @@ function inferKiCadRightConnectorGroups(wires, positionRows = []) {
       return Boolean(legName && normalizeText(group.name) === legName);
     });
     group.positionCount = inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
-    group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right");
+    group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right", group.positionCount);
   });
   assignKiCadRightConnectorLayout(groups);
   return groups;
@@ -5436,9 +5510,17 @@ function buildKiCadHarnessSvg(result, model) {
       .kicad-cpc-ring { fill: #30363a; stroke: #050606; stroke-width: 4; }
       .kicad-cpc-face { fill: #202528; stroke: #71797e; stroke-width: 3; }
       .kicad-cpc-cavity { fill: #080a0a; stroke: #d4d9dc; stroke-width: 1.2; }
-      .kicad-cpc-cavity-unused { fill: #596167; stroke: #aeb4b7; stroke-width: 1.2; stroke-dasharray: 3 2; }
-      .kicad-cpc-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
-      .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .kicad-cpc-cavity-unused { fill: #596167; stroke: #aeb4b7; stroke-width: 1.2; stroke-dasharray: 3 2; }
+        .kicad-cpc-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .rj45-shell { fill: #e2f1dc; stroke: #5f8f51; stroke-width: 2.5; }
+        .rj45-insert { fill: #eef1ec; stroke: #526057; stroke-width: 1.5; }
+        .rj45-contact { stroke: #4b4b4b; stroke-width: 1.2; }
+        .rj45-contact-unused { opacity: 0.36; }
+        .rj45-tracer { stroke-width: 3; stroke-linecap: butt; }
+        .rj45-latch { fill: #287db5; stroke: #17577f; stroke-width: 1.4; }
+        .rj45-pin-number { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .rj45-color-label { fill: #31383b; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label-compact { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -5843,6 +5925,9 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
   if (isKiCadPcbConnector(connector)) {
     return buildKiCadPcbFaceSvg(x, wires, connector, side);
   }
+  if (isKiCadRj45Connector(connector)) {
+    return buildKiCadRj45ConnectorFaceSvg(x, wires, connector, side);
+  }
   if (isKiCadCircularConnector(connector)) {
     return buildKiCadCircularConnectorFaceSvg(x, wires, connector, side);
   }
@@ -5902,6 +5987,10 @@ function isKiCadCircularConnector(connector) {
   return text.includes("CPC") || text.includes("SUBCON") || text.includes("PBOF") || text.includes("CIRCULAR");
 }
 
+function isKiCadRj45Connector(connector) {
+  return normalizeText(`${connector.name} ${connector.type}`).includes("RJ45");
+}
+
 function isKiCadPcbConnector(connector) {
   const type = normalizeText(connector.type);
   const name = normalizeText(connector.name);
@@ -5909,6 +5998,41 @@ function isKiCadPcbConnector(connector) {
     type.includes("PCB TERMINATION") ||
     name.endsWith(" PCB") ||
     name.includes(" PCB ");
+}
+
+function buildKiCadRj45ConnectorFaceSvg(x, wires, connector, side) {
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = x - 18;
+  const faceY = centerY - 82;
+  const faceWidth = 216;
+  const faceHeight = 164;
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
+  const output = [
+    `<rect class="rj45-shell" x="${faceX}" y="${faceY}" width="${faceWidth}" height="${faceHeight}" rx="14" />`,
+    `<rect class="rj45-insert" x="${faceX + 14}" y="${faceY + 18}" width="${faceWidth - 28}" height="92" rx="6" />`
+  ];
+  RJ45_T568B_CONTACTS.forEach((contact, index) => {
+    const contactX = faceX + 23 + index * 22;
+    const inactiveClass = activePins.has(contact.pin) ? "" : " rj45-contact-unused";
+    output.push(`<rect class="rj45-contact${inactiveClass}" x="${contactX}" y="${faceY + 34}" width="14" height="58" rx="2" fill="${contact.fill}" />`);
+    if (contact.stripe) {
+      for (let stripe = 0; stripe < 4; stripe += 1) {
+        const stripeY = faceY + 41 + stripe * 13;
+        output.push(`<line class="rj45-tracer${inactiveClass}" x1="${contactX + 2}" y1="${stripeY}" x2="${contactX + 12}" y2="${stripeY - 4}" stroke="${contact.stripe}" />`);
+      }
+    }
+    output.push(`<text class="rj45-pin-number" x="${contactX + 7}" y="${faceY + 29}">${contact.pin}</text>`);
+    output.push(`<text class="rj45-color-label" x="${contactX + 7}" y="${faceY + 104}">${contact.label}</text>`);
+  });
+  output.push(`<rect class="rj45-latch" x="${faceX + 70}" y="${faceY + 116}" width="76" height="28" rx="3" />`);
+  output.push(`<text class="connector-unused-note" x="${faceX + faceWidth / 2}" y="${faceY + faceHeight + 18}">T568B TOP VIEW | PINS 1, 2, 3, 6 USED</text>`);
+  wires.forEach((wire) => {
+    const pin = side === "left" ? wire.fromPin : wire.toPin;
+    const pinX = side === "left" ? 348 : 1238;
+    output.push(`<text class="pin-label-compact" x="${pinX}" y="${wire.y + 4}">${escapeXml(pin)}</text>`);
+  });
+  return output.join("");
 }
 
 function buildKiCadPcbFaceSvg(x, wires, connector, side) {
@@ -5970,6 +6094,13 @@ function buildKiCadCircularConnectorFaceSvg(x, wires, connector, side) {
 }
 
 function kiCadCircularCpcPinPoint(pin, positions, centerX, centerY) {
+  if (positions === 13) {
+    const point = PBOF_13_PIN_LAYOUT.find((item) => item.pin === Number(pin));
+    return {
+      x: centerX + (point?.dx || 0),
+      y: centerY + (point?.dy || 0)
+    };
+  }
   if (positions === 16) {
     const point = CPC_17_16_PIN_LAYOUT.find((item) => item.pin === Number(pin));
     return {
@@ -8972,6 +9103,10 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
     addKiCadDrawioPcbFace(addVertex, model.rightConnector, model.wires, "right");
     return;
   }
+  if (isKiCadRj45Connector(model.rightConnector)) {
+    addKiCadDrawioRj45Face(addVertex, model.rightConnector, model.wires, "right");
+    return;
+  }
   if (isKiCadCircularConnector(model.rightConnector)) {
     const centerX = 1344;
     const centerY = (model.wires[0].y + model.wires[model.wires.length - 1].y) / 2;
@@ -9077,6 +9212,84 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
       "text;html=1;strokeColor=none;fillColor=none;fontSize=10;fontStyle=1;fontColor=#000000;align=left;"
     );
   });
+}
+
+function addKiCadDrawioRj45Face(addVertex, connector, wires, side) {
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = side === "left" ? 108 : 1282;
+  const faceY = centerY - 82;
+  const faceWidth = 216;
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
+  addVertex(
+    `${side}_rj45_shell`,
+    "",
+    faceX,
+    faceY,
+    faceWidth,
+    164,
+    "rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#e2f1dc;strokeColor=#5f8f51;strokeWidth=2.5;"
+  );
+  addVertex(
+    `${side}_rj45_insert`,
+    "",
+    faceX + 14,
+    faceY + 18,
+    faceWidth - 28,
+    92,
+    "rounded=1;arcSize=7;whiteSpace=wrap;html=1;fillColor=#eef1ec;strokeColor=#526057;strokeWidth=1.5;"
+  );
+  RJ45_T568B_CONTACTS.forEach((contact, index) => {
+    const contactX = faceX + 23 + index * 22;
+    const opacity = activePins.has(contact.pin) ? 100 : 36;
+    addVertex(
+      `${side}_rj45_contact_${contact.pin}`,
+      "",
+      contactX,
+      faceY + 34,
+      14,
+      58,
+      `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=${contact.fill};strokeColor=#4b4b4b;strokeWidth=1.2;opacity=${opacity};`
+    );
+    if (contact.stripe) {
+      addVertex(
+        `${side}_rj45_contact_${contact.pin}_tracer`,
+        "",
+        contactX + 5,
+        faceY + 36,
+        4,
+        54,
+        `rounded=0;whiteSpace=wrap;html=1;fillColor=${contact.stripe};strokeColor=${contact.stripe};opacity=${opacity};`
+      );
+    }
+    addVertex(
+      `${side}_rj45_pin_${contact.pin}`,
+      `<b>${contact.pin}</b><br><font style="font-size:7px">${contact.label}</font>`,
+      contactX - 5,
+      faceY + 9,
+      24,
+      24,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;verticalAlign=middle;"
+    );
+  });
+  addVertex(
+    `${side}_rj45_latch`,
+    "",
+    faceX + 70,
+    faceY + 116,
+    76,
+    28,
+    "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#287db5;strokeColor=#17577f;strokeWidth=1.4;"
+  );
+  addVertex(
+    `${side}_rj45_note`,
+    "T568B TOP VIEW | PINS 1, 2, 3, 6 USED",
+    faceX + 8,
+    faceY + 166,
+    faceWidth - 16,
+    20,
+    "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#4b5357;align=center;"
+  );
 }
 
 function addKiCadDrawioPcbFace(addVertex, connector, wires, side) {
