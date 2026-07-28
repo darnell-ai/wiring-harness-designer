@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.20";
+const APP_VERSION = "2.0.21";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -111,6 +111,42 @@ const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
     positionStep: 1,
     housingPart: () => "206043-1",
     drawingUrl: "https://www.te.com/en/product-206043-1.html"
+  })
+});
+
+// Housing part numbers are authoritative. These aliases and manufacturer-number
+// patterns intentionally run before any descriptive housing-type fallback so a
+// label such as "3 POS FRONT LOCK" can never override a known two-position part.
+const HOUSING_PART_CATALOG = Object.freeze({
+  WM1927ND: Object.freeze({
+    key: "miniFitSr",
+    positions: 2,
+    manufacturerPart: "42816-0212"
+  }),
+  "0428160212": Object.freeze({
+    key: "miniFitSr",
+    positions: 2,
+    manufacturerPart: "42816-0212"
+  }),
+  "428160212": Object.freeze({
+    key: "miniFitSr",
+    positions: 2,
+    manufacturerPart: "42816-0212"
+  }),
+  WM1845ND: Object.freeze({
+    key: "microFitFront",
+    positions: 2,
+    manufacturerPart: "43645-0200"
+  }),
+  "2060431": Object.freeze({
+    key: "teCpc1714",
+    positions: 14,
+    manufacturerPart: "206043-1"
+  }),
+  "2060441": Object.freeze({
+    key: "teCpc1714",
+    positions: 14,
+    manufacturerPart: "206044-1"
   })
 });
 
@@ -3837,18 +3873,21 @@ function resolveDatasheetConnector(rows, side) {
   const prefix = side === "left" ? "left" : "right";
   const sheetHousingPart = firstFilled(rows, `${prefix}HousingPart`) || "";
   const sheetPinPart = firstFilled(rows, `${prefix}PinPart`) || "";
-  const text = normalizeText(rows.map((row) => [
+  const descriptiveText = normalizeText(rows.map((row) => [
     row[`${prefix}LegName`],
-    row[`${prefix}HousingType`],
-    row[`${prefix}HousingPart`],
-    row[`${prefix}PinPart`]
+    row[`${prefix}HousingType`]
   ].join(" ")).join(" "));
-  const key = datasheetConnectorKey(text);
+  const partCatalogEntry = resolveHousingPartCatalogEntry(sheetHousingPart);
+  const hasHousingPart = isUsableHousingPartNumber(sheetHousingPart);
+  const key = partCatalogEntry?.key || (!hasHousingPart ? datasheetConnectorKey(descriptiveText) : "");
   if (!key) {
-    return null;
+    return hasHousingPart
+      ? buildUnknownPartDatasheetConnector(rows, side, sheetHousingPart)
+      : null;
   }
   const definition = DATASHEET_CONNECTOR_LIBRARY[key];
-  const inferred = inferDatasheetConnectorPositions(rows, side, text, definition);
+  const text = normalizeText(`${descriptiveText} ${sheetHousingPart} ${sheetPinPart}`);
+  const inferred = inferDatasheetConnectorPositions(rows, side, text, definition, partCatalogEntry);
   const gauge = Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]);
   const termination = datasheetTerminationForGauge(key, gauge, { text, sheetPinPart });
   const name = cleanConnectorName(
@@ -3886,7 +3925,7 @@ function resolveDatasheetConnector(rows, side) {
       ? powerpoleParts.map((item) => `${item.color} ${item.part}`).join(", ") || definition.housingPart(inferred.positions)
       : cpcVariant?.housingPart
         ? cpcVariant.housingPart
-      : definition.housingPart(inferred.positions),
+      : partCatalogEntry?.manufacturerPart || definition.housingPart(inferred.positions),
     engineeringPart: definition.engineeringPart ? definition.engineeringPart(inferred.positions) : "",
     contactPart: termination.contactPart,
     contactDescription: termination.contactDescription,
@@ -3901,6 +3940,8 @@ function resolveDatasheetConnector(rows, side) {
     flange: Boolean(cpcVariant?.flange),
     warnings,
     recognized: true,
+    resolutionSource: partCatalogEntry ? "housing-part-number" : "housing-type-fallback",
+    lookupUrl: buildDigiKeyPartLookupUrl(sheetHousingPart || partCatalogEntry?.manufacturerPart || definition.housingPart(inferred.positions)),
     side
   };
 }
@@ -3942,6 +3983,9 @@ function datasheetConnectorPartLabel(connector) {
 }
 
 function datasheetConnectorViewLabel(connector) {
+  if (connector.key === "catalogUnknown") {
+    return "PART-NUMBER PROFILE REQUIRED - HOUSING SHAPE NOT GUESSED";
+  }
   if (connector.view === "rear") {
     return "REAR / WIRE-ENTRY VIEW - PIN POSITIONS";
   }
@@ -3999,28 +4043,101 @@ function datasheetConnectorKey(text) {
   return "";
 }
 
-function inferDatasheetConnectorPositions(rows, side, text, definition) {
+function normalizeHousingPartNumber(value) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function isUsableHousingPartNumber(value) {
+  const normalized = normalizeHousingPartNumber(value);
+  return Boolean(normalized) && !["TBD", "NA", "NONE", "VERIFY", "UNKNOWN"].includes(normalized);
+}
+
+function resolveHousingPartCatalogEntry(value) {
+  const compact = normalizeHousingPartNumber(value);
+  if (!compact) {
+    return null;
+  }
+  if (HOUSING_PART_CATALOG[compact]) {
+    return HOUSING_PART_CATALOG[compact];
+  }
+  const powerpolePart = compact
+    .replace(/^2243/, "")
+    .replace(/ND$/, "")
+    .replace(/BK$/, "")
+    .replace(/^45/, "");
+  if (/^1327(?:G\d+)?(?:FP)?$/.test(powerpolePart)) {
+    return {
+      key: "powerpole1545",
+      positions: 0,
+      manufacturerPart: String(value || "").trim()
+    };
+  }
+
+  let match = compact.match(/^0?43645(\d{2})00$/);
+  if (match) {
+    return {
+      key: "microFitFront",
+      positions: Number(match[1]),
+      manufacturerPart: `43645-${match[1]}00`
+    };
+  }
+  match = compact.match(/^0?43025(\d{2})00$/);
+  if (match) {
+    return {
+      key: "microFitSide",
+      positions: Number(match[1]),
+      manufacturerPart: `43025-${match[1]}00`
+    };
+  }
+  match = compact.match(/^0?42816(\d{2})12$/);
+  if (match) {
+    return {
+      key: "miniFitSr",
+      positions: Number(match[1]),
+      manufacturerPart: `42816-${match[1]}12`
+    };
+  }
+  match = compact.match(/^39012(\d{3})$/);
+  if (match && Number(match[1]) % 10 === 0) {
+    const positions = Number(match[1]) / 10;
+    return {
+      key: "miniFitJr",
+      positions,
+      manufacturerPart: `39-01-${2000 + positions * 10}`
+    };
+  }
+  return null;
+}
+
+function buildDigiKeyPartLookupUrl(partNumber) {
+  const part = String(partNumber || "").trim();
+  return part
+    ? `https://www.digikey.com/en/products/result?keywords=${encodeURIComponent(part)}`
+    : "https://www.digikey.com/en/products";
+}
+
+function inferDatasheetConnectorPositions(rows, side, text, definition, partCatalogEntry = null) {
   const prefix = side === "left" ? "left" : "right";
   const pins = rows
     .map((row) => numericPin(row[`${prefix}PinPos`]))
     .filter(Number.isFinite);
   const highestPin = pins.length ? Math.max(...pins) : rows.length;
   const compact = text.replace(/[^A-Z0-9]+/g, "");
-  let requestedPositions = 0;
+  let requestedPositions = Number(partCatalogEntry?.positions || 0);
   const editorPositionCount = Math.max(
     0,
     ...rows.map((row) => Number(row[`${prefix}ConnectorPositionCount`]) || 0)
   );
-  if (definition.key === "microFitFront") {
+  if (!requestedPositions && definition.key === "microFitFront") {
     requestedPositions = Number(compact.match(/43645(\d{2})\d{2}/)?.[1] || 0);
-  } else if (definition.key === "microFitSide") {
+  } else if (!requestedPositions && definition.key === "microFitSide") {
     requestedPositions = Number(compact.match(/43025(\d{2})\d{2}/)?.[1] || 0);
-  } else if (definition.key === "miniFitSr") {
+  } else if (!requestedPositions && definition.key === "miniFitSr") {
     requestedPositions = Number(compact.match(/42816(\d{2})12/)?.[1] || 0);
-  } else if (definition.key === "miniFitJr") {
+  } else if (!requestedPositions && definition.key === "miniFitJr") {
     const skuSuffix = Number(compact.match(/39012(\d{3})/)?.[1] || 0);
     requestedPositions = skuSuffix ? skuSuffix / 10 : 0;
-  } else if (definition.key === "teCpc1714") {
+  } else if (!requestedPositions && definition.key === "teCpc1714") {
     requestedPositions = 14;
   }
   if (definition.key === "powerpole1545") {
@@ -4032,7 +4149,9 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
   }
   requestedPositions = definition.key === "powerpole1545"
     ? Math.max(requestedPositions, definition.minPositions, editorPositionCount)
-    : Math.max(requestedPositions, highestPin, definition.minPositions, editorPositionCount);
+    : partCatalogEntry
+      ? Math.max(requestedPositions, definition.minPositions)
+      : Math.max(requestedPositions, highestPin, definition.minPositions, editorPositionCount);
   let positions = requestedPositions;
   const warnings = [];
   if (definition.positionStep === 2 && positions % 2) {
@@ -4283,6 +4402,49 @@ function buildGenericDatasheetConnector(rows, side) {
     powerpoleParts: [],
     warnings: [`${side.toUpperCase()} connector was not recognized; its face is shown generically.`],
     recognized: false,
+    side
+  };
+}
+
+function buildUnknownPartDatasheetConnector(rows, side, sheetHousingPart) {
+  const prefix = side === "left" ? "left" : "right";
+  const pins = rows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
+  const explicitPositions = Math.max(
+    0,
+    ...rows.map((row) => Number(row[`${prefix}ConnectorPositionCount`]) || 0)
+  );
+  const typeText = normalizeText(firstFilled(rows, `${prefix}HousingType`));
+  const typePositions = Number(typeText.match(/\b(\d{1,2})\s*(?:POS|POSITION|PIN|CIRCUIT)\b/)?.[1] || 0);
+  const positions = clamp(explicitPositions || typePositions || (pins.length ? Math.max(...pins) : rows.length), 1, 16);
+  const partNumber = String(sheetHousingPart || "").trim();
+  return {
+    key: "catalogUnknown",
+    definition: {
+      key: "catalogUnknown",
+      manufacturer: "",
+      family: "UNMATCHED HOUSING PART",
+      style: "part-number placeholder",
+      pitch: "VERIFY",
+      rows: positions > 8 ? 2 : 1
+    },
+    name: cleanConnectorName(firstFilled(rows, `${prefix}LegName`) || `${side.toUpperCase()} CONNECTOR`),
+    type: partNumber,
+    view: resolveDatasheetConnectorView(rows, side),
+    positions,
+    requestedPositions: positions,
+    sheetHousingPart: partNumber,
+    sheetPinPart: firstFilled(rows, `${prefix}PinPart`) || "",
+    housingPart: partNumber,
+    engineeringPart: "",
+    contactPart: firstFilled(rows, `${prefix}PinPart`) || "VERIFY",
+    contactDescription: "Verify against the connector manufacturer datasheet.",
+    toolPart: firstFilled(rows, "toolUsed") || "VERIFY",
+    gauge: Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]),
+    powerpoleParts: [],
+    warnings: [`No stored housing profile matches ${partNumber}. The generic housing type was ignored so the drawing does not show the wrong connector.`],
+    recognized: false,
+    resolutionSource: "unknown-housing-part-number",
+    lookupUrl: buildDigiKeyPartLookupUrl(partNumber),
     side
   };
 }
@@ -4607,6 +4769,21 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
         <path class="powerpole-contact" d="M ${x + 9} ${y + 22} H ${x + geometry.moduleWidth - 9} L ${x + geometry.moduleWidth - 12} ${y + 16} H ${x + 12} Z" />
         <text class="ds-cavity-number" x="${x + geometry.moduleWidth / 2}" y="${y + geometry.moduleHeight - 8}" fill="${textFill}"></text>`);
     }
+  } else if (connector.key === "catalogUnknown") {
+    output.push(`
+      <rect class="unknown-part-body" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="9" />
+      <text class="unknown-part-label" x="${geometry.centerX}" y="${geometry.y + 17}">NO STORED PART PROFILE</text>`);
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      output.push(`
+        <rect class="unknown-part-cavity" x="${point.x - 15}" y="${point.y - 9}" width="30" height="18" rx="4" stroke="${active?.stroke || "#879097"}" stroke-width="${active ? 3.5 : 1.3}" />
+        <text class="unknown-part-pin" x="${point.x}" y="${point.y + 4}">${pin}</text>`);
+    }
+    output.push(`
+      <a href="${escapeXml(connector.lookupUrl)}" target="_blank">
+        <text class="unknown-part-link" x="${geometry.centerX}" y="${geometry.y + geometry.height + 42}">LOOK UP ${escapeXml(shortLabel(connector.housingPart, 24))} ON DIGIKEY</text>
+      </a>`);
   } else if (connector.key === "miniFitSr") {
     const rearView = connector.view === "rear";
     output.push(`
@@ -4722,6 +4899,11 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       .ds-connector-name { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .ds-connector-part { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .ds-connector-detail { fill: #3d4448; font: 800 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .unknown-part-body { fill: #f7f9fa; stroke: #7a858c; stroke-width: 3; stroke-dasharray: 8 6; }
+      .unknown-part-label { fill: #b42318; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .unknown-part-cavity { fill: #ffffff; stroke-dasharray: 4 3; }
+      .unknown-part-pin { fill: #222222; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .unknown-part-link { fill: #005ea8; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; text-decoration: underline; }
       .microfit-body { fill: #25292c; stroke: #050505; stroke-width: 3; }
       .minifit-body { fill: #ded9c9; stroke: #111111; stroke-width: 3; }
       .microfit-lock { fill: #353a3d; stroke: #050505; stroke-width: 2.5; }
@@ -8804,7 +8986,11 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
 
 function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
-  const heading = `${connector.name}<br><b>${datasheetConnectorPartLabel(connector)}</b><br>${connector.definition.family} | ${connector.positions} POS | ${connector.definition.pitch}`;
+  const partLabel = escapeHtml(datasheetConnectorPartLabel(connector));
+  const headingPart = connector.key === "catalogUnknown" && connector.lookupUrl
+    ? `<a href="${escapeHtml(connector.lookupUrl)}"><b>${partLabel}</b></a>`
+    : `<b>${partLabel}</b>`;
+  const heading = `${escapeHtml(connector.name)}<br>${headingPart}<br>${escapeHtml(connector.definition.family)} | ${connector.positions} POS | ${escapeHtml(connector.definition.pitch)}`;
   addVertex(
     `${side}_datasheet_heading`,
     heading,
@@ -8911,6 +9097,38 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
         "rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#101314;strokeColor=#000000;strokeWidth=1;"
       );
     }
+  } else if (connector.key === "catalogUnknown") {
+    addVertex(
+      `${side}_unknown_part_body`,
+      "<font color=\"#b42318\"><b>NO STORED<br>PART PROFILE</b></font>",
+      geometry.x,
+      geometry.y,
+      geometry.width,
+      geometry.height,
+      "rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f7f9fa;strokeColor=#7a858c;strokeWidth=3;dashed=1;dashPattern=8 6;fontSize=8;align=center;verticalAlign=top;spacingTop=5;"
+    );
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      addVertex(
+        `${side}_unknown_part_cavity_${pin}`,
+        String(pin),
+        point.x - 15,
+        point.y - 9,
+        30,
+        18,
+        `rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${active?.stroke || "#879097"};strokeWidth=${active ? 3 : 1};dashed=1;fontColor=#222222;fontStyle=1;fontSize=8;`
+      );
+    }
+    addVertex(
+      `${side}_unknown_part_lookup`,
+      `<a href="${escapeHtml(connector.lookupUrl)}"><b>LOOK UP ${escapeHtml(shortLabel(connector.housingPart, 24))} ON DIGIKEY</b></a>`,
+      geometry.centerX - 125,
+      geometry.y + geometry.height + 31,
+      250,
+      22,
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontColor=#005ea8;align=center;"
+    );
   } else if (connector.key === "miniFitSr") {
     const rearView = connector.view === "rear";
     addVertex(

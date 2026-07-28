@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.21 - 2026-07-28
+
+- Made left and right housing part numbers authoritative when selecting connector geometry; generic housing descriptions can no longer override a known part.
+- Added exact aliases and manufacturer-series matching for supported Molex Mini-Fit Sr., Mini-Fit Jr., Micro-Fit, and TE CPC housings.
+- Added a non-misleading unknown-part connector face with the submitted part number and a direct DigiKey lookup link instead of guessing a connector family.
+- Documented the protected DigiKey API requirement: automatic catalog ingestion needs a server-side OAuth integration and cannot safely run with embedded credentials on GitHub Pages.
+
 ## v2.0.20 - 2026-07-28
 
 - Recognized `WM1927-ND` / Molex `42816-0212` as a two-position Mini-Fit Sr. receptacle instead of a Micro-Fit housing.
