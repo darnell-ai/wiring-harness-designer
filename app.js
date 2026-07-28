@@ -973,8 +973,14 @@ function normalizeSheetKey(header) {
     TWISTEDPAIR: "twistedPairId",
     TWISTPAIR: "twistedPairId",
     PAIRID: "twistedPairId",
+    LENGTH: "length",
     LENGTHINCHES: "length",
+    LENGTHFEET: "length",
+    LENGTHINORFT: "length",
+    LENGTHINCHESORFEET: "length",
     TAPPOSITIONINCHES: "tapPosition",
+    TAPPOSITION: "tapPosition",
+    TAPPOSITIONINORFT: "tapPosition",
     BRANCHID: "branchId",
     BRANCHROLE: "branchRole",
     RIGHTLEG: "rightLeg",
@@ -1827,8 +1833,8 @@ function getHarnessTableColumns() {
     { key: "awg", label: "AWGuage" },
     { key: "color", label: "Color" },
     { key: "twistedPairId", label: "Twisted Pair ID" },
-    { key: "length", label: "Length inches" },
-    { key: "tapPosition", label: "Tap Position inches" },
+    { key: "length", label: "Length (in or ft)" },
+    { key: "tapPosition", label: "Tap Position (in or ft)" },
     { key: "branchId", label: "Branch ID" },
     { key: "spacer", label: "" },
     { key: "branchRole", label: "Branch Role" },
@@ -2229,7 +2235,7 @@ function sheetLengthSummary(rows) {
   const values = uniqueValues(rows
     .map((row) => row.length)
     .filter(isMeaningfulSheetValue)
-    .map((length) => `${formatLengthInches(length)} in`));
+    .map((length) => formatLengthMeasurement(length)));
   if (!values.length) {
     return "";
   }
@@ -2379,7 +2385,7 @@ function sheetRouteBranchLabel(row) {
     parts.push(row.branchRole);
   }
   if (isMeaningfulSheetValue(row.tapPosition)) {
-    parts.push(`TAP @ ${formatLengthInches(row.tapPosition)} in`);
+    parts.push(`TAP @ ${formatLengthMeasurement(row.tapPosition)}`);
   }
   return parts.join(" | ");
 }
@@ -2773,7 +2779,7 @@ function buildPowerBoardIso154xSvg(result) {
       wire.name,
       wire.colorName,
       wire.awg,
-      `${wire.length} in`,
+      formatLengthMeasurement(wire.length),
       wire.targetPin
     ];
   });
@@ -3202,7 +3208,7 @@ function buildSheetHarnessSvg(result) {
     const color = colorSpec.baseStroke;
     const dashed = isNoWireRow(row) ? ` stroke-dasharray="12 9"` : "";
     const label = escapeXml(route.label);
-    const lengthText = row.length ? `${formatLengthInches(row.length)} in` : "";
+    const lengthText = row.length ? formatLengthMeasurement(row.length) : "";
     const branchText = sheetRouteBranchLabel(row);
     const geometry = sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX);
     return `
@@ -3450,7 +3456,7 @@ function buildMolexUartJetsonSvg(result) {
     const wireY = wireYs[index] ?? 248 + index * 56;
     const color = sheetColorToStroke(row.color);
     const label = sheetRowWireName(row) || `WIRE ${index + 1}`;
-    const length = row.length ? `${row.length} in`.replace(/\s+inches?\s+in$/i, " inches") : "";
+    const length = row.length ? formatLengthMeasurement(row.length) : "";
     return `
       <path class="sheet-wire" d="M ${leftPoint.x} ${leftPoint.y} L 316 ${wireY} L 1192 ${wireY} L 1260 ${rightPoint.y} L ${rightPoint.x} ${rightPoint.y}" stroke="${color}" />
       <circle class="sheet-pin" cx="${leftPoint.x}" cy="${leftPoint.y}" r="5" />
@@ -3611,7 +3617,7 @@ function buildPowerBoardIsolatorSheetSvg(result, model) {
     wire.name,
     wire.colorName,
     wire.awg,
-    `${formatLengthInches(wire.length)} in`,
+    formatLengthMeasurement(wire.length),
     wire.targetPin
   ]);
 
@@ -3674,7 +3680,7 @@ function buildPowerBoardIsolatorSheetSvg(result, model) {
   <circle class="test-core" cx="300" cy="276" r="3.5" />
 
   <path class="dim-line" d="M 365 126 L 975 126" marker-start="url(#arrow)" marker-end="url(#arrow)" />
-  <text class="dim-label" x="670" y="116">${escapeXml(formatLengthInches(model.topLength))} in</text>
+  <text class="dim-label" x="670" y="116">${escapeXml(formatLengthMeasurement(model.topLength))}</text>
   ${buildHorizontalProtectionSvg({
     x1: 382,
     x2: 930,
@@ -3712,7 +3718,7 @@ function buildPowerBoardIsolatorSheetSvg(result, model) {
     bandWidth: 22
   })}
   <path class="dim-line" d="M 365 554 L 975 554" marker-start="url(#arrow)" marker-end="url(#arrow)" />
-  <text class="dim-label" x="670" y="544">${escapeXml(formatLengthInches(model.bottomLength))} in</text>
+  <text class="dim-label" x="670" y="544">${escapeXml(formatLengthMeasurement(model.bottomLength))}</text>
 
   ${wirePaths}
 
@@ -4535,7 +4541,7 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
     wire.name,
     wire.colorLabel || wire.colorName,
     wire.awg || model.gauge || "",
-    formatLengthInches(wire.length || model.length),
+    formatLengthMeasurement(wire.length || model.length),
     wire.toPin
   ]);
   const parts = buildDatasheetPartsPanelLines(model);
@@ -5307,7 +5313,8 @@ function isRepeatedHeaderSheetRow(row) {
     labels.includes("LEFT PIN POS #") ||
     labels.includes("RIGHT PIN POS #") ||
     labels.includes("AWGUAGE") ||
-    labels.includes("LENGTH INCHES");
+    labels.includes("LENGTH INCHES") ||
+    labels.includes("LENGTH (IN OR FT)");
 }
 
 function buildKiCadWireGroups(rows) {
@@ -5445,7 +5452,7 @@ function buildKiCadHarnessSvg(result, model) {
     wire.name,
     { text: wire.colorLabel || wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
     wire.awg || displayModel.awg || "",
-    formatLengthInches(wire.length || displayModel.length),
+    formatLengthMeasurement(wire.length || displayModel.length),
     wire.toPin
   ]);
   const bomRows = buildKiCadBomRows(displayModel);
@@ -5590,7 +5597,7 @@ function buildKiCadHarnessSvg(result, model) {
   <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
   <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
   <rect class="dim-label-bg" x="630" y="112" width="332" height="28" rx="5" />
-  <text class="dim-text" x="796" y="132">OVERALL LENGTH: ${escapeXml(formatLengthInches(displayModel.length))} in +/-0.25</text>
+  <text class="dim-text" x="796" y="132">OVERALL LENGTH: ${escapeXml(formatLengthMeasurement(displayModel.length))} +/-0.25 in</text>
 
   ${buildHorizontalProtectionSvg({
     x1: 452,
@@ -5647,7 +5654,7 @@ function buildKiCadDenseDocumentationSvg(model) {
 function buildKiCadCompactWiringTableSvg(x, y, width, height, model) {
   const rowGap = 8.2;
   const rows = model.wires.map((wire, index) =>
-    `<text class="compact-doc-text" x="${x + 12}" y="${y + 43 + index * rowGap}">${escapeXml(`${wire.fromPin} | ${wire.name} | ${wire.colorLabel || wire.colorName} | ${wire.awg || model.awg || ""} | ${formatLengthInches(wire.length || model.length)} in | ${wire.toPin}`)}</text>`
+    `<text class="compact-doc-text" x="${x + 12}" y="${y + 43 + index * rowGap}">${escapeXml(`${wire.fromPin} | ${wire.name} | ${wire.colorLabel || wire.colorName} | ${wire.awg || model.awg || ""} | ${formatLengthMeasurement(wire.length || model.length)} | ${wire.toPin}`)}</text>`
   ).join("");
   return `
     <rect class="table-outline" x="${x}" y="${y}" width="${width}" height="${height}" />
@@ -5697,7 +5704,7 @@ function buildKiCadSummaryTitleBlockSvg(x, y, width, height, model) {
     <text class="title-block-small" x="${descriptionEnd + (drawnByEnd - descriptionEnd) / 2}" y="${y + 32}">DIGIWIRE</text>
     <text class="title-block-label" x="${drawnByEnd + 9}" y="${y + 15}">REV:</text>
     <text class="title-block-text" x="${drawnByEnd + (x + width - drawnByEnd) / 2}" y="${y + 34}">A</text>
-    <text class="title-block-small" x="${x + width / 2}" y="${y + 76}">SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${escapeXml(model.cableName)}</text>`;
+    <text class="title-block-small" x="${x + width / 2}" y="${y + 76}">SHEET: 1 OF 1 | SCALE: NONE | UNITS: AS SHOWN | DWG NO. ${escapeXml(model.cableName)}</text>`;
 }
 
 function buildKiCadMultiGroupSvg(result, model) {
@@ -5713,7 +5720,7 @@ function buildKiCadMultiGroupSvg(result, model) {
     wire.name,
     { text: wire.colorLabel || wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
     wire.awg || model.awg || "",
-    formatLengthInches(wire.length || model.length),
+    formatLengthMeasurement(wire.length || model.length),
     formatBoardPin(wire)
   ]);
   const noteText = uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 2).join(" | ");
@@ -5787,7 +5794,7 @@ function buildKiCadMultiGroupSvg(result, model) {
   <line class="dim-ext" x1="355" y1="134" x2="355" y2="176" />
   <line class="dim-ext" x1="1198" y1="134" x2="1198" y2="176" />
   <line class="dimension" x1="365" y1="146" x2="1188" y2="146" />
-  <text class="dim-text" x="776" y="128">${escapeXml(formatLengthInches(model.length))} in +/-0.25</text>
+  <text class="dim-text" x="776" y="128">${escapeXml(formatLengthMeasurement(model.length))} +/-0.25 in</text>
   <text class="dim-text" x="776" y="166">OVERALL LENGTH</text>
 
   ${buildHorizontalProtectionSvg({
@@ -5922,7 +5929,7 @@ function buildKiCadCompactTitleBlockSvg(x, y, width, height, model) {
   <text class="title-block-text" x="${revX + 92}" y="${y + 22}">A</text>
   <text class="title-block-label" x="${x + 12}" y="${y + 52}">SHEET: 1 OF 1</text>
   <text class="title-block-label" x="${x + 150}" y="${y + 52}">SCALE: NONE</text>
-  <text class="title-block-label" x="${x + 278}" y="${y + 52}">UNITS: INCH</text>
+  <text class="title-block-label" x="${x + 278}" y="${y + 52}">UNITS: AS SHOWN</text>
   <text class="title-block-label" x="${midX + 12}" y="${y + 52}">DWG NO.</text>
   <text class="title-block-small" x="${midX + 160}" y="${y + 54}">${escapeXml(model.cableName)}</text>`;
 }
@@ -6245,7 +6252,7 @@ function buildKiCadNotes(model) {
     `ALL WIRES TO BE ${model.awg || "SPECIFIED"} AWG, PVC INSULATED.`,
     `CRIMP CONTACTS USING APPROPRIATE ${model.leftConnector.type || model.leftConnector.name} CRIMP TOOL.`,
     "VERIFY CONTINUITY AND CORRECT PIN ORIENTATION.",
-    `ALL WIRES TO BE CUT TO ${formatLengthInches(model.length)} +/-0.25 in.`,
+    `ALL WIRES TO BE CUT TO ${formatLengthMeasurement(model.length)} +/-0.25 in.`,
     "NO SPLICES OR BRANCHES PERMITTED.",
     `LABEL CABLE AS "${model.cableName}" USING HEAT SHRINK OR TAG.`
   ];
@@ -6396,17 +6403,34 @@ function normalizeColorName(color) {
   return wireColorSpec(color).baseName;
 }
 
-function formatLengthInches(length) {
-  const value = Number(String(length || "").replace(/[^0-9.]+/g, ""));
-  if (!Number.isFinite(value)) {
-    return String(length || "TBD");
+function parseLengthMeasurement(length, defaultUnit = "in") {
+  const raw = String(length ?? "").trim();
+  const numericText = raw.replace(/,/g, "").match(/[+-]?(?:\d+(?:\.\d*)?|\.\d+)/)?.[0] || "";
+  const value = Number(numericText);
+  const normalized = normalizeText(raw);
+  const unit = /\b(?:FT|FOOT|FEET)\b/.test(normalized) || raw.includes("'")
+    ? "ft"
+    : /\b(?:IN|INCH|INCHES)\b/.test(normalized) || raw.includes("\"")
+      ? "in"
+      : defaultUnit;
+  return {
+    raw,
+    value,
+    unit
+  };
+}
+
+function formatLengthMeasurement(length, defaultUnit = "in") {
+  const parsed = parseLengthMeasurement(length, defaultUnit);
+  if (!Number.isFinite(parsed.value)) {
+    return parsed.raw || "TBD";
   }
-  return value.toFixed(2);
+  return `${parsed.value.toFixed(2)} ${parsed.unit}`;
 }
 
 function formatWireLengthLabel(length, fallback = "") {
   const value = isMeaningfulSheetValue(length) ? length : fallback;
-  return isMeaningfulSheetValue(value) ? `${formatLengthInches(value)} in` : "LENGTH TBD";
+  return isMeaningfulSheetValue(value) ? formatLengthMeasurement(value) : "LENGTH TBD";
 }
 
 function drawioLabelWidth(text, fontSize = 11, minWidth = 64, maxWidth = 230) {
@@ -6447,7 +6471,7 @@ function buildBarrelPowerCableSvg(result) {
   const leftTitle = escapeXml(firstFilled(rows, "leftLegName") || "48V Source Connector");
   const sourceType = escapeXml(groundRow.leftHousingType || powerRow.leftHousingType || "2 Pin Connector");
   const barrelTitle = escapeXml(groundRow.rightLegName || powerRow.rightLegName || "DC Barrel Plug");
-  const wrapLength = escapeXml(wrapRow.length || "8");
+  const wrapLength = escapeXml(formatLengthMeasurement(wrapRow.length || "8"));
   const groundPin = escapeXml(groundRow.leftPinPos || "1");
   const powerPin = escapeXml(powerRow.leftPinPos || "2");
   const gndRight = escapeXml(groundRow.rightPinPos || "Outer Sleeve / Shell");
@@ -6506,7 +6530,7 @@ function buildBarrelPowerCableSvg(result) {
   <rect class="heat-shrink" x="1054" y="292" width="24" height="150" rx="8" />
   <text class="wrap-label" x="698" y="286">Expandable wire wrap sleeve around GND and +48V</text>
   <path class="dim-line" d="M 360 462 L 1036 462" marker-start="url(#arrow)" marker-end="url(#arrow)" />
-  <text class="dim-label" x="698" y="488">${wrapLength} in wrap section</text>
+  <text class="dim-label" x="698" y="488">${wrapLength} wrap section</text>
   <text class="small" x="330" y="458">Heat shrink</text>
   <text class="small" x="1066" y="458">Heat shrink</text>
 
@@ -7837,7 +7861,7 @@ function buildPowerBoardIso154xDrawioXml(result) {
   harness.wires.forEach((wire, index) => {
     addEdge(
       `network_wire_${index + 1}`,
-      `${wire.name} | ${wire.length} in | COLOR VERIFY`,
+      `${wire.name} | ${formatLengthMeasurement(wire.length)} | COLOR VERIFY`,
       wire.path,
       `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${wire.stroke};strokeWidth=5;endArrow=none;startArrow=none;fontFamily=Courier New;fontStyle=1;fontSize=13;`
     );
@@ -7850,7 +7874,7 @@ function buildPowerBoardIso154xDrawioXml(result) {
       wire.sourcePin,
       wire.name,
       wire.colorName,
-      `${wire.length} in`,
+      formatLengthMeasurement(wire.length),
       wire.targetPin
     ])
   ), 35, 646, 885, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#17231c;strokeWidth=2;fontSize=10;align=center;");
@@ -8389,7 +8413,7 @@ function buildPowerBoardIsolatorSheetDrawioXml(result, model) {
   addVertex("leg1_board", "<b>POWER BOARD (TOP)</b><br><br>TP1 / GND<br><br>TP71 / +5V", 48, 138, 270, 174, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#fbfcfb;strokeColor=#173a8a;strokeWidth=3;fontFamily=Courier New;fontSize=13;fontStyle=1;align=left;spacingLeft=24;");
   addVertex("tp1_pad", "TP1", 284, 205, 32, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=8;fontStyle=1;");
   addVertex("tp71_pad", "TP71", 284, 261, 32, 30, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#111111;strokeWidth=3;fontFamily=Courier New;fontSize=8;fontStyle=1;");
-  addRoutedEdge("dim_leg1", `${formatLengthInches(model.topLength)} in`, [[365, 126], [975, 126]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
+  addRoutedEdge("dim_leg1", formatLengthMeasurement(model.topLength), [[365, 126], [975, 126]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
   addHorizontalDrawioProtection(addVertex, {
     id: "leg1_protection",
     x1: 382,
@@ -8417,7 +8441,7 @@ function buildPowerBoardIsolatorSheetDrawioXml(result, model) {
     label: "LEG 2 EXPANDO + HEAT SHRINK",
     bandWidth: 22
   });
-  addRoutedEdge("dim_leg2", `${formatLengthInches(model.bottomLength)} in`, [[365, 554], [975, 554]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
+  addRoutedEdge("dim_leg2", formatLengthMeasurement(model.bottomLength), [[365, 554], [975, 554]], "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#17231c;strokeWidth=2;startArrow=classic;endArrow=classic;fontFamily=Courier New;fontSize=16;fontStyle=1;");
 
   addVertex("isolator_title", `<b>${escapeHtml(model.rightName)}</b><br>${escapeHtml(model.rightType)}`, 1245, 94, 305, 52, "text;html=1;strokeColor=none;fillColor=none;fontFamily=Courier New;fontSize=16;fontStyle=1;fontColor=#217a35;align=center;");
   addVertex("isolator_body", "", 1245, 160, 305, 332, "rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#217a35;strokeWidth=3;");
@@ -8454,7 +8478,7 @@ function buildPowerBoardIsolatorSheetDrawioXml(result, model) {
       wire.name,
       wire.colorName,
       wire.awg,
-      `${formatLengthInches(wire.length)} in`,
+      formatLengthMeasurement(wire.length),
       wire.targetPin
     ])
   ), 30, 596, 960, 174, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#17231c;strokeWidth=2;fontSize=9;align=center;");
@@ -8574,7 +8598,7 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
     wire.rightName,
     wire.colorName,
     wire.awg || model.gauge || "",
-    formatLengthInches(wire.length || model.length),
+    formatLengthMeasurement(wire.length || model.length),
     wire.toPin
   ]);
   addVertex(
@@ -8891,7 +8915,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addVertex("subtitle", model.description, 560, 64, 480, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=5;fontColor=#000000;align=center;");
   addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-  addEdge("dim_length", `OVERALL LENGTH: ${formatLengthInches(model.length)} in +/-0.25`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
+  addEdge("dim_length", `OVERALL LENGTH: ${formatLengthMeasurement(model.length)} +/-0.25 in`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
   addHorizontalDrawioProtection(addVertex, {
     id: "main_protection",
     x1: 452,
@@ -9371,7 +9395,7 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
   addVertex("subtitle", model.description, 500, 64, 600, 28, "text;html=1;strokeColor=none;fillColor=none;fontSize=20;fontStyle=5;fontColor=#000000;align=center;");
   addVertex("left_heading", `LEFT BOARD<br>${model.leftConnector.name}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 34, 180, 96, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("right_heading", `RIGHT BOARD<br>${model.rightConnector.name}<br>${model.rightConnector.type || "DUPONT"}<br>SERVO HEADER ROWS<br>1=GND 2=V+ 3=SIG<br>(${model.rightConnector.view})`, 1250, 30, 230, 126, "text;html=1;strokeColor=none;fillColor=none;fontSize=14;fontStyle=1;fontColor=#000000;align=center;");
-  addEdge("dim_length", `${formatLengthInches(model.length)} in +/-0.25<br>OVERALL LENGTH`, 365, 146, 1188, 146, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=14;");
+  addEdge("dim_length", `${formatLengthMeasurement(model.length)} +/-0.25 in<br>OVERALL LENGTH`, 365, 146, 1188, 146, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=14;");
   const firstY = model.groups[0]?.y ?? 205;
   const lastY = model.groups[model.groups.length - 1]?.y ?? firstY;
   addHorizontalDrawioProtection(addVertex, {
@@ -9416,10 +9440,10 @@ function buildKiCadMultiGroupDrawioXml(result, model) {
       addVertex(`right_wire_name_${index}`, escapeHtml(wire.rightName), 1118 - rightLabelWidth, wire.y - 10, rightLabelWidth, 20, `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`);
     }
   });
-  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT END", "LEFT PIN", "LEFT WIRE", "RIGHT WIRE", "COLOR", "AWG", "LEN", "RIGHT PIN"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.leftName, wire.rightName, wire.colorLabel || wire.colorName, wire.awg || model.awg || "", `${formatLengthInches(wire.length || model.length)} in`, formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;");
+  addVertex("wiring_table", buildKiCadDrawioTableText("WIRING TABLE", ["LEG", "LEFT END", "LEFT PIN", "LEFT WIRE", "RIGHT WIRE", "COLOR", "AWG", "LEN", "RIGHT PIN"], model.wires.map((wire) => [wire.row.leftLeg || "", wire.row.leftLegName || "", wire.fromPin, wire.leftName, wire.rightName, wire.colorLabel || wire.colorName, wire.awg || model.awg || "", formatLengthMeasurement(wire.length || model.length), formatBoardPin(wire)])), 30, 538, 770, 220, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=9;align=center;");
   addVertex("bom", buildKiCadDrawioTableText("BILL OF MATERIALS", ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"], buildKiCadBomRows(model)), 830, 538, 730, 128, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=center;");
   addVertex("notes", `<b>NOTES:</b><br>Micro Maestro servo header: 1=GND edge, 2=V+ servo power, 3=SIG inside board.<br>${uniqueValues(model.wires.map((wire) => wire.row.comments)).slice(0, 1).join("<br>") || "Verify pin orientation before final assembly."}`, 830, 672, 730, 48, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=none;fontSize=11;align=left;");
-  addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: INCH | DWG NO. ${model.cableName} | REV A`, 830, 724, 730, 54, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
+  addVertex("title_block", `DESCRIPTION:<br><b>${model.cableName} CABLE ASSEMBLY</b><br>${model.description}<br>SHEET: 1 OF 1 | SCALE: NONE | UNITS: AS SHOWN | DWG NO. ${model.cableName} | REV A`, 830, 724, 730, 54, "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;");
   const diagram = escapeXml(result.fileName || model.cableName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">
@@ -9466,7 +9490,7 @@ function buildBarrelPowerDrawioXml(result) {
   addVertex("barrel_body", "DC Barrel Plug<br><font style=\"font-size:12px\">Outer sleeve/shell = GND<br>Center pin = +48V</font>", 1268, 252, 225, 186, "rounded=1;arcSize=35;whiteSpace=wrap;html=1;fillColor=#f8f8f8;strokeColor=#000000;strokeWidth=4;fontStyle=1;fontSize=16;");
   addVertex("barrel_tip", "", 1460, 292, 64, 106, "ellipse;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=4;");
   addVertex("center_pin", "", 1480, 315, 24, 60, "ellipse;whiteSpace=wrap;html=1;fillColor=#fff4f4;strokeColor=#d62828;strokeWidth=4;");
-  addVertex("wrap_length", `${wrapRow.length || "8"} in wrap section`, 520, 462, 350, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;");
+  addVertex("wrap_length", `${formatLengthMeasurement(wrapRow.length || "8")} wrap section`, 520, 462, 350, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=15;fontStyle=1;fontColor=#000000;");
   const noteLines = [groundRow.comments, powerRow.comments, wrapRow.comments]
     .filter(Boolean)
     .map((note) => escapeHtml(shortLabel(note, 150)))

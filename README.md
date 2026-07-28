@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.18**
+Current release: **v2.0.19**
 
 ## Use The App
 
@@ -13,6 +13,16 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor.
 
 The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
+
+## Length Units
+
+The `Length (in or ft)` column accepts both inches and feet. Enter an explicit unit whenever the cable is measured in feet:
+
+- `15 FT`, `15 ft`, or `15 feet` displays as `15.00 ft`.
+- `180 IN`, `180 in`, or `180 inches` displays as `180.00 in`.
+- A number without a unit, such as `9`, continues to default to inches for compatibility with existing sheets.
+
+The existing `Length inches` header remains supported, and it can still contain an explicit feet value such as `15 FT`. Tap positions accept the same formats.
 
 ## Define Twisted Pairs
 
@@ -39,6 +49,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Treats the first `Wire Name` column as the left-side name and a second `Wire Name` column as the right-side name, while also accepting explicit `Left Wire Name` and `Right Wire Name` headers.
 - Shows separate left and right conductor labels in Draw.io when motherboard or connector net names differ; matching names remain a single clean label.
 - Treats the production sheet as the universal harness definition: cable names are drawing titles, while legs, endpoint names, pins, housings, branches, taps, colors, gauges, and lengths drive the electrical layout.
+- Accepts inch and foot length values throughout the sheet and preserves the entered unit on wire labels, dimensions, tables, and editable Draw.io exports; unitless values default to inches.
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.

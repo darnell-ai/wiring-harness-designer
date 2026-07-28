@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.19 - 2026-07-28
+
+- Added unit-aware cable lengths: explicit feet remain feet, explicit inches remain inches, and unitless legacy values continue to default to inches.
+- Updated wire labels, overall dimensions, tap labels, manufacturing notes, tables, and Draw.io exports to preserve the parsed unit.
+- Renamed the generated sheet column to `Length (in or ft)` while keeping the existing `Length inches` header compatible.
+
 ## v2.0.18 - 2026-07-28
 
 - Fixed W320 falling back to the generic 16-wire template when Excel omitted trailing blank cells from individual rows.
