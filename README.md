@@ -4,7 +4,7 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.19**
+Current release: **v2.0.20**
 
 ## Use The App
 
@@ -81,6 +81,8 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Recognizes the 43645-0200 to 90143-0040 Molex connector pair from its housing data and draws the actual Micro-Fit 3.0 two-circuit mating face plus the complete C-Grid III 2-by-20 cavity grid, with connected cavities highlighted.
 - Recognizes Molex Micro-Fit 3.0 front-lock 43645 housings from 2 through 12 circuits and side-lock 43025 housings from 2 through 16 even-numbered circuits.
 - Draws side-lock Micro-Fit mating faces with pin 1 above pin 2 and the lock tab centered below the housing; larger even-position housings extend sideways in the same two-row orientation.
+- Recognizes DigiKey `WM1927-ND` as Molex Mini-Fit Sr. `42816-0212`, draws its black 10 mm-pitch housing with vertically stacked square cavities, top latch, guide ribs, and TPA, and supports separate mating-face and rear wire-entry views.
+- Recognizes `WM11904TR-ND` as the matching Mini-Fit Sr. `42815-0114` silver female socket for 10-12 AWG wire instead of applying Micro-Fit gauge warnings.
 - Recognizes Molex Mini-Fit Jr. 5557 dual-row housings from 2 through 16 even-numbered circuits, including the dedicated 16 AWG and 24-18 AWG female terminal/tool selections.
 - Recognizes Anderson Powerpole PP15/45 modular assemblies through 16 poles, colors each housing from the wire color, and lists the related housing, contact, and crimp-tool part numbers.
 - Recognizes the TE Connectivity CPC Series 1 shell-size 17-14 reverse-sex pair: `206043-1` square-flange socket receptacle and mating `206044-1` pin plug.

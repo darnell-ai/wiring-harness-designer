@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.18";
+const APP_VERSION = "2.0.20";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -16,6 +16,7 @@ const CONNECTOR_EDITOR_LIBRARY = Object.freeze({
   auto: Object.freeze({ label: "Use sheet value", shape: "auto" }),
   microFitFront: Object.freeze({ label: "Molex Micro-Fit front lock", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MICRO-FIT FRONT LOCK` }),
   microFitSide: Object.freeze({ label: "Molex Micro-Fit side lock", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MICRO-FIT SIDE LOCK` }),
+  miniFitSr: Object.freeze({ label: "Molex Mini-Fit Sr.", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MINI-FIT SR 10MM` }),
   miniFitJr: Object.freeze({ label: "Molex Mini-Fit Jr.", shape: "rectangular", type: (positions) => `${positions} POS MOLEX MINI-FIT JR` }),
   cpc: Object.freeze({ label: "TE CPC circular", shape: "circular", type: (positions) => `${positions} PIN CPC CIRCULAR CONNECTOR` }),
   subcon: Object.freeze({ label: "Subcon / PBOF circular", shape: "circular", type: (positions) => `${positions} PIN SUBCON PBOF CIRCULAR CONNECTOR` }),
@@ -53,6 +54,20 @@ const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
     positionStep: 2,
     housingPart: (positions) => `43025-${String(positions).padStart(2, "0")}00`,
     drawingUrl: "https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/430/43025/430250200_sd.pdf?inline"
+  }),
+  miniFitSr: Object.freeze({
+    key: "miniFitSr",
+    manufacturer: "Molex",
+    family: "Mini-Fit Sr.",
+    style: "single-row receptacle with TPA",
+    series: "42816",
+    pitch: "10.00 mm",
+    rows: 1,
+    minPositions: 2,
+    maxPositions: 6,
+    positionStep: 1,
+    housingPart: (positions) => `42816-${String(positions).padStart(2, "0")}12`,
+    drawingUrl: "https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/428/42816/428160212_sd.pdf"
   }),
   miniFitJr: Object.freeze({
     key: "miniFitJr",
@@ -3820,6 +3835,8 @@ function buildDatasheetConnectorHarnessModel(sheet) {
 
 function resolveDatasheetConnector(rows, side) {
   const prefix = side === "left" ? "left" : "right";
+  const sheetHousingPart = firstFilled(rows, `${prefix}HousingPart`) || "";
+  const sheetPinPart = firstFilled(rows, `${prefix}PinPart`) || "";
   const text = normalizeText(rows.map((row) => [
     row[`${prefix}LegName`],
     row[`${prefix}HousingType`],
@@ -3833,7 +3850,7 @@ function resolveDatasheetConnector(rows, side) {
   const definition = DATASHEET_CONNECTOR_LIBRARY[key];
   const inferred = inferDatasheetConnectorPositions(rows, side, text, definition);
   const gauge = Number(String(dominantSheetValue(rows, "awg") || firstFilled(rows, "awg")).match(/\d+/)?.[0]);
-  const termination = datasheetTerminationForGauge(key, gauge, { text });
+  const termination = datasheetTerminationForGauge(key, gauge, { text, sheetPinPart });
   const name = cleanConnectorName(
     firstFilled(rows, `${prefix}LegName`) ||
     firstFilled(rows, `${prefix}HousingType`) ||
@@ -3860,8 +3877,11 @@ function resolveDatasheetConnector(rows, side) {
     definition,
     name,
     type: firstFilled(rows, `${prefix}HousingType`) || definition.style,
+    view: resolveDatasheetConnectorView(rows, side),
     positions: inferred.positions,
     requestedPositions: inferred.requestedPositions,
+    sheetHousingPart,
+    sheetPinPart,
     housingPart: key === "powerpole1545"
       ? powerpoleParts.map((item) => `${item.color} ${item.part}`).join(", ") || definition.housingPart(inferred.positions)
       : cpcVariant?.housingPart
@@ -3885,6 +3905,56 @@ function resolveDatasheetConnector(rows, side) {
   };
 }
 
+function resolveDatasheetConnectorView(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const explicitView = normalizeText(firstFilled(rows, `${prefix}ConnectorView`));
+  if (explicitView.includes("REAR") || explicitView.includes("WIRE")) {
+    return "rear";
+  }
+  if (explicitView.includes("FRONT") || explicitView.includes("MATING")) {
+    return "mating";
+  }
+  const comments = normalizeText(rows.map((row) => row.comments).join(" "));
+  if (!comments.includes("REAR VIEW") && !comments.includes("WIRE ENTRY")) {
+    return "mating";
+  }
+  const mentionsRight = /\bRIGHT\b/.test(comments);
+  const mentionsLeft = /\bLEFT\b/.test(comments);
+  if (mentionsRight || mentionsLeft) {
+    return (side === "right" && mentionsRight) || (side === "left" && mentionsLeft)
+      ? "rear"
+      : "mating";
+  }
+  return "rear";
+}
+
+function datasheetConnectorPartLabel(connector) {
+  const parts = [connector.housingPart];
+  if (
+    connector.sheetHousingPart &&
+    normalizeText(connector.sheetHousingPart) !== normalizeText(connector.housingPart)
+  ) {
+    parts.push(connector.sheetHousingPart);
+  } else if (connector.engineeringPart) {
+    parts.push(connector.engineeringPart);
+  }
+  return parts.filter(Boolean).join(" / ");
+}
+
+function datasheetConnectorViewLabel(connector) {
+  if (connector.view === "rear") {
+    return "REAR / WIRE-ENTRY VIEW - PIN POSITIONS";
+  }
+  if (connector.key === "teCpc1714") {
+    return connector.contactType === "socket"
+      ? "FLUSH SOCKET MATING FACE - MIRRORED NUMBERING"
+      : "RECESSED PIN MATING FACE";
+  }
+  return connector.key === "miniFitSr"
+    ? "MATING FACE - TOP LATCH - CIRCUIT 1 MARKED"
+    : "MATING FACE - CIRCUIT 1 MARKED";
+}
+
 function datasheetConnectorKey(text) {
   if (
     text.includes("206043") ||
@@ -3898,6 +3968,16 @@ function datasheetConnectorKey(text) {
   }
   if (text.includes("POWERPOLE") || text.includes("POWER POLE") || text.includes("ANDERSON") || /\b1327G?\d*\b/.test(text)) {
     return "powerpole1545";
+  }
+  if (
+    text.includes("WM1927") ||
+    text.includes("WM11904") ||
+    text.includes("42816") ||
+    text.includes("42815") ||
+    text.includes("MINI FIT SR") ||
+    text.includes("MINI-FIT SR")
+  ) {
+    return "miniFitSr";
   }
   if (text.includes("MINI FIT") || text.includes("MINI-FIT") || text.includes("5557") || text.includes("39012")) {
     return "miniFitJr";
@@ -3935,6 +4015,8 @@ function inferDatasheetConnectorPositions(rows, side, text, definition) {
     requestedPositions = Number(compact.match(/43645(\d{2})\d{2}/)?.[1] || 0);
   } else if (definition.key === "microFitSide") {
     requestedPositions = Number(compact.match(/43025(\d{2})\d{2}/)?.[1] || 0);
+  } else if (definition.key === "miniFitSr") {
+    requestedPositions = Number(compact.match(/42816(\d{2})12/)?.[1] || 0);
   } else if (definition.key === "miniFitJr") {
     const skuSuffix = Number(compact.match(/39012(\d{3})/)?.[1] || 0);
     requestedPositions = skuSuffix ? skuSuffix / 10 : 0;
@@ -3989,6 +4071,45 @@ function datasheetTerminationForGauge(key, gauge, options = {}) {
       contactPart: `NO APPROVED ${gauge} AWG MICRO-FIT CONTACT`,
       contactDescription: "Micro-Fit 3.0 43030 terminal range is 24-20 AWG.",
       toolPart: "NOT APPLICABLE",
+      warnings
+    };
+  }
+  if (key === "miniFitSr") {
+    const suppliedPart = normalizeText(options.sheetPinPart).includes("WM11904")
+      ? "0428150114 / WM11904TR-ND"
+      : "0428150114";
+    if (gauge >= 10 && gauge <= 12) {
+      return {
+        contactPart: suppliedPart,
+        contactDescription: "Mini-Fit Sr. female socket terminal, silver plated, 12-10 AWG",
+        toolPart: "63811-1500 / 63811-1600",
+        insulationRange: "5.30 mm maximum insulation OD",
+        warnings
+      };
+    }
+    if (gauge >= 14 && gauge <= 16) {
+      return {
+        contactPart: "0428150144",
+        contactDescription: "Mini-Fit Sr. female socket terminal, silver plated, 16-14 AWG",
+        toolPart: "VERIFY TERMINAL-SPECIFIC MINI-FIT SR. TOOL",
+        insulationRange: "4.57 mm maximum insulation OD",
+        warnings
+      };
+    }
+    if (gauge === 8) {
+      return {
+        contactPart: "0428150134",
+        contactDescription: "Mini-Fit Sr. female socket terminal, silver plated, 8 AWG",
+        toolPart: "VERIFY TERMINAL-SPECIFIC MINI-FIT SR. TOOL",
+        insulationRange: "6.60 mm maximum insulation OD",
+        warnings
+      };
+    }
+    warnings.push(`Mini-Fit Sr. terminal selection is not defined here for ${gauge} AWG; verify the exact 42815-series socket and tooling.`);
+    return {
+      contactPart: `VERIFY 42815-SERIES SOCKET FOR ${gauge} AWG`,
+      contactDescription: "Mini-Fit Sr. supports several gauge-specific female socket terminals.",
+      toolPart: "VERIFY TERMINAL-SPECIFIC MINI-FIT SR. TOOL",
       warnings
     };
   }
@@ -4215,6 +4336,20 @@ function datasheetConnectorGeometry(connector, side) {
       columns
     };
   }
+  if (connector.key === "miniFitSr") {
+    const width = 126;
+    const height = clamp(connector.positions * 48 + 42, 138, 330);
+    return {
+      centerX,
+      x: centerX - width / 2,
+      y: top + 30,
+      width,
+      height,
+      dual: false,
+      physicalRows: connector.positions,
+      miniFitSr: true
+    };
+  }
   const dual = connector.definition.rows === 2;
   const physicalRows = dual ? Math.ceil(connector.positions / 2) : connector.positions;
   const width = dual ? 122 : 96;
@@ -4260,6 +4395,13 @@ function datasheetConnectorPinPoint(connector, pin, side) {
       y: geometry.y + 31 + rowIndex * 54
     };
   }
+  if (geometry.miniFitSr) {
+    const rowGap = (geometry.height - 66) / Math.max(1, connector.positions - 1);
+    return {
+      x: geometry.centerX,
+      y: geometry.y + 33 + (numeric - 1) * rowGap
+    };
+  }
   const rowIndex = geometry.dual ? Math.floor((numeric - 1) / 2) : numeric - 1;
   const columnIndex = geometry.dual ? (numeric - 1) % 2 : 0;
   const rowGap = (geometry.height - 42) / Math.max(1, geometry.physicalRows - 1);
@@ -4290,7 +4432,7 @@ function datasheetConnectorWireAnchorPoint(connector, pin, side) {
       y: geometry.y + geometry.moduleHeight
     };
   }
-  const offset = geometry.sideLock ? 16 : geometry.dual ? 16 : 18;
+  const offset = geometry.miniFitSr ? 26 : geometry.sideLock ? 16 : geometry.dual ? 16 : 18;
   return {
     x: point.x + (side === "left" ? offset : -offset),
     y: point.y
@@ -4398,11 +4540,9 @@ function roundedSvgPolylinePath(points, radius = 12) {
 function buildDatasheetConnectorFaceSvg(connector, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
   const heading = `${connector.definition.manufacturer} ${connector.definition.family}`.trim();
-  const partLabel = connector.engineeringPart
-    ? `${connector.housingPart} / ${connector.engineeringPart}`
-    : connector.key === "powerpole1545"
-      ? "1327 COLOR HOUSING SERIES"
-      : connector.housingPart;
+  const partLabel = connector.key === "powerpole1545"
+    ? "1327 COLOR HOUSING SERIES"
+    : datasheetConnectorPartLabel(connector);
   const output = [
     `<g aria-label="${escapeXml(heading)} ${connector.positions} position mating face">`,
     `<text class="ds-connector-name" x="${geometry.centerX}" y="122">${escapeXml(connector.name)}</text>`,
@@ -4410,9 +4550,7 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
     `<text class="ds-connector-detail" x="${geometry.centerX}" y="158">${escapeXml(`${heading} | ${connector.positions} POS | ${connector.definition.pitch}`)}</text>`
   ];
   if (connector.key === "teCpc1714") {
-    const faceLabel = connector.contactType === "socket"
-      ? "FLUSH SOCKET MATING FACE - MIRRORED NUMBERING"
-      : "RECESSED PIN MATING FACE";
+    const faceLabel = datasheetConnectorViewLabel(connector);
     if (connector.flange) {
       output.push(`
         <rect class="cpc-flange" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="14" />
@@ -4469,6 +4607,25 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
         <path class="powerpole-contact" d="M ${x + 9} ${y + 22} H ${x + geometry.moduleWidth - 9} L ${x + geometry.moduleWidth - 12} ${y + 16} H ${x + 12} Z" />
         <text class="ds-cavity-number" x="${x + geometry.moduleWidth / 2}" y="${y + geometry.moduleHeight - 8}" fill="${textFill}"></text>`);
     }
+  } else if (connector.key === "miniFitSr") {
+    const rearView = connector.view === "rear";
+    output.push(`
+      <rect class="minifitsr-body" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="5" />
+      <rect class="minifitsr-guide" x="${geometry.x - 10}" y="${geometry.y + 17}" width="12" height="${geometry.height - 34}" rx="2" />
+      <rect class="minifitsr-guide" x="${geometry.x + geometry.width - 2}" y="${geometry.y + 17}" width="12" height="${geometry.height - 34}" rx="2" />
+      <path class="minifitsr-latch" d="M ${geometry.centerX - 29} ${geometry.y + 2} L ${geometry.centerX - 16} ${geometry.y - 23} H ${geometry.centerX + 21} L ${geometry.centerX + 34} ${geometry.y + 2} Z" />
+      <rect class="${rearView ? "minifitsr-tpa-rear" : "minifitsr-face-rim"}" x="${geometry.x + 11}" y="${geometry.y + 10}" width="${geometry.width - 22}" height="${geometry.height - 20}" rx="3" />`);
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      output.push(`
+        <rect class="${rearView ? "minifitsr-rear-cavity" : "minifitsr-cavity"}" x="${point.x - 25}" y="${point.y - 18}" width="50" height="36" rx="3" stroke="${active?.stroke || "#8b9296"}" stroke-width="${active ? 4 : 1.5}" />
+        <rect class="${rearView ? "minifitsr-wire-entry" : "minifitsr-contact-window"}" x="${point.x - 8}" y="${point.y - 9}" width="16" height="18" rx="2" />
+        <text class="ds-cavity-number" x="${point.x}" y="${point.y + 4}">${pin}</text>`);
+    }
+    output.push(`
+      <path class="circuit-one-marker" d="M ${geometry.x + 9} ${geometry.y + 9} L ${geometry.x + 23} ${geometry.y + 9} L ${geometry.x + 9} ${geometry.y + 23} Z" />
+      <text class="minifitsr-tpa-label" x="${geometry.centerX}" y="${geometry.y + geometry.height - 5}">${rearView ? "TPA / WIRE ENTRY" : "POLARIZED MINI-FIT SR."}</text>`);
   } else {
     const bodyClass = connector.key === "miniFitJr" ? "minifit-body" : "microfit-body";
     output.push(`<rect class="${bodyClass}" x="${geometry.x}" y="${geometry.y}" width="${geometry.width}" height="${geometry.height}" rx="9" />`);
@@ -4493,7 +4650,7 @@ function buildDatasheetConnectorFaceSvg(connector, side) {
   }
   if (connector.key !== "teCpc1714") {
     const captionOffset = connector.key === "microFitSide" ? 56 : 22;
-    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + captionOffset}">MATING FACE - CIRCUIT 1 MARKED</text>`);
+    output.push(`<text class="ds-connector-detail" x="${geometry.centerX}" y="${geometry.y + geometry.height + captionOffset}">${datasheetConnectorViewLabel(connector)}</text>`);
   }
   output.push("</g>");
   return output.join("");
@@ -4570,6 +4727,16 @@ function buildDatasheetConnectorHarnessSvg(result, model) {
       .microfit-lock { fill: #353a3d; stroke: #050505; stroke-width: 2.5; }
       .ds-lock-label { fill: #ffffff; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .minifit-latch { fill: #c8c1ad; stroke: #111111; stroke-width: 2.5; }
+      .minifitsr-body { fill: #202427; stroke: #050606; stroke-width: 4; }
+      .minifitsr-guide { fill: #303538; stroke: #050606; stroke-width: 2; }
+      .minifitsr-latch { fill: #2d3235; stroke: #050606; stroke-width: 3; }
+      .minifitsr-face-rim { fill: #16191b; stroke: #535a5e; stroke-width: 2; }
+      .minifitsr-tpa-rear { fill: #292e31; stroke: #6c7479; stroke-width: 3; }
+      .minifitsr-cavity { fill: #090a0a; }
+      .minifitsr-rear-cavity { fill: #24282a; }
+      .minifitsr-contact-window { fill: #303638; stroke: #858e93; stroke-width: 1; }
+      .minifitsr-wire-entry { fill: #090a0a; stroke: #b8bec1; stroke-width: 1.2; }
+      .minifitsr-tpa-label { fill: #dce0e2; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .ds-cavity { fill: #090a0a; }
       .ds-cavity-hole { fill: #313638; stroke: #d9dddf; stroke-width: 0.8; }
       .ds-cavity-number { fill: #ffffff; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -8637,7 +8804,7 @@ function buildDatasheetConnectorHarnessDrawioXml(result, model) {
 
 function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
   const geometry = datasheetConnectorGeometry(connector, side);
-  const heading = `${connector.name}<br><b>${connector.housingPart}</b><br>${connector.definition.family} | ${connector.positions} POS | ${connector.definition.pitch}`;
+  const heading = `${connector.name}<br><b>${datasheetConnectorPartLabel(connector)}</b><br>${connector.definition.family} | ${connector.positions} POS | ${connector.definition.pitch}`;
   addVertex(
     `${side}_datasheet_heading`,
     heading,
@@ -8744,6 +8911,102 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
         "rounded=1;arcSize=18;whiteSpace=wrap;html=1;fillColor=#101314;strokeColor=#000000;strokeWidth=1;"
       );
     }
+  } else if (connector.key === "miniFitSr") {
+    const rearView = connector.view === "rear";
+    addVertex(
+      `${side}_minifitsr_body`,
+      "",
+      geometry.x,
+      geometry.y,
+      geometry.width,
+      geometry.height,
+      "rounded=1;arcSize=6;whiteSpace=wrap;html=1;fillColor=#202427;strokeColor=#050606;strokeWidth=4;"
+    );
+    addVertex(
+      `${side}_minifitsr_left_guide`,
+      "",
+      geometry.x - 10,
+      geometry.y + 17,
+      12,
+      geometry.height - 34,
+      "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#303538;strokeColor=#050606;strokeWidth=2;"
+    );
+    addVertex(
+      `${side}_minifitsr_right_guide`,
+      "",
+      geometry.x + geometry.width - 2,
+      geometry.y + 17,
+      12,
+      geometry.height - 34,
+      "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#303538;strokeColor=#050606;strokeWidth=2;"
+    );
+    addVertex(
+      `${side}_minifitsr_latch`,
+      "",
+      geometry.centerX - 32,
+      geometry.y - 24,
+      66,
+      28,
+      "shape=trapezoid;perimeter=trapezoidPerimeter;direction=north;whiteSpace=wrap;html=1;fillColor=#2d3235;strokeColor=#050606;strokeWidth=3;"
+    );
+    addVertex(
+      `${side}_minifitsr_inner`,
+      "",
+      geometry.x + 11,
+      geometry.y + 10,
+      geometry.width - 22,
+      geometry.height - 20,
+      `rounded=1;arcSize=5;whiteSpace=wrap;html=1;fillColor=${rearView ? "#292e31" : "#16191b"};strokeColor=${rearView ? "#6c7479" : "#535a5e"};strokeWidth=${rearView ? 3 : 2};`
+    );
+    for (let pin = 1; pin <= connector.positions; pin += 1) {
+      const point = datasheetConnectorPinPoint(connector, pin, side);
+      const active = connector.activePins.get(String(pin));
+      addVertex(
+        `${side}_minifitsr_cavity_${pin}`,
+        "",
+        point.x - 25,
+        point.y - 18,
+        50,
+        36,
+        `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=${rearView ? "#24282a" : "#090a0a"};strokeColor=${active?.stroke || "#8b9296"};strokeWidth=${active ? 4 : 1.5};`
+      );
+      addVertex(
+        `${side}_minifitsr_entry_${pin}`,
+        "",
+        point.x - 8,
+        point.y - 9,
+        16,
+        18,
+        `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${rearView ? "#090a0a" : "#303638"};strokeColor=${rearView ? "#b8bec1" : "#858e93"};strokeWidth=1.2;`
+      );
+      addVertex(
+        `${side}_minifitsr_number_${pin}`,
+        String(pin),
+        point.x - 11,
+        point.y - 9,
+        22,
+        18,
+        "text;html=1;strokeColor=none;fillColor=none;fontColor=#ffffff;fontStyle=1;fontSize=8;align=center;verticalAlign=middle;"
+      );
+    }
+    addVertex(
+      `${side}_minifitsr_pin1_marker`,
+      "",
+      geometry.x + 8,
+      geometry.y + 8,
+      14,
+      14,
+      "shape=triangle;direction=south;whiteSpace=wrap;html=1;fillColor=#f0f2f3;strokeColor=#050505;strokeWidth=1;"
+    );
+    addVertex(
+      `${side}_minifitsr_tpa_label`,
+      rearView ? "TPA / WIRE ENTRY" : "POLARIZED MINI-FIT SR.",
+      geometry.centerX - 62,
+      geometry.y + geometry.height - 15,
+      124,
+      12,
+      "text;html=1;strokeColor=none;fillColor=none;fontColor=#dce0e2;fontStyle=1;fontSize=7;align=center;"
+    );
   } else {
     const fill = connector.key === "miniFitJr" ? "#ded9c9" : connector.key === "generic" ? "#f4f4f4" : "#25292c";
     addVertex(
@@ -8782,9 +9045,7 @@ function addDatasheetConnectorDrawioFace(addVertex, connector, side) {
   }
   addVertex(
     `${side}_datasheet_view`,
-    connector.key === "teCpc1714"
-      ? `${connector.faceStyle.toUpperCase()} ${connector.contactType.toUpperCase()} MATING FACE${connector.contactType === "socket" ? " - MIRRORED" : ""}`
-      : "MATING FACE - CIRCUIT 1 MARKED",
+    datasheetConnectorViewLabel(connector),
     geometry.centerX - 120,
     geometry.y + geometry.height + (connector.key === "microFitSide" ? 42 : 8),
     240,

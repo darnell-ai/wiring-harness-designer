@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.0.20 - 2026-07-28
+
+- Recognized `WM1927-ND` / Molex `42816-0212` as a two-position Mini-Fit Sr. receptacle instead of a Micro-Fit housing.
+- Added dedicated Mini-Fit Sr. mating-face and rear wire-entry drawings with stacked square cavities, top latch, guide ribs, circuit-1 marker, and TPA details.
+- Honored side-specific rear-view instructions from sheet comments such as `FROM REAR VIEW POS ON RIGHT PIN`.
+- Recognized `WM11904TR-ND` / `42815-0114` as a valid 10-12 AWG female socket and removed the false 12-AWG Micro-Fit warning.
+
 ## v2.0.19 - 2026-07-28
 
 - Added unit-aware cable lengths: explicit feet remain feet, explicit inches remain inches, and unitless legacy values continue to default to inches.
