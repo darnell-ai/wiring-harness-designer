@@ -1,0 +1,10 @@
+{
+  "name": "digiwire-harness-designer",
+  "private": true,
+  "version": "2.0.22",
+  "scripts": {
+    "test": "node tests/w323-regression.mjs",
+    "generate:w323": "node scripts/generate-w323.mjs",
+    "check": "node --check app.js && node tests/w323-regression.mjs"
+  }
+}

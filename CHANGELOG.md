@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.0.22 - 2026-08-19
+
+- Added the approved W323 source fixture and regenerated SVG, PNG, and Draw.io assets.
+- Kept GND and PWR ferrule terminations in separate one-position housings while preserving the BOT BLOX Ethernet termination as the only eight-position right connector.
+- Aligned multi-right-connector wire lanes to their compact connector slots so TP1 and TP2 travel straight with visible intertwined sections and no large downward bends.
+- Preserved DPBOF13F as a 13-position SUBCON with pins 1, 3, 8, 9, 10, and 11 used and the remaining specified positions marked DNP.
+- Normalized imported `FURREL` and `FERRAEL` spellings to `FERRULE` throughout the data model and exports.
+- Removed legacy documentation blocks from multi-right-connector rendered drawings and added a W323 regression test for the `1 POS + 1 POS + 8 POS` mapping.
+
 ## v2.0.21 - 2026-07-28
 
 - Made left and right housing part numbers authoritative when selecting connector geometry; generic housing descriptions can no longer override a known part.

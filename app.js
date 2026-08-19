@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.21";
+const APP_VERSION = "2.0.22";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -979,7 +979,7 @@ function sheetRowToObject(headers, row) {
       return;
     }
     if (key) {
-      output[key] = row[index] || "";
+      output[key] = normalizeHarnessTerminology(row[index] || "");
     }
   });
   if (!output.wireName && output.rightWireName) {
@@ -989,6 +989,12 @@ function sheetRowToObject(headers, row) {
     output.rightWireName = output.wireName;
   }
   return output;
+}
+
+function normalizeHarnessTerminology(value) {
+  return String(value || "").replace(/\b(?:FURREL|FERRAEL)(S)?\b/gi, (_match, plural) =>
+    `FERRULE${plural ? "S" : ""}`
+  );
 }
 
 function normalizeSheetKey(header) {
@@ -5229,6 +5235,7 @@ function buildKiCadHarnessModel(sheet) {
   const cableName = firstFilled(rows, "cableName") || sheet.cableName || "WIRE HARNESS";
   const leftName = cleanConnectorName(firstFilled(rows, "leftLegName") || firstFilled(rows, "leftHousingType") || "LEFT CONNECTOR");
   const leftType = firstFilled(rows, "leftHousingType");
+  const leftHousingPart = firstFilled(rows, "leftHousingPart");
   const rightName = cleanConnectorName(connectorSideName(rows, "right") || "RIGHT CONNECTOR");
   const rightType = firstFilled(rows, "rightHousingType");
   const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
@@ -5275,9 +5282,12 @@ function buildKiCadHarnessModel(sheet) {
     leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
     maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
   }));
-  const twistedPairAnalysis = analyzeSheetTwistedPairs(wires);
   const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires, rightPositionRows);
   const hasMultipleRightConnectors = !isMultiGroup && rightConnectorGroups.length > 1;
+  if (hasMultipleRightConnectors) {
+    alignKiCadWiresToRightConnectorGroups(wires, rightConnectorGroups);
+  }
+  const twistedPairAnalysis = analyzeSheetTwistedPairs(wires);
   groups.forEach((group) => {
     group.wires = wires.filter((wire) => wire.groupKey === group.key);
   });
@@ -5296,7 +5306,11 @@ function buildKiCadHarnessModel(sheet) {
     isMultiGroup,
     leftConnector: {
       name: isMultiGroup ? "ESC PCB" : leftName,
-      type: leftType && normalizeText(leftType) !== normalizeText(leftName) ? leftType : "",
+      type: uniqueValues([
+        leftType && normalizeText(leftType) !== normalizeText(leftName) ? leftType : "",
+        leftHousingPart
+      ]).filter(Boolean).join(" | "),
+      housingPart: leftHousingPart,
       positionText: isMultiGroup
         ? `${groups.length} x 3 POSITION`
         : formatKiCadConnectorPositionText(leftPositionCount, leftActivePositionCount, leftUnusedPins),
@@ -5360,6 +5374,9 @@ function getKiCadConnectorPositionRows(sourceRows, activeRows, side) {
 function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
   const prefix = side === "left" ? "left" : "right";
   const declaredPositions = inferKiCadDeclaredPositionCount([...positionRows, ...activeRows], side);
+  if (isKiCadSinglePositionTermination([...positionRows, ...activeRows], side) && declaredPositions <= 1) {
+    return 1;
+  }
   const activeSet = new Set(activeRows);
   const capacityRows = declaredPositions
     ? positionRows.filter((row) => {
@@ -5380,6 +5397,20 @@ function inferKiCadConnectorPositionCount(positionRows, activeRows, side) {
     declaredPositions,
     countKiCadActiveConnectorPins(activeRows, side)
   );
+}
+
+function isKiCadSinglePositionTermination(rows, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const text = normalizeText(rows.map((row) => [
+    row[`${prefix}LegName`],
+    row[`${prefix}HousingType`],
+    row[`${prefix}HousingPart`],
+    row[`${prefix}PinPart`]
+  ].join(" ")).join(" "));
+  return text.includes("FERRULE") ||
+    /\b1\s*(?:POS|POSITION|PIN|CIRCUIT)\b/.test(text) ||
+    text.includes("SINGLE POSITION") ||
+    text.includes("SINGLE-POSITION");
 }
 
 function inferKiCadDeclaredPositionCount(rows, side) {
@@ -5493,6 +5524,9 @@ function inferKiCadRightConnectorGroups(wires, positionRows = []) {
     });
     group.positionCount = inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
     group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right", group.positionCount);
+    group.housingType = firstFilled(group.positionRows, "rightHousingType") || firstFilled(activeRows, "rightHousingType");
+    group.housingPart = firstFilled(group.positionRows, "rightHousingPart") || firstFilled(activeRows, "rightHousingPart");
+    group.pinPart = firstFilled(group.positionRows, "rightPinPart") || firstFilled(activeRows, "rightPinPart");
   });
   assignKiCadRightConnectorLayout(groups);
   return groups;
@@ -5808,7 +5842,9 @@ function buildKiCadHarnessSvg(result, model) {
   const notes = buildKiCadNotes(displayModel)
     .map((note, index) => `<text class="note" x="36" y="${696 + index * 18}">${index + 1}. ${escapeXml(note)}</text>`)
     .join("");
-  const documentationSvg = denseLayout
+  const documentationSvg = displayModel.rightConnectorGroups.length > 1
+    ? ""
+    : denseLayout
     ? buildKiCadDenseDocumentationSvg(displayModel)
     : `
       ${buildSvgTable({
@@ -6488,6 +6524,10 @@ function buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups) {
     const height = bottom - top;
     const centerY = (top + bottom) / 2;
     const palette = group.palette || rightHousingPalette(group.name);
+    if (isKiCadFerruleGroup(group)) {
+      output.push(`<rect x="${x - 48}" y="${centerY - 8}" width="40" height="16" rx="5" fill="#3f4548" stroke="#111111" stroke-width="2" />`);
+      output.push(`<rect x="${x - 14}" y="${centerY - 4}" width="18" height="8" rx="2" fill="#b8bec1" stroke="#555555" stroke-width="1" />`);
+    }
     output.push(`<rect class="connector-body-right" x="${x}" y="${top}" width="88" height="${height}" rx="8" style="fill:${palette.fill};stroke:${palette.stroke}" />`);
     output.push(`<rect class="cavity" x="${x + 8}" y="${top + 5}" width="72" height="${Math.max(1, height - 10)}" rx="7" />`);
     slots.forEach((slot) => {
@@ -6496,7 +6536,7 @@ function buildKiCadSegmentedRightFaceSvg(x, wires, connectorGroups) {
         output.push(`<text class="connector-filler-pin" x="${x + 44}" y="${slot.y + 3}">${escapeXml(slot.pin)}</text>`);
       }
     });
-    output.push(`<text class="connector-group-label" x="${x + 96}" y="${centerY + 4}">${escapeXml(group.name)}</text>`);
+    output.push(`<text class="connector-group-label" x="${x + 96}" y="${centerY + 4}">${escapeXml(kiCadRightConnectorGroupLabel(group))}</text>`);
   });
   wires.forEach((wire) => {
     output.push(`<text class="pin-label-compact" x="1238" y="${(wire.rightTargetY || wire.y) + 4}">${escapeXml(wire.toPin)}</text>`);
@@ -6767,6 +6807,37 @@ function parseLengthMeasurement(length, defaultUnit = "in") {
     value,
     unit
   };
+}
+
+function isKiCadFerruleGroup(group) {
+  return normalizeText(`${group.name} ${group.housingType} ${group.housingPart} ${group.pinPart}`).includes("FERRULE");
+}
+
+function kiCadRightConnectorGroupLabel(group) {
+  const details = [group.name];
+  if (isKiCadFerruleGroup(group)) {
+    details.push("FERRULE");
+  }
+  details.push(`${Math.max(1, Number(group.positionCount) || group.wires.length)} POS`);
+  return uniqueValues(details).join(" | ");
+}
+
+function alignKiCadWiresToRightConnectorGroups(wires, groups) {
+  const targetYByWire = new Map();
+  groups.forEach((group) => {
+    group.slots.forEach((slot) => {
+      if (slot.wire) {
+        targetYByWire.set(slot.wire, slot.y);
+      }
+    });
+  });
+  wires.forEach((wire) => {
+    const targetY = targetYByWire.get(wire);
+    if (Number.isFinite(targetY)) {
+      wire.y = targetY;
+      wire.rightTargetY = targetY;
+    }
+  });
 }
 
 function formatLengthMeasurement(length, defaultUnit = "in") {
@@ -9686,6 +9757,26 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
     const bottom = group.bottom;
     const height = bottom - top;
     const palette = group.palette || rightHousingPalette(group.name);
+    if (isKiCadFerruleGroup(group)) {
+      addVertex(
+        `right_group_${group.index}_ferrule_barrel`,
+        "",
+        1252,
+        (top + bottom) / 2 - 8,
+        40,
+        16,
+        "rounded=1;arcSize=35;whiteSpace=wrap;html=1;fillColor=#3f4548;strokeColor=#111111;strokeWidth=2;"
+      );
+      addVertex(
+        `right_group_${group.index}_ferrule_tip`,
+        "",
+        1286,
+        (top + bottom) / 2 - 4,
+        18,
+        8,
+        "rounded=1;arcSize=20;whiteSpace=wrap;html=1;fillColor=#b8bec1;strokeColor=#555555;strokeWidth=1;"
+      );
+    }
     addVertex(
       `right_group_${group.index}`,
       "",
@@ -9713,7 +9804,7 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
     });
     addVertex(
       `right_group_${group.index}_label`,
-      escapeHtml(group.name),
+      escapeHtml(kiCadRightConnectorGroupLabel(group)),
       1392,
       (top + bottom) / 2 - 12,
       168,

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 800" role="img" aria-label="W323 KiCad style harness drawing">
+  <defs>
+
+    <pattern id="braidPattern" patternUnits="userSpaceOnUse" width="24" height="18">
+      <path d="M -6 18 L 6 0 M 6 18 L 18 0 M 18 18 L 30 0" stroke="#22282c" stroke-width="2.2" opacity="0.58" />
+      <path d="M -6 0 L 6 18 M 6 0 L 18 18 M 18 0 L 30 18" stroke="#22282c" stroke-width="2.2" opacity="0.58" />
+    </pattern>
+    <marker id="kicadArrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+    </marker>
+    <style>
+      .page { fill: #ffffff; }
+      .border { fill: none; stroke: #000000; stroke-width: 2; }
+      .title { fill: #000000; font: 900 38px Aptos, Segoe UI, sans-serif; text-anchor: middle; letter-spacing: 1px; }
+      .subtitle { fill: #000000; font: 900 24px Aptos, Segoe UI, sans-serif; text-anchor: middle; text-decoration: underline; letter-spacing: 0.8px; }
+      .connector-heading { fill: #000000; font: 900 17px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-sub { fill: #000000; font: 800 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-view { fill: #000000; font: 800 14px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .connector-body-left { fill: #d7d7d7; stroke: #000000; stroke-width: 2; }
+      .connector-body-right { fill: #ffffff; stroke: #000000; stroke-width: 2; }
+      .connector-shadow { fill: #595959; stroke: #000000; stroke-width: 1.4; }
+      .connector-group-label { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
+      .pcb-board { fill: #216b42; stroke: #123d28; stroke-width: 3; }
+      .pcb-silkscreen { fill: none; stroke: #e8f1e9; stroke-width: 1.4; }
+      .pcb-trace { fill: none; stroke: #d5a72b; stroke-width: 5; stroke-linecap: round; }
+      .pcb-pad { fill: #d9aa31; stroke: #8a6515; stroke-width: 1.5; }
+      .pcb-hole { fill: #161918; stroke: #f2d36f; stroke-width: 1.2; }
+      .pcb-label { fill: #ffffff; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pcb-pin-number { fill: #ffffff; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: start; }
+      .cavity { fill: #f9f9f9; stroke: #000000; stroke-width: 1.5; }
+      .unused-cavity { fill: #d8dcde; stroke: #747b7f; stroke-width: 1.3; stroke-dasharray: 4 3; }
+      .cavity-hole { fill: #000000; stroke: #000000; stroke-width: 1; }
+      .segmented-cavity { fill: #8d8d8d; stroke: #6b6b6b; stroke-width: 1; }
+      .segmented-cavity-unused { fill: #d8dcde; stroke: #747b7f; stroke-width: 1; stroke-dasharray: 4 3; }
+      .connector-filler-pin { fill: #4b5357; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .kicad-cpc-ring { fill: #30363a; stroke: #050606; stroke-width: 4; }
+      .kicad-cpc-face { fill: #202528; stroke: #71797e; stroke-width: 3; }
+      .kicad-cpc-cavity { fill: #080a0a; stroke: #d4d9dc; stroke-width: 1.2; }
+        .kicad-cpc-cavity-unused { fill: #596167; stroke: #aeb4b7; stroke-width: 1.2; stroke-dasharray: 3 2; }
+        .kicad-cpc-number { fill: #ffffff; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .rj45-shell { fill: #e2f1dc; stroke: #5f8f51; stroke-width: 2.5; }
+        .rj45-insert { fill: #eef1ec; stroke: #526057; stroke-width: 1.5; }
+        .rj45-contact { stroke: #4b4b4b; stroke-width: 1.2; }
+        .rj45-contact-unused { opacity: 0.36; }
+        .rj45-tracer { stroke-width: 3; stroke-linecap: butt; }
+        .rj45-latch { fill: #287db5; stroke: #17577f; stroke-width: 1.4; }
+        .rj45-pin-number { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .rj45-color-label { fill: #31383b; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-label-compact { fill: #000000; font: 900 11px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .pin-side-compact { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .wire-line { fill: none; stroke-width: 8; stroke-linecap: square; }
+      .wire-line-compact { fill: none; stroke-width: 6; stroke-linecap: square; }
+      .wire-stripe { fill: none; stroke-width: 3; stroke-linecap: butt; stroke-dasharray: 11 9; }
+      .wire-stripe-compact { fill: none; stroke-width: 2.4; stroke-linecap: butt; stroke-dasharray: 9 8; }
+      .terminal { stroke: #000000; stroke-width: 1.8; }
+      .terminal-mark { stroke: #000000; stroke-width: 1.2; fill: none; }
+      .wire-label { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .wire-label-compact { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+      .dimension { fill: none; stroke: #000000; stroke-width: 1.8; marker-start: url(#kicadArrow); marker-end: url(#kicadArrow); }
+      .dim-ext { stroke: #000000; stroke-width: 1.2; }
+      .dim-text { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .dim-label-bg { fill: #ffffff; fill-opacity: 0.96; }
+      .table-outline { fill: #ffffff; stroke: #000000; stroke-width: 1.4; }
+      .table-grid { stroke: #000000; stroke-width: 1; }
+      .table-title { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-head { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-text { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .table-red { fill: #ff0000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .spec-label { fill: #000000; font: 800 12px Aptos, Segoe UI, sans-serif; }
+      .spec-value { fill: #000000; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .note-title { fill: #000000; font: 900 13px Aptos, Segoe UI, sans-serif; }
+      .note { fill: #000000; font: 700 12px Aptos, Segoe UI, sans-serif; }
+      .legend-line { stroke-width: 8; stroke-linecap: round; }
+      .title-block-label { fill: #000000; font: 800 10px Aptos, Segoe UI, sans-serif; }
+      .title-block-text { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .title-block-small { fill: #000000; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .compact-doc-title { fill: #000000; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+      .compact-doc-head { fill: #000000; font: 900 7.5px Consolas, Cascadia Mono, monospace; text-anchor: middle; }
+      .compact-doc-text { fill: #000000; font: 700 7.5px Consolas, Cascadia Mono, monospace; }
+      .compact-note-title { fill: #000000; font: 900 9px Aptos, Segoe UI, sans-serif; }
+      .compact-note { fill: #000000; font: 700 8px Aptos, Segoe UI, sans-serif; }
+      .compact-spec-label { fill: #000000; font: 900 8px Aptos, Segoe UI, sans-serif; }
+      .compact-spec-value { fill: #000000; font: 700 8px Aptos, Segoe UI, sans-serif; }
+      .protection-label { fill: #1f2930; font: 900 12px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5; }
+      .protection-end-label { fill: #111111; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 4; }
+    </style>
+  </defs>
+  <rect class="page" x="0" y="0" width="1600" height="800" />
+  <rect class="border" x="10" y="10" width="1580" height="780" />
+
+  <text class="title" x="800" y="52">W323</text>
+  <text class="subtitle" x="800" y="84">SUBCON TO 3 RIGHT CONNECTOR LEGS</text>
+
+  <text class="connector-heading" x="220" y="46">LEFT CONNECTOR</text>
+  <text class="connector-sub" x="220" y="72">SUBCON</text>
+  <text class="connector-sub" x="220" y="96">13 PIN CIRCULAR SUBCON | DPBOF13F</text>
+  <text class="connector-sub" x="220" y="120">13 POSITION (6 USED)</text>
+  <text class="connector-view" x="220" y="144">(FRONT VIEW)</text>
+
+  <text class="connector-heading" x="1360" y="46">RIGHT CONNECTOR</text>
+  <text class="connector-sub" x="1360" y="72">3 RIGHT CONNECTORS</text>
+  <text class="connector-sub" x="1360" y="96">GROUPED BY RIGHT LEG</text>
+  <text class="connector-sub" x="1360" y="120">2 x 1 POS + 1 x 8 POS</text>
+  <text class="connector-view" x="1360" y="144">(FRONT VIEW)</text>
+
+  <line class="dim-ext" x1="372" y1="138" x2="372" y2="186" />
+  <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
+  <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
+  <rect class="dim-label-bg" x="630" y="112" width="332" height="28" rx="5" />
+  <text class="dim-text" x="796" y="132">OVERALL LENGTH: 20.00 in +/-0.25 in</text>
+
+
+  <g class="cable-protection">
+    <rect x="452" y="148" width="686" height="236" rx="18" fill="#d7dde0" fill-opacity="0.46" stroke="#59636b" stroke-width="2.2" />
+    <rect x="452" y="148" width="686" height="236" rx="18" fill="url(#braidPattern)" opacity="0.58" />
+    <rect x="437" y="144" width="30" height="244" rx="7" fill="#151515" opacity="0.9" />
+    <rect x="1123" y="144" width="30" height="244" rx="7" fill="#151515" opacity="0.9" />
+    <text class="protection-label" x="795" y="138">EXPANDABLE BRAIDED SLEEVING (EXPANDO)</text>
+
+      <text class="protection-end-label" x="452" y="402">HEAT SHRINK</text>
+      <text class="protection-end-label" x="1138" y="402">HEAT SHRINK</text>
+  </g>
+  <circle class="kicad-cpc-ring" cx="214" cy="266" r="105" /><circle class="kicad-cpc-face" cx="214" cy="266" r="91" /><path d="M 201 163 H 227 L 223 176 H 205 Z" fill="#050606" /><circle class="kicad-cpc-cavity" cx="160" cy="206" r="10" /><text class="kicad-cpc-number" x="160" y="209">1</text><circle class="kicad-cpc-cavity-unused" cx="214" cy="198" r="10" /><text class="kicad-cpc-number" x="214" y="201">2</text><circle class="kicad-cpc-cavity" cx="268" cy="206" r="10" /><text class="kicad-cpc-number" x="268" y="209">3</text><circle class="kicad-cpc-cavity-unused" cx="284" cy="246" r="10" /><text class="kicad-cpc-number" x="284" y="249">4</text><circle class="kicad-cpc-cavity-unused" cx="238" cy="244" r="10" /><text class="kicad-cpc-number" x="238" y="247">5</text><circle class="kicad-cpc-cavity-unused" cx="190" cy="244" r="10" /><text class="kicad-cpc-number" x="190" y="247">6</text><circle class="kicad-cpc-cavity-unused" cx="144" cy="246" r="10" /><text class="kicad-cpc-number" x="144" y="249">7</text><circle class="kicad-cpc-cavity" cx="144" cy="290" r="10" /><text class="kicad-cpc-number" x="144" y="293">8</text><circle class="kicad-cpc-cavity" cx="190" cy="290" r="10" /><text class="kicad-cpc-number" x="190" y="293">9</text><circle class="kicad-cpc-cavity" cx="238" cy="290" r="10" /><text class="kicad-cpc-number" x="238" y="293">10</text><circle class="kicad-cpc-cavity" cx="284" cy="290" r="10" /><text class="kicad-cpc-number" x="284" y="293">11</text><circle class="kicad-cpc-cavity-unused" cx="244" cy="330" r="10" /><text class="kicad-cpc-number" x="244" y="333">12</text><circle class="kicad-cpc-cavity-unused" cx="184" cy="330" r="10" /><text class="kicad-cpc-number" x="184" y="333">13</text><text class="pin-label-compact" x="348" y="182">1</text><text class="pin-label-compact" x="348" y="228">3</text><text class="pin-label-compact" x="348" y="274">8</text><text class="pin-label-compact" x="348" y="302">9</text><text class="pin-label-compact" x="348" y="330">10</text><text class="pin-label-compact" x="348" y="358">11</text><text class="connector-unused-note" x="214" y="386">PINS 2, 4, 5, 6, 7, 12, 13: NOT IN USE</text>
+  <rect x="1252" y="171" width="40" height="16" rx="5" fill="#3f4548" stroke="#111111" stroke-width="2" /><rect x="1286" y="175" width="18" height="8" rx="2" fill="#b8bec1" stroke="#555555" stroke-width="1" /><rect class="connector-body-right" x="1300" y="160" width="88" height="38" rx="8" style="fill:#e2f1dc;stroke:#6d9c59" /><rect class="cavity" x="1308" y="165" width="72" height="28" rx="7" /><rect class="segmented-cavity" x="1325" y="170" width="38" height="16" rx="4" /><text class="connector-group-label" x="1396" y="183">GND | FERRULE | 1 POS</text><rect x="1252" y="217" width="40" height="16" rx="5" fill="#3f4548" stroke="#111111" stroke-width="2" /><rect x="1286" y="221" width="18" height="8" rx="2" fill="#b8bec1" stroke="#555555" stroke-width="1" /><rect class="connector-body-right" x="1300" y="206" width="88" height="38" rx="8" style="fill:#deebf8;stroke:#5d8fc9" /><rect class="cavity" x="1308" y="211" width="72" height="28" rx="7" /><rect class="segmented-cavity" x="1325" y="216" width="38" height="16" rx="4" /><text class="connector-group-label" x="1396" y="229">PWR | FERRULE | 1 POS</text><rect class="connector-body-right" x="1300" y="252" width="88" height="234" rx="8" style="fill:#f9d9d5;stroke:#cf5e55" /><rect class="cavity" x="1308" y="257" width="72" height="224" rx="7" /><rect class="segmented-cavity" x="1325" y="262" width="38" height="16" rx="4" /><rect class="segmented-cavity" x="1325" y="290" width="38" height="16" rx="4" /><rect class="segmented-cavity" x="1325" y="318" width="38" height="16" rx="4" /><rect class="segmented-cavity" x="1325" y="346" width="38" height="16" rx="4" /><rect class="segmented-cavity-unused" x="1325" y="374" width="38" height="16" rx="4" /><text class="connector-filler-pin" x="1344" y="385">5</text><rect class="segmented-cavity-unused" x="1325" y="402" width="38" height="16" rx="4" /><text class="connector-filler-pin" x="1344" y="413">6</text><rect class="segmented-cavity-unused" x="1325" y="430" width="38" height="16" rx="4" /><text class="connector-filler-pin" x="1344" y="441">7</text><rect class="segmented-cavity-unused" x="1325" y="458" width="38" height="16" rx="4" /><text class="connector-filler-pin" x="1344" y="469">8</text><text class="connector-group-label" x="1396" y="373">BOT BLOX ETHERNET | 8 POS</text><text class="pin-label-compact" x="1238" y="182">1</text><text class="pin-label-compact" x="1238" y="228">1</text><text class="pin-label-compact" x="1238" y="274">1</text><text class="pin-label-compact" x="1238" y="302">2</text><text class="pin-label-compact" x="1238" y="330">3</text><text class="pin-label-compact" x="1238" y="358">4</text>
+
+
+  <rect class="terminal" x="370" y="162" width="56" height="32" fill="#050505" />
+  <path class="terminal-mark" d="M 393 171 L 393 185 M 386 178 L 400 178" />
+  <text class="table-text" x="398" y="182">-</text>
+
+  <rect class="terminal" x="1164" y="162" width="56" height="32" fill="#050505" />
+  <path class="terminal-mark" d="M 1192 171 L 1192 185 M 1185 178 L 1199 178" />
+  <text class="table-text" x="1192" y="182">-</text>
+  <path class="wire-line" d="M 426 178 L 1164 178" stroke="#050505" />
+
+  <text class="wire-label" x="796" y="164">GND (BLACK) 20.00 in</text>
+
+
+  <rect class="terminal" x="370" y="208" width="56" height="32" fill="#d62828" />
+  <path class="terminal-mark" d="M 393 217 L 393 231 M 386 224 L 400 224" />
+  <text class="table-red" x="398" y="228">+</text>
+
+  <rect class="terminal" x="1164" y="208" width="56" height="32" fill="#d62828" />
+  <path class="terminal-mark" d="M 1192 217 L 1192 231 M 1185 224 L 1199 224" />
+  <text class="table-red" x="1192" y="228">+</text>
+  <path class="wire-line" d="M 426 224 L 1164 224" stroke="#d62828" />
+
+  <text class="wire-label" x="796" y="210">PWR (RED) 20.00 in</text>
+
+
+  <rect class="terminal" x="370" y="254" width="56" height="32" fill="#f77f00" />
+  <path class="terminal-mark" d="M 393 263 L 393 277 M 386 270 L 400 270" />
+  <text class="table-text" x="398" y="274">+</text>
+
+  <rect class="terminal" x="1164" y="254" width="56" height="32" fill="#f77f00" />
+  <path class="terminal-mark" d="M 1192 263 L 1192 277 M 1185 270 L 1199 270" />
+  <text class="table-text" x="1192" y="274">+</text>
+  <path class="wire-line" d="M 426 270 L 531 273.92 C 549.8571428571429 273.92, 549.8571428571429 294.08, 568.7142857142857 294.08 C 587.5714285714286 294.08, 587.5714285714286 273.92, 606.4285714285714 273.92 C 625.2857142857142 273.92, 625.2857142857142 294.08, 644.1428571428571 294.08 C 663 294.08, 663 273.92, 681.8571428571429 273.92 C 700.7142857142858 273.92, 700.7142857142858 294.08, 719.5714285714286 294.08 C 738.4285714285713 294.08, 738.4285714285713 273.92, 757.2857142857142 273.92 C 776.1428571428571 273.92, 776.1428571428571 294.08, 795 294.08 C 813.8571428571429 294.08, 813.8571428571429 273.92, 832.7142857142858 273.92 C 851.5714285714287 273.92, 851.5714285714287 294.08, 870.4285714285714 294.08 C 889.2857142857142 294.08, 889.2857142857142 273.92, 908.1428571428571 273.92 C 927 273.92, 927 294.08, 945.8571428571429 294.08 C 964.7142857142858 294.08, 964.7142857142858 273.92, 983.5714285714286 273.92 C 1002.4285714285713 273.92, 1002.4285714285713 294.08, 1021.2857142857142 294.08 C 1040.142857142857 294.08, 1040.142857142857 273.92, 1059 273.92 L 1164 270" stroke="#f77f00" />
+
+  <text class="wire-label" x="796" y="256">ETHERNET TX- (ORANGE) 20.00 in | TWISTED PAIR TP1</text>
+
+
+  <rect class="terminal" x="370" y="282" width="56" height="32" fill="#f77f00" />
+  <path class="terminal-mark" d="M 393 291 L 393 305 M 386 298 L 400 298" />
+  <text class="table-text" x="398" y="302">+</text>
+
+  <rect class="terminal" x="1164" y="282" width="56" height="32" fill="#f77f00" />
+  <path class="terminal-mark" d="M 1192 291 L 1192 305 M 1185 298 L 1199 298" />
+  <text class="table-text" x="1192" y="302">+</text>
+  <path class="wire-line" d="M 426 298 L 531 294.08 C 549.8571428571429 294.08, 549.8571428571429 273.92, 568.7142857142857 273.92 C 587.5714285714286 273.92, 587.5714285714286 294.08, 606.4285714285714 294.08 C 625.2857142857142 294.08, 625.2857142857142 273.92, 644.1428571428571 273.92 C 663 273.92, 663 294.08, 681.8571428571429 294.08 C 700.7142857142858 294.08, 700.7142857142858 273.92, 719.5714285714286 273.92 C 738.4285714285713 273.92, 738.4285714285713 294.08, 757.2857142857142 294.08 C 776.1428571428571 294.08, 776.1428571428571 273.92, 795 273.92 C 813.8571428571429 273.92, 813.8571428571429 294.08, 832.7142857142858 294.08 C 851.5714285714287 294.08, 851.5714285714287 273.92, 870.4285714285714 273.92 C 889.2857142857142 273.92, 889.2857142857142 294.08, 908.1428571428571 294.08 C 927 294.08, 927 273.92, 945.8571428571429 273.92 C 964.7142857142858 273.92, 964.7142857142858 294.08, 983.5714285714286 294.08 C 1002.4285714285713 294.08, 1002.4285714285713 273.92, 1021.2857142857142 273.92 C 1040.142857142857 273.92, 1040.142857142857 294.08, 1059 294.08 L 1164 298" stroke="#f77f00" />
+  <path class="wire-stripe" d="M 426 298 L 531 294.08 C 549.8571428571429 294.08, 549.8571428571429 273.92, 568.7142857142857 273.92 C 587.5714285714286 273.92, 587.5714285714286 294.08, 606.4285714285714 294.08 C 625.2857142857142 294.08, 625.2857142857142 273.92, 644.1428571428571 273.92 C 663 273.92, 663 294.08, 681.8571428571429 294.08 C 700.7142857142858 294.08, 700.7142857142858 273.92, 719.5714285714286 273.92 C 738.4285714285713 273.92, 738.4285714285713 294.08, 757.2857142857142 294.08 C 776.1428571428571 294.08, 776.1428571428571 273.92, 795 273.92 C 813.8571428571429 273.92, 813.8571428571429 294.08, 832.7142857142858 294.08 C 851.5714285714287 294.08, 851.5714285714287 273.92, 870.4285714285714 273.92 C 889.2857142857142 273.92, 889.2857142857142 294.08, 908.1428571428571 294.08 C 927 294.08, 927 273.92, 945.8571428571429 273.92 C 964.7142857142858 273.92, 964.7142857142858 294.08, 983.5714285714286 294.08 C 1002.4285714285713 294.08, 1002.4285714285713 273.92, 1021.2857142857142 273.92 C 1040.142857142857 273.92, 1040.142857142857 294.08, 1059 294.08 L 1164 298" stroke="#ffffff" />
+  <text class="wire-label" x="796" y="284">ETHERNET TX+ (ORANGE / WHITE) 20.00 in | TWISTED PAIR TP1</text>
+
+
+  <rect class="terminal" x="370" y="310" width="56" height="32" fill="#008a13" />
+  <path class="terminal-mark" d="M 393 319 L 393 333 M 386 326 L 400 326" />
+  <text class="table-text" x="398" y="330">+</text>
+
+  <rect class="terminal" x="1164" y="310" width="56" height="32" fill="#008a13" />
+  <path class="terminal-mark" d="M 1192 319 L 1192 333 M 1185 326 L 1199 326" />
+  <text class="table-text" x="1192" y="330">+</text>
+  <path class="wire-line" d="M 426 326 L 531 329.92 C 549.8571428571429 329.92, 549.8571428571429 350.08, 568.7142857142857 350.08 C 587.5714285714286 350.08, 587.5714285714286 329.92, 606.4285714285714 329.92 C 625.2857142857142 329.92, 625.2857142857142 350.08, 644.1428571428571 350.08 C 663 350.08, 663 329.92, 681.8571428571429 329.92 C 700.7142857142858 329.92, 700.7142857142858 350.08, 719.5714285714286 350.08 C 738.4285714285713 350.08, 738.4285714285713 329.92, 757.2857142857142 329.92 C 776.1428571428571 329.92, 776.1428571428571 350.08, 795 350.08 C 813.8571428571429 350.08, 813.8571428571429 329.92, 832.7142857142858 329.92 C 851.5714285714287 329.92, 851.5714285714287 350.08, 870.4285714285714 350.08 C 889.2857142857142 350.08, 889.2857142857142 329.92, 908.1428571428571 329.92 C 927 329.92, 927 350.08, 945.8571428571429 350.08 C 964.7142857142858 350.08, 964.7142857142858 329.92, 983.5714285714286 329.92 C 1002.4285714285713 329.92, 1002.4285714285713 350.08, 1021.2857142857142 350.08 C 1040.142857142857 350.08, 1040.142857142857 329.92, 1059 329.92 L 1164 326" stroke="#008a13" />
+
+  <text class="wire-label" x="796" y="312">ETHERNET RX- (GREEN) 20.00 in | TWISTED PAIR TP2</text>
+
+
+  <rect class="terminal" x="370" y="338" width="56" height="32" fill="#008a13" />
+  <path class="terminal-mark" d="M 393 347 L 393 361 M 386 354 L 400 354" />
+  <text class="table-text" x="398" y="358">+</text>
+
+  <rect class="terminal" x="1164" y="338" width="56" height="32" fill="#008a13" />
+  <path class="terminal-mark" d="M 1192 347 L 1192 361 M 1185 354 L 1199 354" />
+  <text class="table-text" x="1192" y="358">+</text>
+  <path class="wire-line" d="M 426 354 L 531 350.08 C 549.8571428571429 350.08, 549.8571428571429 329.92, 568.7142857142857 329.92 C 587.5714285714286 329.92, 587.5714285714286 350.08, 606.4285714285714 350.08 C 625.2857142857142 350.08, 625.2857142857142 329.92, 644.1428571428571 329.92 C 663 329.92, 663 350.08, 681.8571428571429 350.08 C 700.7142857142858 350.08, 700.7142857142858 329.92, 719.5714285714286 329.92 C 738.4285714285713 329.92, 738.4285714285713 350.08, 757.2857142857142 350.08 C 776.1428571428571 350.08, 776.1428571428571 329.92, 795 329.92 C 813.8571428571429 329.92, 813.8571428571429 350.08, 832.7142857142858 350.08 C 851.5714285714287 350.08, 851.5714285714287 329.92, 870.4285714285714 329.92 C 889.2857142857142 329.92, 889.2857142857142 350.08, 908.1428571428571 350.08 C 927 350.08, 927 329.92, 945.8571428571429 329.92 C 964.7142857142858 329.92, 964.7142857142858 350.08, 983.5714285714286 350.08 C 1002.4285714285713 350.08, 1002.4285714285713 329.92, 1021.2857142857142 329.92 C 1040.142857142857 329.92, 1040.142857142857 350.08, 1059 350.08 L 1164 354" stroke="#008a13" />
+  <path class="wire-stripe" d="M 426 354 L 531 350.08 C 549.8571428571429 350.08, 549.8571428571429 329.92, 568.7142857142857 329.92 C 587.5714285714286 329.92, 587.5714285714286 350.08, 606.4285714285714 350.08 C 625.2857142857142 350.08, 625.2857142857142 329.92, 644.1428571428571 329.92 C 663 329.92, 663 350.08, 681.8571428571429 350.08 C 700.7142857142858 350.08, 700.7142857142858 329.92, 719.5714285714286 329.92 C 738.4285714285713 329.92, 738.4285714285713 350.08, 757.2857142857142 350.08 C 776.1428571428571 350.08, 776.1428571428571 329.92, 795 329.92 C 813.8571428571429 329.92, 813.8571428571429 350.08, 832.7142857142858 350.08 C 851.5714285714287 350.08, 851.5714285714287 329.92, 870.4285714285714 329.92 C 889.2857142857142 329.92, 889.2857142857142 350.08, 908.1428571428571 350.08 C 927 350.08, 927 329.92, 945.8571428571429 329.92 C 964.7142857142858 329.92, 964.7142857142858 350.08, 983.5714285714286 350.08 C 1002.4285714285713 350.08, 1002.4285714285713 329.92, 1021.2857142857142 329.92 C 1040.142857142857 329.92, 1040.142857142857 350.08, 1059 350.08 L 1164 354" stroke="#ffffff" />
+  <text class="wire-label" x="796" y="340">ETHERNET RX+ (GREEN / WHITE) 20.00 in | TWISTED PAIR TP2</text>
+
+
+</svg>

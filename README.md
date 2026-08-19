@@ -4,9 +4,11 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.0.21**
+Current release: **v2.0.22**
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
+
+The approved W323 regression fixture is stored at `examples/W323-approved.csv`, with generated SVG, PNG, and editable Draw.io outputs under `examples/generated/`. It verifies separate one-position GND/PWR ferrule housings, one eight-position BOT BLOX Ethernet housing, TP1/TP2 routing, and the DPBOF13F 13-pin SUBCON face.
 
 ## Use The App
 
