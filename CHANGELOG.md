@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.0.23 - 2026-08-19
+
+- Clamped each ferrule termination from its own active right-leg row so filler positions belonging to an adjacent Ethernet connector cannot inflate GND or PWR into 8-position housings.
+- Restored the compact W323 layout with two independent 1-position ferrule housings above one 8-position BOT BLOX Ethernet connector.
+
 ## v2.0.22 - 2026-08-19
 
 - Added the approved W323 source fixture and regenerated SVG, PNG, and Draw.io assets.

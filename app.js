@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.22";
+const APP_VERSION = "2.0.23";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -5522,7 +5522,13 @@ function inferKiCadRightConnectorGroups(wires, positionRows = []) {
       const legName = normalizeText(row.rightLegName);
       return Boolean(legName && normalizeText(group.name) === legName);
     });
-    group.positionCount = inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
+    // A ferrule leg is a physical one-position termination even when other rows
+    // in the same imported harness describe a larger multi-position connector.
+    // Clamp from the group's active row so Ethernet filler positions can never
+    // inflate an adjacent GND/PWR ferrule housing.
+    group.positionCount = isKiCadSinglePositionTermination(activeRows, "right")
+      ? 1
+      : inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
     group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right", group.positionCount);
     group.housingType = firstFilled(group.positionRows, "rightHousingType") || firstFilled(activeRows, "rightHousingType");
     group.housingPart = firstFilled(group.positionRows, "rightHousingPart") || firstFilled(activeRows, "rightHousingPart");

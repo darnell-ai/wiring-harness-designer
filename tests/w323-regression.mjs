@@ -69,6 +69,20 @@ assert.equal(groupsByLeg["LEG:3"].positionCount, 1, "PWR ferrule housing must re
 assert.equal(groupsByLeg["LEG:2"].positionCount, 8, "only BOT BLOX Ethernet may be eight positions");
 assert.deepEqual(Array.from(groupsByLeg["LEG:2"].unusedPins), ["5", "6", "7", "8"]);
 
+// Reproduce the live failure: a broad connector-size inference contaminated the
+// individual ferrule rows with the Ethernet connector's eight-position count.
+// Ferrule semantics must remain authoritative for those independent legs.
+const contaminatedSheet = structuredClone(sheet);
+for (const row of contaminatedSheet.objects.filter((row) => ["GND", "PWR"].includes(row.wireName))) {
+  row.rightConnectorPositionCount = 8;
+}
+const contaminatedResult = api.compileSheetHarnessResult(contaminatedSheet, "W323-contaminated.csv");
+const contaminatedModel = api.buildKiCadHarnessModel(contaminatedResult.sheetHarness);
+const contaminatedGroups = Object.fromEntries(contaminatedModel.rightConnectorGroups.map((group) => [group.key, group]));
+assert.equal(contaminatedGroups["LEG:1"].positionCount, 1, "GND ferrule must ignore a contaminated 8-position inference");
+assert.equal(contaminatedGroups["LEG:3"].positionCount, 1, "PWR ferrule must ignore a contaminated 8-position inference");
+assert.equal(contaminatedGroups["LEG:2"].positionCount, 8, "Ethernet connector must remain eight positions");
+
 assert.deepEqual(Array.from(model.twistedPairAnalysis.validGroups, (group) => group.id), ["TP1", "TP2"]);
 assert.ok(model.wires.every((wire) => wire.y === wire.rightTargetY), "multi-connector lanes must remain straight and compact");
 for (const group of model.twistedPairAnalysis.validGroups) {
