@@ -89,6 +89,7 @@ for (const group of model.twistedPairAnalysis.validGroups) {
   for (const wire of group.routes) {
     const geometry = api.sheetWireRouteGeometry(wire, model.twistedPairAnalysis, 426, 1164);
     assert.equal(geometry.points[0][1], geometry.points.at(-1)[1], `${group.id} must not have a large terminal bend`);
+    assert.ok(geometry.points.at(-2)[0] - geometry.points[1][0] > 500, `${group.id} weave must span the readable harness width`);
   }
 }
 
@@ -103,5 +104,6 @@ for (const output of [svg, drawio]) {
 }
 assert.doesNotMatch(svg, /WIRING TABLE|BILL OF MATERIALS|SPECIFICATIONS/);
 assert.match(svg, /2 x 1 POS \+ 1 x 8 POS/);
+assert.doesNotMatch(drawio, /id="twisted_pair_/, "multi-right drawings must not add overlapping pair-pill labels");
 
 console.log("W323 regression passed: 13-pin SUBCON, 1/1/8 right housings, TP1/TP2, compact straight routes, FERRULE terminology.");

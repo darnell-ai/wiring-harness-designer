@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.0.23";
+const APP_VERSION = "2.0.24";
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -5582,7 +5582,7 @@ function assignKiCadRightConnectorLayout(groups) {
       numericPin(left.fromPin) - numericPin(right.fromPin)
     );
     const positionCount = Math.max(group.sortedWires.length, Number(group.positionCount) || group.sortedWires.length);
-    const slotGap = positionCount > 6 ? 28 : 34;
+    const slotGap = positionCount > 6 ? 34 : 38;
     const assignedWires = new Set();
     group.top = cursorY;
     group.slots = Array.from({ length: positionCount }, (_, index) => {
@@ -9485,26 +9485,13 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
-    const crossoverX = 880 + index * 10;
     const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
     const wireStartX = leftIsPcb ? 300 : 426;
-    const twistGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, 820);
+    const wireEndX = rightIsPcb ? 1316 : 1164;
+    const twistGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
     const wirePoints = twistGeometry.twisted
-      ? [
-          ...twistGeometry.points,
-          [crossoverX, wire.y],
-          [crossoverX, targetY],
-          [1100, targetY],
-          [rightIsPcb ? 1316 : 1164, targetY]
-        ]
-      : [
-          [wireStartX, wire.y],
-          [700, wire.y],
-          [crossoverX, wire.y],
-          [crossoverX, targetY],
-          [1100, targetY],
-          [rightIsPcb ? 1316 : 1164, targetY]
-        ];
+      ? twistGeometry.points
+      : [[wireStartX, wire.y], [wireEndX, targetY]];
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     if (!leftIsCircular && !leftIsPcb) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
@@ -9553,11 +9540,15 @@ function buildKiCadHarnessDrawioXml(result, model) {
       22,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=left;verticalAlign=middle;spacing=0;`
     );
+    const pairMembership = pairAnalysis.byRouteIndex.get(wire.index);
+    const detailY = pairMembership
+      ? wire.y + (pairMembership.memberIndex === 0 ? 3 : -27)
+      : wire.y - 12;
     addVertex(
       `wire_details_${index}`,
       escapeHtml(detailLabel),
       800 - detailLabelWidth / 2,
-      wire.y - 12,
+      detailY,
       detailLabelWidth,
       24,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=12;fontStyle=1;fontColor=${detailFontColor};align=center;spacing=0;`
@@ -9572,7 +9563,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`
     );
   });
-  pairAnalysis.validGroups.forEach((group, index) => {
+  (model.rightConnectorGroups.length > 1 ? [] : pairAnalysis.validGroups).forEach((group, index) => {
     const midY = average(group.routes.map((wire) => wire.y));
     addVertex(
       `twisted_pair_${index + 1}_label`,

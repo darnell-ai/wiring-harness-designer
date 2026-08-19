@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.24 - 2026-08-19
+
+- Expanded W323 twisted-pair paths across the usable harness width instead of compressing each weave into a short center-left segment.
+- Increased right-connector lane spacing and moved paired-wire detail labels into the space between conductors so Draw.io exports remain readable.
+- Removed redundant twisted-pair pill labels from multi-right-termination drawings while keeping TP1/TP2 in each wire detail label.
+
 ## v2.0.23 - 2026-08-19
 
 - Clamped each ferrule termination from its own active right-leg row so filler positions belonging to an adjacent Ethernet connector cannot inflate GND or PWR into 8-position housings.
