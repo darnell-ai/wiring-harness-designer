@@ -1,0 +1,3 @@
+Cable Name,Left Leg,Left Leg Name,Wire Name,Left Pin Pos #,Left Housing Type,Left Housing Part #,Left Pin P#,AWGuage,Color,Twisted Pair ID,Length inches,Tap Position inches,Branch ID,,Branch Role,Right Leg,Right Leg Name,Wire Name,Right Pin Pos #,Right Housing Type,Right Housing Part #,Right Pin P#,Tool used,Comments
+W300,1,BATT J49,48V,1,2 POS MOLEX FRONT LOCK,WM1927-ND,WM11904TR-ND,12,RED,,12,,,,,1,SENS J1,48V,1,2 POS MOLEX FRONT LOCK,WM1927-ND,WM11904TR-ND,,
+,1,BATT J49,GND,2,2 POS MOLEX FRONT LOCK,WM1927-ND,WM11904TR-ND,12,BLACK,,12,,,,,1,SENS J1,GND,2,2 POS MOLEX FRONT LOCK,WM1927-ND,WM11904TR-ND,,

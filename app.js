@@ -1,6 +1,10 @@
 "use strict";
 
-const APP_VERSION = "2.0.24";
+const APP_VERSION = "2.1.0";
+const HarnessCore = globalThis.DigiWireCore;
+if (!HarnessCore) {
+  throw new Error("DIGIWIRE harness-core.js must load before app.js.");
+}
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
 const OCR_LANG_PATH = "vendor/tesseract/lang";
@@ -271,6 +275,7 @@ const dom = {
   confidenceValue: document.querySelector("#confidenceValue"),
   confidenceFill: document.querySelector("#confidenceFill"),
   statusText: document.querySelector("#statusText"),
+  importDiagnostics: document.querySelector("#importDiagnostics"),
   orientationFact: document.querySelector("#orientationFact"),
   wireFact: document.querySelector("#wireFact"),
   connectorFact: document.querySelector("#connectorFact"),
@@ -487,6 +492,7 @@ function applyHarnessSheet(sheet, sourceName) {
   dom.sourceTitle.textContent = cleanFileName(sourceName);
   renderDrawioDiagram(result);
   renderFacts(result);
+  renderImportDiagnostics(result.diagnostics || []);
   renderFindings(result.findings);
   renderSourcePreview(result);
   return result;
@@ -589,6 +595,7 @@ function applyDesignerConfiguration() {
   updateDetectedLayout(result);
   renderDrawioDiagram(result);
   renderFacts(result);
+  renderImportDiagnostics(result.diagnostics || []);
   setStatus(`Applied ${layoutModeLabel(result.resolvedLayoutMode)} layout and connector settings.`);
 }
 
@@ -608,6 +615,7 @@ function resetDesignerConfiguration() {
   updateDetectedLayout(result);
   renderDrawioDiagram(result);
   renderFacts(result);
+  renderImportDiagnostics(result.diagnostics || []);
   setStatus("Using connector and layout values from the sheet.");
 }
 
@@ -619,6 +627,7 @@ function compileConfiguredHarnessResult(sheet, sourceName, config) {
     ? classifySheetLayout(configuredSheet)
     : config.layoutMode;
   result.importMessages = sheet.importMessages || [];
+  result.diagnostics = sheet.diagnostics || HarnessCore.validateRows(configuredSheet.objects || []);
   return result;
 }
 
@@ -865,10 +874,16 @@ function normalizeSheetMatrix(matrix) {
     })
     .filter((row) => row.some((cell) => cell !== ""));
   const objects = rows.map((row) => sheetRowToObject(headers, row));
+  const diagnostics = HarnessCore.validateRows(objects);
+  const diagnosticErrors = diagnostics.filter((item) => item.severity === "error");
+  const diagnosticWarnings = diagnostics.filter((item) => item.severity === "warning");
   if (repairedRows) {
     importMessages.push(`Realigned ${repairedRows} shifted row${repairedRows === 1 ? "" : "s"}.`);
   }
-  return { headers, rows, objects, importMessages, importError: "" };
+  if (diagnosticErrors.length || diagnosticWarnings.length) {
+    importMessages.push(`Validation found ${diagnosticErrors.length} error${diagnosticErrors.length === 1 ? "" : "s"} and ${diagnosticWarnings.length} warning${diagnosticWarnings.length === 1 ? "" : "s"}.`);
+  }
+  return { headers, rows, objects, diagnostics, importMessages, importError: "" };
 }
 
 function isLikelySheetHeaderRow(row) {
@@ -992,9 +1007,7 @@ function sheetRowToObject(headers, row) {
 }
 
 function normalizeHarnessTerminology(value) {
-  return String(value || "").replace(/\b(?:FURREL|FERRAEL)(S)?\b/gi, (_match, plural) =>
-    `FERRULE${plural ? "S" : ""}`
-  );
+  return HarnessCore.normalizeTerminology(value);
 }
 
 function normalizeSheetKey(header) {
@@ -3213,34 +3226,48 @@ function buildGenericImageHarnessSvg(result) {
 </svg>`;
 }
 
-function buildSheetHarnessSvg(result) {
+function createSheetRenderPlan(result) {
   const sheet = result.sheetHarness;
   const requestedLayout = result.designerConfig?.layoutMode || "auto";
   const forceGeneric = requestedLayout === "multiLeg";
   const preferStandard = requestedLayout === "simple" || requestedLayout === "twisted";
   const allowLargeCircular = requestedLayout === "auto" || requestedLayout === "largeCircular";
   if (!forceGeneric && !preferStandard && isBarrelPowerCableSheet(sheet.rows)) {
-    return buildBarrelPowerCableSvg(result);
+    return { kind: "barrel", model: null };
   }
   if (!forceGeneric && !preferStandard && isMolexUartJetsonSheet(sheet.rows)) {
-    return buildMolexUartJetsonSvg(result);
+    return { kind: "molexUart", model: null };
   }
   const largeCircularPairModel = buildLargeCircularPairHarnessModel(sheet);
   if (allowLargeCircular && largeCircularPairModel) {
-    return buildLargeCircularPairHarnessSvg(result, largeCircularPairModel);
+    return { kind: "largeCircular", model: largeCircularPairModel };
   }
   const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(sheet);
   if (!forceGeneric && !preferStandard && powerBoardIsolatorModel) {
-    return buildPowerBoardIsolatorSheetSvg(result, powerBoardIsolatorModel);
+    return { kind: "powerBoard", model: powerBoardIsolatorModel };
   }
+  const activeRows = getKiCadWireRows(sheet.rows);
+  const hasTwistedPairs = analyzeSheetTwistedPairs(activeRows.map((row, index) => ({ row, index, y: index * 40 }))).validGroups.length > 0;
   const datasheetModel = buildDatasheetConnectorHarnessModel(sheet);
-  if (!forceGeneric && !preferStandard && datasheetModel) {
-    return buildDatasheetConnectorHarnessSvg(result, datasheetModel);
+  if (!forceGeneric && !preferStandard && datasheetModel && !hasTwistedPairs) {
+    return { kind: "datasheet", model: datasheetModel };
   }
   const kicadModel = buildKiCadHarnessModel(sheet);
   if (!forceGeneric && kicadModel) {
-    return buildKiCadHarnessSvg(result, kicadModel);
+    return { kind: "kicad", model: kicadModel };
   }
+  return { kind: "generic", model: null };
+}
+
+function buildSheetHarnessSvg(result) {
+  const plan = createSheetRenderPlan(result);
+  if (plan.kind === "barrel") return buildBarrelPowerCableSvg(result);
+  if (plan.kind === "molexUart") return buildMolexUartJetsonSvg(result);
+  if (plan.kind === "largeCircular") return buildLargeCircularPairHarnessSvg(result, plan.model);
+  if (plan.kind === "powerBoard") return buildPowerBoardIsolatorSheetSvg(result, plan.model);
+  if (plan.kind === "datasheet") return buildDatasheetConnectorHarnessSvg(result, plan.model);
+  if (plan.kind === "kicad") return buildKiCadHarnessSvg(result, plan.model);
+  const sheet = result.sheetHarness;
   const activeRows = sheet.rows.filter((row) => !isNoWireRow(row));
   const rows = activeRows.length ? activeRows : [{
     wireName: "No drawable rows found",
@@ -5288,6 +5315,7 @@ function buildKiCadHarnessModel(sheet) {
     alignKiCadWiresToRightConnectorGroups(wires, rightConnectorGroups);
   }
   const twistedPairAnalysis = analyzeSheetTwistedPairs(wires);
+  assignKiCadWireLabelLayout(wires, twistedPairAnalysis);
   groups.forEach((group) => {
     group.wires = wires.filter((wire) => wire.groupKey === group.key);
   });
@@ -5475,6 +5503,8 @@ function formatKiCadConnectorPositionText(positionCount, activePositionCount, un
 
 function inferKiCadRightConnectorGroups(wires, positionRows = []) {
   const groups = [];
+  const endpointRecords = HarnessCore.buildEndpointRecords(positionRows, "right");
+  const endpointRecordsById = new Map(endpointRecords.map((endpoint) => [endpoint.id, endpoint]));
   const hasExplicitLegs = wires.some((wire) => isMeaningfulSheetValue(wire.row.rightLeg));
   if (hasExplicitLegs) {
     wires.forEach((wire) => {
@@ -5507,6 +5537,7 @@ function inferKiCadRightConnectorGroups(wires, positionRows = []) {
     });
   }
   groups.forEach((group) => {
+    const endpoint = endpointRecordsById.get(group.key);
     group.name = inferKiCadRightConnectorGroupName(group, groups.length);
     group.palette = RIGHT_HOUSING_PALETTE[group.index % RIGHT_HOUSING_PALETTE.length];
     const activeRows = group.wires.map((wire) => wire.row);
@@ -5526,13 +5557,14 @@ function inferKiCadRightConnectorGroups(wires, positionRows = []) {
     // in the same imported harness describe a larger multi-position connector.
     // Clamp from the group's active row so Ethernet filler positions can never
     // inflate an adjacent GND/PWR ferrule housing.
-    group.positionCount = isKiCadSinglePositionTermination(activeRows, "right")
+    group.positionCount = endpoint?.positionCount || (isKiCadSinglePositionTermination(activeRows, "right")
       ? 1
-      : inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right");
-    group.unusedPins = getKiCadUnusedConnectorPins(group.positionRows, "right", group.positionCount);
-    group.housingType = firstFilled(group.positionRows, "rightHousingType") || firstFilled(activeRows, "rightHousingType");
-    group.housingPart = firstFilled(group.positionRows, "rightHousingPart") || firstFilled(activeRows, "rightHousingPart");
-    group.pinPart = firstFilled(group.positionRows, "rightPinPart") || firstFilled(activeRows, "rightPinPart");
+      : inferKiCadConnectorPositionCount(group.positionRows, activeRows, "right"));
+    group.unusedPins = endpoint?.unusedPins || getKiCadUnusedConnectorPins(group.positionRows, "right", group.positionCount);
+    group.housingType = endpoint?.housingType || firstFilled(group.positionRows, "rightHousingType") || firstFilled(activeRows, "rightHousingType");
+    group.housingPart = endpoint?.housingPart || firstFilled(group.positionRows, "rightHousingPart") || firstFilled(activeRows, "rightHousingPart");
+    group.pinPart = endpoint?.pinPart || firstFilled(group.positionRows, "rightPinPart") || firstFilled(activeRows, "rightPinPart");
+    group.endpoint = endpoint || null;
   });
   assignKiCadRightConnectorLayout(groups);
   return groups;
@@ -5575,38 +5607,15 @@ function inferKiCadRightConnectorGroupName(group, groupCount) {
 }
 
 function assignKiCadRightConnectorLayout(groups) {
-  let cursorY = 160;
-  groups.forEach((group) => {
-    group.sortedWires = [...group.wires].sort((left, right) =>
-      numericPin(left.toPin) - numericPin(right.toPin) ||
-      numericPin(left.fromPin) - numericPin(right.fromPin)
-    );
-    const positionCount = Math.max(group.sortedWires.length, Number(group.positionCount) || group.sortedWires.length);
-    const slotGap = positionCount > 6 ? 34 : 38;
-    const assignedWires = new Set();
-    group.top = cursorY;
-    group.slots = Array.from({ length: positionCount }, (_, index) => {
-      const pin = index + 1;
-      const wire = group.sortedWires.find((candidate) => numericPin(candidate.toPin) === pin);
-      if (wire) {
-        assignedWires.add(wire);
-      }
-      return { pin: String(pin), wire: wire || null, y: cursorY + 18 + index * slotGap };
-    });
-    group.sortedWires.filter((wire) => !assignedWires.has(wire)).forEach((wire) => {
-      const slot = group.slots.find((candidate) => !candidate.wire);
-      if (slot) {
-        slot.wire = wire;
-      }
-    });
+  const plannedGroups = HarnessCore.planConnectorGroups(groups, { top: 160, groupGap: 14 });
+  groups.forEach((group, index) => {
+    Object.assign(group, plannedGroups[index]);
     group.slots.forEach((slot) => {
       if (slot.wire) {
         slot.wire.rightTargetY = slot.y;
         slot.wire.rightConnectorIndex = group.index;
       }
     });
-    group.bottom = cursorY + 38 + Math.max(0, positionCount - 1) * slotGap;
-    cursorY = group.bottom + 8;
   });
 }
 
@@ -6579,7 +6588,7 @@ function buildKiCadWireSvg(wire, {
   ${rightTerminal}
   <path class="${compact ? "wire-line-compact" : "wire-line"}" d="${routeGeometry.svgPath}" stroke="${color}" />
   ${colorSpec.stripeStroke ? `<path class="${compact ? "wire-stripe-compact" : "wire-stripe"}" d="${routeGeometry.svgPath}" stroke="${colorSpec.stripeStroke}" />` : ""}
-  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}${twistedPairId ? ` | TWISTED PAIR ${escapeXml(twistedPairId)}` : ""}</text>
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.detailLabelY ?? wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}${twistedPairId ? ` | TWISTED PAIR ${escapeXml(twistedPairId)}` : ""}</text>
   `;
 }
 
@@ -6813,6 +6822,20 @@ function parseLengthMeasurement(length, defaultUnit = "in") {
     value,
     unit
   };
+}
+
+function assignKiCadWireLabelLayout(wires, pairAnalysis) {
+  const rectangles = wires.map((wire) => {
+    const desiredY = wire.y - 29;
+    return { id: String(wire.index), x: 610, y: desiredY, width: 380, height: 24 };
+  });
+  const placed = HarnessCore.placeLabels(rectangles, { minY: 130, maxY: 570, gap: 5 });
+  const byId = new Map(placed.map((rectangle) => [rectangle.id, rectangle]));
+  wires.forEach((wire) => {
+    const rectangle = byId.get(String(wire.index));
+    wire.detailLabelTop = rectangle?.y ?? wire.y - 12;
+    wire.detailLabelY = wire.detailLabelTop + 16;
+  });
 }
 
 function isKiCadFerruleGroup(group) {
@@ -7968,6 +7991,15 @@ function setStatus(text) {
   dom.statusText.textContent = text;
 }
 
+function renderImportDiagnostics(diagnostics = []) {
+  if (!dom.importDiagnostics) return;
+  const visible = diagnostics.slice(0, 6);
+  dom.importDiagnostics.hidden = !visible.length;
+  dom.importDiagnostics.innerHTML = visible.map((item) =>
+    `<span class="diagnostic-chip ${item.severity === "error" ? "error" : "warning"}" title="${escapeHtml(item.code || "IMPORT")}">${escapeHtml(item.message)}</span>`
+  ).join("");
+}
+
 function resetApp() {
   appState = {
     fileName: "",
@@ -7986,6 +8018,7 @@ function resetApp() {
   dom.designerPanel.hidden = true;
   dom.tablePasteInput.value = "";
   dom.layoutDetectionText.textContent = "Paste a harness table to detect a layout.";
+  renderImportDiagnostics([]);
   document.querySelector("#engineBadge").textContent = "Multi-cable engine";
   setStatus("Cleared. Paste the next Excel table or image.");
   renderEmpty();
@@ -8442,32 +8475,13 @@ function buildGenericImageDrawioXml(result) {
 }
 
 function buildSheetDrawioXml(result) {
-  const requestedLayout = result.designerConfig?.layoutMode || "auto";
-  const forceGeneric = requestedLayout === "multiLeg";
-  const preferStandard = requestedLayout === "simple" || requestedLayout === "twisted";
-  const allowLargeCircular = requestedLayout === "auto" || requestedLayout === "largeCircular";
-  if (!forceGeneric && !preferStandard && isBarrelPowerCableSheet(result.sheetHarness.rows)) {
-    return buildBarrelPowerDrawioXml(result);
-  }
-  if (!forceGeneric && !preferStandard && isMolexUartJetsonSheet(result.sheetHarness.rows)) {
-    return buildMolexUartJetsonDrawioXml(result);
-  }
-  const largeCircularPairModel = buildLargeCircularPairHarnessModel(result.sheetHarness);
-  if (allowLargeCircular && largeCircularPairModel) {
-    return buildLargeCircularPairHarnessDrawioXml(result, largeCircularPairModel);
-  }
-  const powerBoardIsolatorModel = buildPowerBoardIsolatorSheetModel(result.sheetHarness);
-  if (!forceGeneric && !preferStandard && powerBoardIsolatorModel) {
-    return buildPowerBoardIsolatorSheetDrawioXml(result, powerBoardIsolatorModel);
-  }
-  const datasheetModel = buildDatasheetConnectorHarnessModel(result.sheetHarness);
-  if (!forceGeneric && !preferStandard && datasheetModel) {
-    return buildDatasheetConnectorHarnessDrawioXml(result, datasheetModel);
-  }
-  const kicadModel = buildKiCadHarnessModel(result.sheetHarness);
-  if (!forceGeneric && kicadModel) {
-    return buildKiCadHarnessDrawioXml(result, kicadModel);
-  }
+  const plan = createSheetRenderPlan(result);
+  if (plan.kind === "barrel") return buildBarrelPowerDrawioXml(result);
+  if (plan.kind === "molexUart") return buildMolexUartJetsonDrawioXml(result);
+  if (plan.kind === "largeCircular") return buildLargeCircularPairHarnessDrawioXml(result, plan.model);
+  if (plan.kind === "powerBoard") return buildPowerBoardIsolatorSheetDrawioXml(result, plan.model);
+  if (plan.kind === "datasheet") return buildDatasheetConnectorHarnessDrawioXml(result, plan.model);
+  if (plan.kind === "kicad") return buildKiCadHarnessDrawioXml(result, plan.model);
   const cells = [];
   const add = (cell) => cells.push(cell);
   const addVertex = (id, value, x, y, width, height, style) => {
@@ -9540,15 +9554,11 @@ function buildKiCadHarnessDrawioXml(result, model) {
       22,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=left;verticalAlign=middle;spacing=0;`
     );
-    const pairMembership = pairAnalysis.byRouteIndex.get(wire.index);
-    const detailY = pairMembership
-      ? wire.y + (pairMembership.memberIndex === 0 ? 3 : -27)
-      : wire.y - 12;
     addVertex(
       `wire_details_${index}`,
       escapeHtml(detailLabel),
       800 - detailLabelWidth / 2,
-      detailY,
+      wire.detailLabelTop ?? wire.y - 12,
       detailLabelWidth,
       24,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=12;fontStyle=1;fontColor=${detailFontColor};align=center;spacing=0;`

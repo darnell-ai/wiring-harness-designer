@@ -453,6 +453,33 @@ button.primary:hover:not(:disabled) {
   }
 }
 
+.import-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.import-diagnostics[hidden] {
+  display: none;
+}
+
+.diagnostic-chip {
+  border: 1px solid #d1a44f;
+  border-radius: 999px;
+  background: #fff8df;
+  color: #5d430e;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 4px 8px;
+}
+
+.diagnostic-chip.error {
+  border-color: #c85a5a;
+  background: #fff0f0;
+  color: #7c2020;
+}
+
 @media (max-width: 560px) {
   .drawio-stage {
     height: calc(100vh - 245px);

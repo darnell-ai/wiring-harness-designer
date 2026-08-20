@@ -5,6 +5,7 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const coreSource = fs.readFileSync(path.join(root, "harness-core.js"), "utf8");
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8");
 source = source.replace(/\r?\ninit\(\);\r?\n/, "\n");
 source += `\nglobalThis.__digiwireTest = {
@@ -30,8 +31,10 @@ const context = vm.createContext({
   setTimeout,
   clearTimeout
 });
+vm.runInContext(coreSource, context, { filename: "harness-core.js" });
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__digiwireTest;
+const core = context.DigiWireCore;
 
 const csv = fs.readFileSync(path.join(root, "examples", "W323-approved.csv"), "utf8");
 const sheet = api.normalizeSheetMatrix(api.parseDelimitedText(csv));
@@ -46,6 +49,25 @@ assert.equal(model.leftConnector.positionCount, 13);
 assert.match(model.leftConnector.type, /DPBOF13F/);
 assert.deepEqual(Array.from(model.leftConnector.unusedPins), ["2", "4", "5", "6", "7", "12", "13"]);
 assert.equal(model.wires.length, 6);
+assert.deepEqual(
+  Array.from(core.findRectangleCollisions(model.wires.map((wire) => ({
+    id: `detail-${wire.index}`,
+    x: 610,
+    y: wire.detailLabelTop,
+    width: 380,
+    height: 24
+  })))),
+  [],
+  "shared W323 detail-label layout must be collision free"
+);
+assert.deepEqual(
+  Array.from(core.findRectangleCollisions(model.wires.flatMap((wire) => [
+    { id: `detail-${wire.index}`, x: 610, y: wire.detailLabelTop, width: 380, height: 24 },
+    { id: `lane-${wire.index}`, x: 426, y: wire.y - 4, width: 738, height: 8 }
+  ]), 0)).filter(([left, right]) => left.startsWith("detail-") !== right.startsWith("detail-")),
+  [],
+  "shared W323 detail labels must not cross conductor lanes"
+);
 assert.deepEqual(
   Array.from(model.wires, (wire) => [
     wire.fromPin,

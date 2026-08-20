@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v2.0.24</title>
-    <link rel="stylesheet" href="styles.css?v=2.0.24">
+    <title>DIGIWIRE v2.1.0</title>
+    <link rel="stylesheet" href="styles.css?v=2.1.0">
   </head>
   <body>
     <main class="app-shell">
@@ -25,6 +25,7 @@
               <span class="panel-label">Excel to Draw.io harness workspace</span>
               <strong id="drawingTitle">Draw.io editor</strong>
               <span id="statusText" class="pane-status">Loading Draw.io. You can paste a table as soon as it is ready.</span>
+              <div id="importDiagnostics" class="import-diagnostics" hidden></div>
             </div>
             <div class="pane-tools">
               <button id="pasteButton" type="button" title="Read and draw a copied image from the clipboard">
@@ -134,6 +135,7 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="app.js?v=2.0.24" defer></script>
+    <script src="harness-core.js?v=2.1.0" defer></script>
+    <script src="app.js?v=2.1.0" defer></script>
   </body>
 </html>

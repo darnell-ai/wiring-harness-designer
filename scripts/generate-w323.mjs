@@ -4,6 +4,7 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const coreSource = fs.readFileSync(path.join(root, "harness-core.js"), "utf8");
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
 source += `\nglobalThis.__digiwireGenerate = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildSheetHarnessSvg, buildSheetDrawioXml };`;
 const context = vm.createContext({
@@ -18,6 +19,7 @@ const context = vm.createContext({
   setTimeout,
   clearTimeout
 });
+vm.runInContext(coreSource, context, { filename: "harness-core.js" });
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__digiwireGenerate;
 const csv = fs.readFileSync(path.join(root, "examples", "W323-approved.csv"), "utf8");

@@ -1,0 +1,9 @@
+Cable Name,Left Leg,Left Leg Name,Wire Name,Left Pin Pos #,Left Housing Type,Left Housing Part #,Left Pin P#,AWGuage,Color,Twisted Pair ID,Length inches,Tap Position inches,Branch ID,,Branch Role,Right Leg,Right Leg Name,Wire Name,Right Pin Pos #,Right Housing Type,Right Housing Part #,Right Pin P#,Tool used,Comments
+W126,1,RTK Subcon pbof 8,0 V GND,1,Subcon pbof 8,Subcon,A25123-ND,22,BLACK,,7.5 FT,,,,,1,JBOX RAIL,0 V GND,1,TB 48,FERRULES,FERRULES,GREEN CRIMPER,
+,1,RTK Subcon pbof 8,12 V +,2,Subcon pbof 8,Subcon,A25123-ND,22,WHITE,,7.5 FT,,,,,1,JBOX RAIL,12 V +,2,TB 39,FERRULES,FERRULES,GREEN CRIMPER,
+,1,RTK Subcon pbof 8,orange / white,3,Subcon pbof 8,Subcon,A25123-ND,22,ORANGE / WHITE,,7.5 FT,,,,,2,BOT BLOX,orange / white,2,8 PIN FRONT LOCK CONNECTOR,,,,
+,1,RTK Subcon pbof 8,orange,4,Subcon pbof 8,Subcon,A25123-ND,22,ORANGE,,7.5 FT,,,,,2,BOT BLOX,orange,1,8 PIN FRONT LOCK CONNECTOR,,,,
+,1,RTK Subcon pbof 8,green / white,5,Subcon pbof 8,Subcon,A25123-ND,22,GREEN / WHITE,,7.5 FT,,,,,2,BOT BLOX,green / white,4,8 PIN FRONT LOCK CONNECTOR,,,,
+,1,RTK Subcon pbof 8,green,6,Subcon pbof 8,Subcon,A25123-ND,22,GREEN,,7.5 FT,,,,,2,BOT BLOX,green,3,8 PIN FRONT LOCK CONNECTOR,,,,
+,1,RTK Subcon pbof 8,DNP,7,Subcon pbof 8,Subcon,A25123-ND,22,,,,,,,,2,BOT BLOX,DNP,5,8 PIN FRONT LOCK CONNECTOR,,,,
+,1,RTK Subcon pbof 8,DNP,8,Subcon pbof 8,Subcon,A25123-ND,22,,,,,,,,2,BOT BLOX,DNP,6,8 PIN FRONT LOCK CONNECTOR,,,,

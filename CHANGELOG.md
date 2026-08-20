@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.1.0 - 2026-08-19
+
+- Added a standalone harness core for normalized terminology, explicit left/right endpoint records, connector capacity, validation diagnostics, lane planning, and collision detection.
+- Unified SVG and Draw.io renderer selection through one shared render plan so both formats choose the same harness model.
+- Made right connector groups consume explicit endpoint records instead of independently re-inferring ferrule and connector capacities.
+- Added visible import diagnostic chips for duplicate pins, invalid twisted pairs, missing active pin assignments, and connector capacity conflicts.
+- Added regression coverage for W126, 48-conductor W127, W300, W320, W323, malformed imports, endpoint capacity, long twisted-pair geometry, and rectangle collisions.
+- Added Node regression checks as a required GitHub Pages deployment step.
+- Included the bundled OCR runtime in the GitHub Pages artifact instead of deploying HTML/JavaScript without its referenced worker files.
+- Packaged the shared harness core in the offline Windows desktop build.
+
 ## v2.0.24 - 2026-08-19
 
 - Expanded W323 twisted-pair paths across the usable harness width instead of compressing each weave into a short center-left segment.
