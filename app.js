@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.3";
+const APP_VERSION = "2.1.4";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -976,10 +976,13 @@ function validateKnownHousingPartRows(rows) {
         }
       }
       if (catalog?.key === "tePivotPowerRj45" && group.rows.length > 2) {
+        const standardT568b = side === "right" && isCompleteT568bMapping(group.rows);
         diagnostics.push({
-          severity: "error",
+          severity: standardT568b ? "warning" : "error",
           code: "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS",
-          message: `${side.toUpperCase()} A116128-ND / 2213145-1 is a two-conductor Pivot Power RJ45: positions 1,3,5,7 are common and positions 2,4,6,8 are common. It cannot terminate eight independent Ethernet conductors.`,
+          message: standardT568b
+            ? `${side.toUpperCase()} is drawn from the submitted eight-conductor T568B mapping. A116128-ND / 2213145-1 is a two-conductor Pivot Power RJ45, so replace or verify the housing part number before build.`
+            : `${side.toUpperCase()} A116128-ND / 2213145-1 is a two-conductor Pivot Power RJ45: positions 1,3,5,7 are common and positions 2,4,6,8 are common. It cannot terminate eight independent Ethernet conductors.`,
           rowIndexes: group.rowIndexes
         });
       }
@@ -2658,6 +2661,50 @@ function kiCadWireColorSource(row) {
   return isRj45TerminationRow(row) && isRecognizedWireColor(row?.rightWireName)
     ? row.rightWireName
     : row.color;
+}
+
+const T568B_PIN_COLORS = Object.freeze({
+  1: "ORANGE / WHITE",
+  2: "ORANGE",
+  3: "GREEN / WHITE",
+  4: "BLUE",
+  5: "BLUE / WHITE",
+  6: "GREEN",
+  7: "BROWN / WHITE",
+  8: "BROWN"
+});
+
+const T568B_LANE_PIN_ORDER = Object.freeze([1, 2, 3, 6, 4, 5, 7, 8]);
+
+function isCompleteT568bMapping(rows) {
+  const activeRows = rows.filter((row) => !HarnessCore.isDnpRow(row));
+  if (activeRows.length !== 8 || !activeRows.every(isRj45TerminationRow)) {
+    return false;
+  }
+  const rowsByPin = new Map(activeRows.map((row) => [numericPin(row.rightPinPos), row]));
+  return Object.entries(T568B_PIN_COLORS).every(([pin, expectedColor]) => {
+    const row = rowsByPin.get(Number(pin));
+    return row && normalizeWireColorLabel(row.rightWireName) === expectedColor;
+  });
+}
+
+function prepareKiCadRoutingRows(rows) {
+  if (!isCompleteT568bMapping(rows)) {
+    return { rows, standardT568b: false };
+  }
+  const rowsByPin = new Map(rows.map((row) => [numericPin(row.rightPinPos), row]));
+  return {
+    standardT568b: true,
+    rows: T568B_LANE_PIN_ORDER.map((pin) => {
+      const row = rowsByPin.get(pin);
+      const family = wireColorSpec(row.rightWireName).baseName;
+      return {
+        ...row,
+        twistedPairId: `T568B-${family}`,
+        standardT568b: true
+      };
+    })
+  };
 }
 
 function buildBraidPatternDefs() {
@@ -5439,18 +5486,20 @@ function buildKiCadHarnessModel(sheet) {
   const description = isMultiGroup
     ? `${shortListLabel(groupNames, 4)} TO ${rightName}`.replace(/\s+/g, " ").trim()
     : `${leftName} TO ${rightName}`.replace(/\s+/g, " ").trim();
-  const wireStartY = isMultiGroup ? 205 : rows.length > 12 ? 180 : 208;
-  const wireGap = rows.length > 12 ? 38 : rows.length > 8 ? 44 : rows.length <= 4 ? 66 : 52;
-  const wires = rows.map((row, index) => {
+  const routing = prepareKiCadRoutingRows(rows);
+  const routingRows = routing.rows;
+  const wireStartY = isMultiGroup ? 205 : routingRows.length > 12 ? 180 : 208;
+  const wireGap = routingRows.length > 12 ? 38 : routingRows.length > 8 ? 44 : routingRows.length <= 4 ? 66 : 52;
+  const wires = routingRows.map((row, index) => {
     const leftWireName = sheetRowLeftWireName(row, `WIRE ${index + 1}`);
     const rightWireName = sheetRowRightWireName(row, `WIRE ${index + 1}`);
     const colorSource = kiCadWireColorSource(row);
-    const usesRightColor = colorSource === row.rightWireName;
+    const usesRightColor = routing.standardT568b || colorSource === row.rightWireName;
     return {
       index,
       row,
       name: usesRightColor ? rightWireName : leftWireName,
-      leftName: leftWireName,
+      leftName: routing.standardT568b ? rightWireName : leftWireName,
       rightName: rightWireName,
       colorName: normalizeColorName(colorSource),
       colorLabel: normalizeWireColorLabel(colorSource),

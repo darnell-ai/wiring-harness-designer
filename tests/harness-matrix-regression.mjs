@@ -58,15 +58,24 @@ assert.equal(botbloxActive.length, 8, "Left Leg Name DNP rows must not become co
 assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "left")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position PicoBlade");
 assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "right")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position RJ45");
 assert.ok(botblox.sheet.diagnostics.some((item) => item.code === "PICOBLADE_PIGTAIL_SPEC_MISMATCH"));
-assert.ok(botblox.sheet.diagnostics.some((item) => item.code === "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS"));
+const botbloxPartDiagnostic = botblox.sheet.diagnostics.find((item) => item.code === "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS");
+assert.equal(botbloxPartDiagnostic?.severity, "warning", "a complete T568B map should remain drawable while flagging the incompatible submitted part number");
+assert.equal(botblox.sheet.diagnostics.filter((item) => item.severity === "error").length, 0);
 assert.equal(api.createSheetRenderPlan(botblox.result).kind, "kicad");
 const botbloxModel = api.buildKiCadHarnessModel(botblox.result.sheetHarness);
 assert.equal(botbloxModel.wires.length, 8);
 assert.equal(botbloxModel.twistedPairAnalysis.validGroups.length, 4);
 assert.deepEqual(
   Array.from(botbloxModel.wires, (wire) => wire.colorLabel),
-  ["ORANGE / WHITE", "ORANGE", "GREEN / WHITE", "BLUE", "BLUE / WHITE", "GREEN", "BROWN / WHITE", "BROWN"],
-  "RJ45 rows must use the right-side conductor colors"
+  ["ORANGE / WHITE", "ORANGE", "GREEN / WHITE", "GREEN", "BLUE", "BLUE / WHITE", "BROWN / WHITE", "BROWN"],
+  "T568B rows must be grouped into the four real color-family pairs"
+);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.fromPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.toPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.leftName), Array.from(botbloxModel.wires, (wire) => wire.rightName));
+assert.deepEqual(
+  Array.from(botbloxModel.twistedPairAnalysis.validGroups, (group) => group.id),
+  ["T568B-ORANGE", "T568B-GREEN", "T568B-BLUE", "T568B-BROWN"]
 );
 assert.match(botbloxModel.leftConnector.housingPart, /900-2181120802-ND/);
 assert.match(botbloxModel.rightConnector.housingPart, /A116128-ND/);

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.4 - 2026-08-26
+
+- Corrected complete T568B harness routing to pair pins 1-2 (orange), 3-6 (green), 4-5 (blue), and 7-8 (brown), independent of incorrect adjacent-row pair IDs.
+- Reordered only the visual lanes so each real pair stays together while preserving the correct connector pin numbers.
+- Made the left and right conductor labels use the same recognized RJ45 color names on a complete T568B mapping.
+- Changed the incompatible A116128-ND notice from a blocking error to a verification warning when the submitted data is otherwise a complete standard Ethernet mapping.
+- Added regression coverage for pair membership, lane pin order, consistent labels, and diagnostic severity.
+
 ## v2.1.3 - 2026-08-26
 
 - Made complete RJ45 mappings use recognized right-side wire names as the conductor color source, including white tracer stripes.

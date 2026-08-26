@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.1.3**
+Current release: **v2.1.4**
 
-DigiWire 2.1.3 uses right-side conductor color names for complete RJ45 mappings, renders a standard T568B 8P8C termination, and leaves twisted pairs visually self-explanatory without repeated text labels.
+DigiWire 2.1.4 recognizes a complete T568B pin/color map, groups the actual orange, green, blue, and brown pairs even when spreadsheet pair IDs are wrong, and uses the RJ45 color name consistently at both ends of the drawing.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -62,6 +62,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Accepts `Pin Pos`, `Pin Position`, `Pin Position Number`, and equivalent left/right header variants without losing pin assignments.
 - Uses recognized right-side RJ45 wire names such as `Orange / White` as the rendered base/stripe color instead of an unrelated left-side color field.
 - Draws complete eight-pin color mappings as a standard T568B 8P8C face and omits redundant `TWISTED PAIR` text while preserving the intertwined geometry.
+- Normalizes complete T568B drawings into their true pin pairs: 1-2 orange, 3-6 green, 4-5 blue, and 7-8 brown; the submitted table remains unchanged for auditability.
 - Resolves `900-2181120802-ND` as the eight-circuit, single-row Molex PicoBlade 218112-0802 pigtail and `A116128-ND` as TE 2213145-1 Pivot Power RJ45, with part-specific connector faces and compatibility diagnostics.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.
 - Draws 13-pin PBOF mating faces in the physical 3-4-4-2 cavity arrangement and ignores out-of-housing DNP rows above the declared 13-position capacity.
