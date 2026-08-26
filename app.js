@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.6";
+const APP_VERSION = "2.1.7";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -5553,6 +5553,12 @@ function buildKiCadHarnessModel(sheet) {
   });
   const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires, rightPositionRows);
   const hasMultipleRightConnectors = !isMultiGroup && rightConnectorGroups.length > 1;
+  const rightConnectorIsRj45 = normalizeText(`${rightName} ${rightType} ${rightHousingPart}`).includes("RJ45");
+  if (rightConnectorIsRj45 && rightConnectorGroups.length === 1) {
+    wires.forEach((wire) => {
+      wire.rightTargetY = wire.y;
+    });
+  }
   if (hasMultipleRightConnectors) {
     alignKiCadWiresToRightConnectorGroups(wires, rightConnectorGroups);
   }
@@ -8326,8 +8332,21 @@ function renderImportDiagnostics(diagnostics = []) {
   const visible = diagnostics.slice(0, 6);
   dom.importDiagnostics.hidden = !visible.length;
   dom.importDiagnostics.innerHTML = visible.map((item) =>
-    `<span class="diagnostic-chip ${item.severity === "error" ? "error" : "warning"}" title="${escapeHtml(item.code || "IMPORT")}">${escapeHtml(item.message)}</span>`
+    `<span class="diagnostic-chip ${item.severity === "error" ? "error" : "warning"}" title="${escapeHtml(item.message)}">${escapeHtml(diagnosticChipLabel(item))}</span>`
   ).join("");
+}
+
+function diagnosticChipLabel(item) {
+  switch (item?.code) {
+    case "PICOBLADE_PIGTAIL_SPEC_MISMATCH":
+      return "PicoBlade pigtail specification differs";
+    case "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS":
+      return "RJ45 housing part number needs verification";
+    case "T568B_TWISTED_PAIR_MISMATCH":
+      return "T568B twisted-pair mapping needs verification";
+    default:
+      return shortLabel(item?.message || item?.code || "Import warning", 72);
+  }
 }
 
 function resetApp() {
@@ -9787,13 +9806,24 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${kiCadConnectorHeaderType(model.leftConnector, model.wires, "left")}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 80, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${kiCadConnectorHeaderType(model.rightConnector, model.wires, "right")}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1220, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addEdge("dim_length", `OVERALL LENGTH: ${formatLengthMeasurement(model.length)} +/-0.25 in`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
+  const protectionTop = model.wires[0].y - 30;
   addHorizontalDrawioProtection(addVertex, {
     id: "main_protection",
     x1: 452,
     x2: 1138,
-    top: model.wires[0].y - 30,
-    bottom: model.wires[model.wires.length - 1].y + 30
+    top: protectionTop,
+    bottom: model.wires[model.wires.length - 1].y + 30,
+    label: ""
   });
+  addVertex(
+    "main_protection_label",
+    "EXPANDABLE BRAIDED SLEEVING (EXPANDO)",
+    520,
+    protectionTop + 3,
+    240,
+    18,
+    "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=9;fontStyle=1;fontColor=#1f2930;align=left;verticalAlign=middle;spacing=1;"
+  );
   const leftIsCircular = isKiCadCircularConnector(model.leftConnector);
   const leftIsPicoBlade = isKiCadPicoBladeConnector(model.leftConnector);
   const pairAnalysis = model.twistedPairAnalysis || analyzeSheetTwistedPairs(model.wires);
@@ -9844,16 +9874,14 @@ function buildKiCadHarnessDrawioXml(result, model) {
     const leftLabelWidth = drawioLabelWidth(leftLabel, 11, 72, 220);
     const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
     const rightLabelWidth = drawioLabelWidth(rightLabel, 11, 72, 220);
-    const detailFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
-    const endpointFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
     addVertex(
       `left_wire_name_${index}`,
       escapeHtml(leftLabel),
       438,
-      wire.y - 11,
+      wire.y - 28,
       leftLabelWidth,
-      22,
-      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=left;verticalAlign=middle;spacing=0;`
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=#000000;align=left;verticalAlign=middle;spacing=1;"
     );
     addVertex(
       `wire_details_${index}`,
@@ -9862,16 +9890,16 @@ function buildKiCadHarnessDrawioXml(result, model) {
       wire.detailLabelTop ?? wire.y - 12,
       detailLabelWidth,
       24,
-      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=12;fontStyle=1;fontColor=${detailFontColor};align=center;spacing=0;`
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=center;spacing=1;"
     );
     addVertex(
       `right_wire_name_${index}`,
       escapeHtml(rightLabel),
       1148 - rightLabelWidth,
-      targetY - 11,
+      targetY - 28,
       rightLabelWidth,
-      22,
-      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`
+      18,
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=#000000;align=right;verticalAlign=middle;spacing=1;"
     );
   });
   // Add pin numbers last so they remain above wires, terminals, and connector faces.

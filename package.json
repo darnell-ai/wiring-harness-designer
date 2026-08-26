@@ -1,7 +1,7 @@
 {
   "name": "digiwire-harness-designer",
   "private": true,
-  "version": "2.1.6",
+  "version": "2.1.7",
   "scripts": {
     "test": "node tests/w323-regression.mjs && node tests/harness-matrix-regression.mjs",
     "generate:w323": "node scripts/generate-w323.mjs",

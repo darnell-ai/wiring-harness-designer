@@ -78,6 +78,7 @@ assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.rightName), ["Ora
 for (const pair of botbloxModel.twistedPairAnalysis.validGroups) {
   assert.equal(Math.abs(pair.routes[0].y - pair.routes[1].y), 52, `${pair.id} members must occupy adjacent visual lanes`);
 }
+assert.ok(botbloxModel.wires.every((wire) => wire.rightTargetY === wire.y), "RJ45 targets must stay aligned with the pair lanes");
 assert.deepEqual(
   Array.from(botbloxModel.twistedPairAnalysis.validGroups, (group) => group.id),
   ["TP1", "TP2", "TP3", "TP4"]
@@ -94,6 +95,9 @@ assert.doesNotMatch(botbloxSvg, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|
 assert.doesNotMatch(botbloxSvg, /WIRING TABLE|BILL OF MATERIALS|TEMPLATE NOTES/);
 assert.match(botbloxDrawio, /left_picoblade_body/);
 assert.match(botbloxDrawio, /right_rj45_shell/);
+assert.match(botbloxDrawio, /labelBackgroundColor=#ffffff/);
+assert.match(botbloxDrawio, /main_protection_label/);
+assert.match(botbloxDrawio, /EXPANDABLE BRAIDED SLEEVING \(EXPANDO\)/);
 assert.doesNotMatch(botbloxDrawio, /right_pivot_shell|TWISTED PAIR/);
 assert.doesNotMatch(botbloxDrawio, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
 

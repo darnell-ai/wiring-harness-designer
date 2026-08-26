@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.1.6**
+Current release: **v2.1.7**
 
-DigiWire 2.1.6 keeps every valid submitted twisted pair on adjacent visual lanes, even when its two rows or pin numbers are separated in the spreadsheet. Physical colors, endpoint names, pair IDs, and pin assignments remain unchanged.
+DigiWire 2.1.7 keeps RJ45 conductor endpoints aligned with their twisted-pair lanes in the editable Draw.io output, separates sleeve and wire labels, and presents part-verification warnings as compact badges with full details available on hover.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 

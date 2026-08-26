@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.7 - 2026-08-26
+
+- Kept every single-connector RJ45 endpoint aligned with its arranged conductor lane in the editable Draw.io output.
+- Moved endpoint labels above the wires and gave labels opaque backgrounds so conductor paths no longer run through the text.
+- Separated the braided-sleeving caption from the first conductor detail label.
+- Replaced long inline validation messages with compact warning badges while retaining the complete explanation in each badge tooltip.
+- Added regression coverage for aligned RJ45 targets and the revised Draw.io label treatment.
+
 ## v2.1.6 - 2026-08-26
 
 - Grouped each valid submitted twisted pair onto adjacent visual lanes, even when pair members are separated in spreadsheet row or pin order.
