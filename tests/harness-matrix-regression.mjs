@@ -52,6 +52,7 @@ assert.match(api.buildSheetDrawioXml(w126.result), /ORANGE \/ WHITE/);
 const botblox = loadFixture("BOTBLOX_ENET.csv");
 const botbloxActive = botblox.sheet.objects.filter((row) => !core.isDnpRow(row));
 assert.equal(botblox.sheet.objects.length, 16, "the imported table must retain source rows for auditability");
+assert.equal(botblox.sheet.objects[0].leftPinPos, "1", "Left Pin Position # must map to leftPinPos");
 assert.equal(botbloxActive.length, 8, "Left Leg Name DNP rows must not become conductors");
 assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "left")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position PicoBlade");
 assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "right")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position RJ45");

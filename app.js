@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.1";
+const APP_VERSION = "2.1.2";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -1121,8 +1121,16 @@ function normalizeSheetKey(header) {
     WIRENAME: "wireName",
     LEFTWIRENAME: "wireName",
     LEFTPINPOS: "leftPinPos",
+    LEFTPINPOSITION: "leftPinPos",
+    LEFTPINPOSITIONNUMBER: "leftPinPos",
+    LEFTPINPOSITIONNO: "leftPinPos",
     PINPOS: "rightPinPos",
+    PINPOSITION: "rightPinPos",
+    PINPOSITIONNUMBER: "rightPinPos",
     RIGHTPINPOS: "rightPinPos",
+    RIGHTPINPOSITION: "rightPinPos",
+    RIGHTPINPOSITIONNUMBER: "rightPinPos",
+    RIGHTPINPOSITIONNO: "rightPinPos",
     LEFTHOUSINGTYPE: "leftHousingType",
     HOUSINGTYPE: "rightHousingType",
     RIGHTHOUSINGTYPE: "rightHousingType",
@@ -3466,26 +3474,6 @@ function buildSheetHarnessSvg(result) {
     <text class="lead-callout" x="${sharedBundleGeometry.rightLeadX}" y="${sharedBundleGeometry.bottom + 34}">WIRE ENDS EXIT HEAT SHRINK TO RIGHT CONNECTOR</text>
     ${sharedLengthLabel ? `<text class="dimension-label" x="${(leftX + rightX) / 2}" y="${sharedBundleGeometry.bottom + 56}">${escapeXml(sharedLengthLabel)}</text>` : ""}
   </g>` : "";
-  const notes = uniqueValues(rows
-    .map((row) => row.comments)
-    .filter(Boolean)
-  ).slice(0, 4);
-  const generatedNotes = (notes.length
-    ? notes
-    : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."]
-  );
-  const pairValidationNote = twistedPairValidationNote(pairAnalysis);
-  if (pairValidationNote) {
-    generatedNotes.unshift(pairValidationNote);
-  }
-  if (sharedBundle) {
-    generatedNotes.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
-  }
-  const noteLines = uniqueValues(generatedNotes)
-    .slice(0, 4)
-    .map((comment, index) => `<text class="sheet-note" x="68" y="${704 + index * 18}">${escapeXml(shortLabel(comment, 150))}</text>`)
-    .join("");
-
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(sheet.title)}">
   <defs>
@@ -3531,13 +3519,6 @@ function buildSheetHarnessSvg(result) {
   ${rowLines}
   ${twistedPairCallouts}
   ${sharedBundleOverlay}
-  <rect class="template-notes-box" x="46" y="650" width="920" height="100" />
-  <text class="sheet-note-title" x="68" y="682">TEMPLATE NOTES</text>
-  ${noteLines}
-  <rect class="title-block-box" x="1010" y="650" width="550" height="100" />
-  <text class="title-block-label" x="1285" y="686">DESCRIPTION:</text>
-  <text class="title-block-text" x="1285" y="708">${escapeXml(sheet.cableName || "WIRE HARNESS")}</text>
-  <text class="title-block-label" x="1285" y="732">DRAWN BY: DIGIWIRE | REV A</text>
 </svg>`;
 }
 
@@ -8937,35 +8918,6 @@ function buildSheetDrawioXml(result) {
       );
     }
   }
-  const notes = uniqueValues(rows.map((row) => row.comments)).slice(0, 4);
-  const noteItems = notes.length
-    ? notes
-    : ["Blank fields remain editable design placeholders. Fill in wire, housing, contact, gauge, color, and length as the harness design develops."];
-  const pairValidationNote = twistedPairValidationNote(pairAnalysis);
-  if (pairValidationNote) {
-    noteItems.unshift(pairValidationNote);
-  }
-  if (sharedBundle) {
-    noteItems.push("Heat-shrink collars mark sleeve exits; length callouts are pin-to-pin from wire ends into connectors.");
-  }
-  addVertex(
-    "sheet_notes",
-    `<b>TEMPLATE NOTES</b><br>${uniqueValues(noteItems).slice(0, 4).map((note) => escapeHtml(note)).join("<br>")}`,
-    46,
-    650,
-    920,
-    100,
-    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=11;align=left;spacingLeft=12;spacingTop=8;"
-  );
-  addVertex(
-    "title_block",
-    `DESCRIPTION:<br><b>${escapeHtml(sheet.cableName || "WIRE HARNESS")}</b><br>DRAWN BY: DIGIWIRE | REV A`,
-    1010,
-    650,
-    550,
-    100,
-    "rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#000000;strokeWidth=2;fontSize=12;align=center;"
-  );
   const diagram = escapeXml(result.fileName || "DIGIWIRE");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <mxfile host="app.diagrams.net" modified="${new Date().toISOString()}" agent="DIGIWIRE" type="device">

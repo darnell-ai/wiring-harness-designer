@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.1.2 - 2026-08-26
+
+- Recognized `Left Pin Position #` and corresponding right/number variants as valid pin-position headers.
+- Prevented expanded header names from forcing otherwise valid PicoBlade/RJ45 tables into the generic template renderer.
+- Removed template-notes and description/title-block panels from the generic SVG and Draw.io fallback so all future drawings remain harness-focused.
+- Updated the BOTBLOX regression fixture to reproduce the exact submitted header and conductor mapping.
+
 ## v2.1.1 - 2026-08-26
 
 - Made `DNP` in left/right leg-name columns a first-class no-wire marker and excluded those rows from conductor counts, routing, terminals, and twisted-pair analysis.

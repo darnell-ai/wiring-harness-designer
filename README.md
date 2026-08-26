@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.1.1**
+Current release: **v2.1.2**
 
-DigiWire 2.1.1 skips rows marked `DNP` in either leg-name column while retaining valid unused cavities inside the connector's declared capacity. It also adds verified Molex 218112-0802 PicoBlade and TE 2213145-1 Pivot Power RJ45 drawings and warns when spreadsheet wiring conflicts with those parts' published specifications.
+DigiWire 2.1.2 recognizes both abbreviated pin headers such as `Left Pin Pos #` and expanded headers such as `Left Pin Position #`. Part-aware drawings are therefore selected consistently instead of falling back to the generic template renderer.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -59,6 +59,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Treats `DNP` in either `Left Leg Name` or `Right Leg Name` as a no-wire row, so placeholder rows never inflate routed-conductor totals or create gray wires.
+- Accepts `Pin Pos`, `Pin Position`, `Pin Position Number`, and equivalent left/right header variants without losing pin assignments.
 - Resolves `900-2181120802-ND` as the eight-circuit, single-row Molex PicoBlade 218112-0802 pigtail and `A116128-ND` as TE 2213145-1 Pivot Power RJ45, with part-specific connector faces and compatibility diagnostics.
 - Draws Subcon/PBOF connector names as circular mating faces and identifies unused pin positions separately from the active conductors.
 - Draws 13-pin PBOF mating faces in the physical 3-4-4-2 cavity arrangement and ignores out-of-housing DNP rows above the declared 13-position capacity.
