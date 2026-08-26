@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.1 - 2026-08-26
+
+- Made `DNP` in left/right leg-name columns a first-class no-wire marker and excluded those rows from conductor counts, routing, terminals, and twisted-pair analysis.
+- Kept DNP rows only as valid connector-cavity placeholders within a declared housing capacity, preventing pins 9-16 from inflating an eight-circuit connector.
+- Added verified part-number profiles and dedicated SVG/Draw.io faces for Molex 218112-0802 PicoBlade and TE 2213145-1 Pivot Power RJ45.
+- Added clear diagnostics for the fixed 28 AWG, 225 mm PicoBlade pigtail specification and the two-conductor odd/even commoning of the Pivot Power RJ45 plug.
+- Added a 16-row BOTBLOX regression fixture proving that only eight active wires and four twisted pairs are rendered.
+- Kept generated drawings focused on the harness by omitting wiring-table, parts/tool, notes, and title-block panels.
+
 ## v2.1.0 - 2026-08-19
 
 - Added a standalone harness core for normalized terminology, explicit left/right endpoint records, connector capacity, validation diagnostics, lane planning, and collision detection.

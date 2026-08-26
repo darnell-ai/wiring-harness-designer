@@ -19,7 +19,7 @@ const context = vm.createContext({
 });
 vm.runInContext(fs.readFileSync(path.join(root, "harness-core.js"), "utf8"), context, { filename: "harness-core.js" });
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
-source += `\nglobalThis.__matrixApi = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildSheetHarnessSvg, buildSheetDrawioXml, createSheetRenderPlan };`;
+source += `\nglobalThis.__matrixApi = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildKiCadHarnessModel, buildSheetHarnessSvg, buildSheetDrawioXml, createSheetRenderPlan };`;
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__matrixApi;
 const core = context.DigiWireCore;
@@ -48,6 +48,31 @@ const w126Right = core.buildEndpointRecords(w126.sheet.objects, "right");
 assert.equal(w126Right.length, 2);
 assert.equal(w126Right.find((endpoint) => endpoint.id === "LEG:2").positionCount, 8);
 assert.match(api.buildSheetDrawioXml(w126.result), /ORANGE \/ WHITE/);
+
+const botblox = loadFixture("BOTBLOX_ENET.csv");
+const botbloxActive = botblox.sheet.objects.filter((row) => !core.isDnpRow(row));
+assert.equal(botblox.sheet.objects.length, 16, "the imported table must retain source rows for auditability");
+assert.equal(botbloxActive.length, 8, "Left Leg Name DNP rows must not become conductors");
+assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "left")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position PicoBlade");
+assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "right")[0].positionCount, 8, "DNP pins 9-16 must not inflate the eight-position RJ45");
+assert.ok(botblox.sheet.diagnostics.some((item) => item.code === "PICOBLADE_PIGTAIL_SPEC_MISMATCH"));
+assert.ok(botblox.sheet.diagnostics.some((item) => item.code === "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS"));
+assert.equal(api.createSheetRenderPlan(botblox.result).kind, "kicad");
+const botbloxModel = api.buildKiCadHarnessModel(botblox.result.sheetHarness);
+assert.equal(botbloxModel.wires.length, 8);
+assert.equal(botbloxModel.twistedPairAnalysis.validGroups.length, 4);
+assert.match(botbloxModel.leftConnector.housingPart, /900-2181120802-ND/);
+assert.match(botbloxModel.rightConnector.housingPart, /A116128-ND/);
+const botbloxSvg = api.buildSheetHarnessSvg(botblox.result);
+const botbloxDrawio = api.buildSheetDrawioXml(botblox.result);
+assert.match(botbloxSvg, /class="picoblade-face"/);
+assert.match(botbloxSvg, /class="pivot-power-face"/);
+assert.match(botbloxSvg, /ODD COMMON \/ EVEN COMMON/);
+assert.doesNotMatch(botbloxSvg, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
+assert.doesNotMatch(botbloxSvg, /WIRING TABLE|BILL OF MATERIALS|TEMPLATE NOTES/);
+assert.match(botbloxDrawio, /left_picoblade_body/);
+assert.match(botbloxDrawio, /right_pivot_shell/);
+assert.doesNotMatch(botbloxDrawio, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
 
 const header = fs.readFileSync(path.join(root, "tests", "fixtures", "W300.csv"), "utf8").split(/\r?\n/, 1)[0];
 const w127Rows = [];
@@ -81,4 +106,4 @@ assert.deepEqual(
   [["a", "b"]]
 );
 
-console.log("Harness matrix regression passed: W126, W127, W300, W320, malformed imports, endpoints, and collision checks.");
+console.log("Harness matrix regression passed: BOTBLOX, W126, W127, W300, W320, DNP filtering, part profiles, malformed imports, endpoints, and collision checks.");

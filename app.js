@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.1.1";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -115,6 +115,34 @@ const DATASHEET_CONNECTOR_LIBRARY = Object.freeze({
     positionStep: 1,
     housingPart: () => "206043-1",
     drawingUrl: "https://www.te.com/en/product-206043-1.html"
+  }),
+  picoBladePigtail: Object.freeze({
+    key: "picoBladePigtail",
+    manufacturer: "Molex",
+    family: "PicoBlade 218112",
+    style: "female-to-pigtail single-row cable assembly",
+    series: "218112",
+    pitch: "1.25 mm",
+    rows: 1,
+    minPositions: 8,
+    maxPositions: 8,
+    positionStep: 1,
+    housingPart: () => "218112-0802",
+    drawingUrl: "https://www.molex.com/content/dam/molex/molex-dot-com/products/automated/en-us/salesdrawingpdf/218/218112/2181120804_sd.pdf?inline"
+  }),
+  tePivotPowerRj45: Object.freeze({
+    key: "tePivotPowerRj45",
+    manufacturer: "TE Connectivity",
+    family: "RJ45 Pivot Power",
+    style: "8-position two-conductor power plug",
+    series: "2213145",
+    pitch: "RJ45 modular interface",
+    rows: 1,
+    minPositions: 8,
+    maxPositions: 8,
+    positionStep: 1,
+    housingPart: () => "2213145-1",
+    drawingUrl: "https://www.te.com/en/product-2213145-1.html"
   })
 });
 
@@ -151,6 +179,26 @@ const HOUSING_PART_CATALOG = Object.freeze({
     key: "teCpc1714",
     positions: 14,
     manufacturerPart: "206044-1"
+  }),
+  "9002181120802ND": Object.freeze({
+    key: "picoBladePigtail",
+    positions: 8,
+    manufacturerPart: "218112-0802"
+  }),
+  "2181120802": Object.freeze({
+    key: "picoBladePigtail",
+    positions: 8,
+    manufacturerPart: "218112-0802"
+  }),
+  A116128ND: Object.freeze({
+    key: "tePivotPowerRj45",
+    positions: 8,
+    manufacturerPart: "2213145-1"
+  }),
+  "22131451": Object.freeze({
+    key: "tePivotPowerRj45",
+    positions: 8,
+    manufacturerPart: "2213145-1"
   })
 });
 
@@ -874,7 +922,10 @@ function normalizeSheetMatrix(matrix) {
     })
     .filter((row) => row.some((cell) => cell !== ""));
   const objects = rows.map((row) => sheetRowToObject(headers, row));
-  const diagnostics = HarnessCore.validateRows(objects);
+  const diagnostics = [
+    ...HarnessCore.validateRows(objects),
+    ...validateKnownHousingPartRows(objects)
+  ];
   const diagnosticErrors = diagnostics.filter((item) => item.severity === "error");
   const diagnosticWarnings = diagnostics.filter((item) => item.severity === "warning");
   if (repairedRows) {
@@ -884,6 +935,57 @@ function normalizeSheetMatrix(matrix) {
     importMessages.push(`Validation found ${diagnosticErrors.length} error${diagnosticErrors.length === 1 ? "" : "s"} and ${diagnosticWarnings.length} warning${diagnosticWarnings.length === 1 ? "" : "s"}.`);
   }
   return { headers, rows, objects, diagnostics, importMessages, importError: "" };
+}
+
+function validateKnownHousingPartRows(rows) {
+  const diagnostics = [];
+  for (const side of ["left", "right"]) {
+    const prefix = side === "left" ? "left" : "right";
+    const grouped = new Map();
+    rows.forEach((row, rowIndex) => {
+      if (HarnessCore.isDnpRow(row)) {
+        return;
+      }
+      const compact = normalizeHousingPartNumber(row[`${prefix}HousingPart`]);
+      if (!compact) {
+        return;
+      }
+      const key = `${side}:${compact}`;
+      const group = grouped.get(key) || { compact, rows: [], rowIndexes: [] };
+      group.rows.push(row);
+      group.rowIndexes.push(rowIndex);
+      grouped.set(key, group);
+    });
+    grouped.forEach((group) => {
+      const catalog = resolveHousingPartCatalogEntry(group.compact);
+      if (catalog?.key === "picoBladePigtail") {
+        const gauges = uniqueValues(group.rows.map((row) => String(row.awg || "").trim()).filter(Boolean));
+        const lengths = uniqueValues(group.rows.map((row) => String(row.length || "").trim()).filter(Boolean));
+        const mismatch = gauges.some((gauge) => Number(gauge.match(/\d+/)?.[0]) !== 28) ||
+          lengths.some((length) => {
+            const numeric = Number(length.match(/[\d.]+/)?.[0]);
+            return Number.isFinite(numeric) && Math.abs(numeric - 8.86) > 0.15;
+          });
+        if (mismatch) {
+          diagnostics.push({
+            severity: "warning",
+            code: "PICOBLADE_PIGTAIL_SPEC_MISMATCH",
+            message: `${side.toUpperCase()} 900-2181120802-ND is a fixed Molex 218112-0802 pigtail with eight 28 AWG black leads at 225 mm (8.86 in); the imported gauge or length describes a modified assembly.`,
+            rowIndexes: group.rowIndexes
+          });
+        }
+      }
+      if (catalog?.key === "tePivotPowerRj45" && group.rows.length > 2) {
+        diagnostics.push({
+          severity: "error",
+          code: "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS",
+          message: `${side.toUpperCase()} A116128-ND / 2213145-1 is a two-conductor Pivot Power RJ45: positions 1,3,5,7 are common and positions 2,4,6,8 are common. It cannot terminate eight independent Ethernet conductors.`,
+          rowIndexes: group.rowIndexes
+        });
+      }
+    });
+  }
+  return diagnostics;
 }
 
 function isLikelySheetHeaderRow(row) {
@@ -2466,11 +2568,16 @@ function isMeaningfulSheetValue(value) {
 }
 
 function isNoWireRow(row) {
+  if (HarnessCore.isDnpRow(row)) {
+    return true;
+  }
   const values = [
+    row.leftLegName,
     row.awg,
     row.color,
     row.length,
     row.wireName,
+    row.rightLegName,
     row.rightWireName,
     row.branchRole
   ].map((value) => normalizeText(value));
@@ -4027,12 +4134,24 @@ function datasheetConnectorViewLabel(connector) {
       ? "FLUSH SOCKET MATING FACE - MIRRORED NUMBERING"
       : "RECESSED PIN MATING FACE";
   }
+  if (connector.key === "picoBladePigtail") {
+    return "MATING FACE - SINGLE ROW - CIRCUIT 1 MARKED";
+  }
+  if (connector.key === "tePivotPowerRj45") {
+    return "PLUG CONTACT VIEW - ODD/EVEN CONTACTS ARE INTERNALLY COMMONED";
+  }
   return connector.key === "miniFitSr"
     ? "MATING FACE - TOP LATCH - CIRCUIT 1 MARKED"
     : "MATING FACE - CIRCUIT 1 MARKED";
 }
 
 function datasheetConnectorKey(text) {
+  if (text.includes("218112") || text.includes("PICOBLADE")) {
+    return "picoBladePigtail";
+  }
+  if (text.includes("2213145") || text.includes("A116128") || text.includes("PIVOT POWER RJ45")) {
+    return "tePivotPowerRj45";
+  }
   if (
     text.includes("206043") ||
     text.includes("206044") ||
@@ -4092,6 +4211,20 @@ function resolveHousingPartCatalogEntry(value) {
   }
   if (HOUSING_PART_CATALOG[compact]) {
     return HOUSING_PART_CATALOG[compact];
+  }
+  if (compact.includes("2181120802")) {
+    return {
+      key: "picoBladePigtail",
+      positions: 8,
+      manufacturerPart: "218112-0802"
+    };
+  }
+  if (compact.includes("A116128") || compact.includes("22131451")) {
+    return {
+      key: "tePivotPowerRj45",
+      positions: 8,
+      manufacturerPart: "2213145-1"
+    };
   }
   const powerpolePart = compact
     .replace(/^2243/, "")
@@ -4223,6 +4356,28 @@ function datasheetTerminationForGauge(key, gauge, options = {}) {
       contactPart: `NO APPROVED ${gauge} AWG MICRO-FIT CONTACT`,
       contactDescription: "Micro-Fit 3.0 43030 terminal range is 24-20 AWG.",
       toolPart: "NOT APPLICABLE",
+      warnings
+    };
+  }
+  if (key === "picoBladePigtail") {
+    if (gauge !== 28) {
+      warnings.push(`Molex 218112-0802 is supplied with fixed 28 AWG UL 1061 leads; ${gauge} AWG describes a modified assembly.`);
+    }
+    return {
+      contactPart: "50058-8000 (installed in 51021-0800)",
+      contactDescription: "PicoBlade 1.25 mm receptacle terminal supplied on the 218112-0802 pigtail",
+      toolPart: "FACTORY-ASSEMBLED PIGTAIL",
+      warnings
+    };
+  }
+  if (key === "tePivotPowerRj45") {
+    if (gauge !== 18) {
+      warnings.push(`TE 2213145-1 is designed for two 18 AWG conductors; ${gauge} AWG is not the specified cable construction.`);
+    }
+    return {
+      contactPart: "INTEGRATED PIVOT POWER CONTACTS",
+      contactDescription: "Odd RJ45 positions common to one conductor; even positions common to the second conductor",
+      toolPart: "TE APPLICATION SPEC 114-32052",
       warnings
     };
   }
@@ -5265,6 +5420,7 @@ function buildKiCadHarnessModel(sheet) {
   const leftHousingPart = firstFilled(rows, "leftHousingPart");
   const rightName = cleanConnectorName(connectorSideName(rows, "right") || "RIGHT CONNECTOR");
   const rightType = firstFilled(rows, "rightHousingType");
+  const rightHousingPart = firstFilled(rows, "rightHousingPart");
   const length = dominantSheetValue(rows, "length") || firstFilled(rows, "length") || "";
   const awg = dominantSheetValue(rows, "awg") || firstFilled(rows, "awg") || "";
   const leftPositionRows = getKiCadConnectorPositionRows(sheet.rows, rows, "left");
@@ -5351,7 +5507,10 @@ function buildKiCadHarnessModel(sheet) {
       name: hasMultipleRightConnectors ? `${rightConnectorGroups.length} RIGHT CONNECTORS` : rightName,
       type: hasMultipleRightConnectors
         ? "GROUPED BY RIGHT LEG"
-        : rightType && !normalizeText(rightName).includes(normalizeText(rightType)) ? rightType : "",
+        : uniqueValues([
+            rightType && !normalizeText(rightName).includes(normalizeText(rightType)) ? rightType : "",
+            rightHousingPart
+          ]).filter(Boolean).join(" | "),
       positionText: isMultiGroup
         ? `${groups.length} x 3 POSITION`
         : rightConnectorGroups.length > 1
@@ -5360,6 +5519,7 @@ function buildKiCadHarnessModel(sheet) {
       positionCount: rightPositionCount,
       activePositionCount: rightActivePositionCount,
       unusedPins: rightUnusedPins,
+      housingPart: rightHousingPart,
       view: connectorViewFromType(rightType)
     }
   };
@@ -5455,6 +5615,9 @@ function inferKiCadDeclaredPositionCount(rows, side) {
     if (connectorText.includes("RJ45")) {
       counts.push(8);
     }
+    if (connectorText.includes("2181120802") || connectorText.includes("218112-0802")) {
+      counts.push(8);
+    }
     [
       row[`${prefix}LegName`],
       row[`${prefix}HousingType`],
@@ -5462,6 +5625,12 @@ function inferKiCadDeclaredPositionCount(rows, side) {
     ].forEach((value) => {
       const text = normalizeText(value);
       for (const match of text.matchAll(/\b(\d{1,2})\s*(?:PIN|PINS|POS|POSITION|POSITIONS)\b/g)) {
+        const count = Number(match[1]);
+        if (count >= 1 && count <= 64) {
+          counts.push(count);
+        }
+      }
+      for (const match of text.matchAll(/\b(\d{1,2})\s*(?:CIRC|CIRCUIT|CIRCUITS)\b/g)) {
         const count = Number(match[1]);
         if (count >= 1 && count <= 64) {
           counts.push(count);
@@ -5845,48 +6014,7 @@ function buildKiCadHarnessSvg(result, model) {
   })).join("");
   const protectionTop = displayModel.wires[0].y - (denseLayout ? 18 : 30);
   const protectionBottom = displayModel.wires[displayModel.wires.length - 1].y + (denseLayout ? 18 : 30);
-  const wiringRows = displayModel.wires.map((wire) => [
-    wire.fromPin,
-    wire.name,
-    { text: wire.colorLabel || wire.colorName, className: wire.colorName === "RED" ? "table-red" : "table-text" },
-    wire.awg || displayModel.awg || "",
-    formatLengthMeasurement(wire.length || displayModel.length),
-    wire.toPin
-  ]);
-  const bomRows = buildKiCadBomRows(displayModel);
-  const notes = buildKiCadNotes(displayModel)
-    .map((note, index) => `<text class="note" x="36" y="${696 + index * 18}">${index + 1}. ${escapeXml(note)}</text>`)
-    .join("");
-  const documentationSvg = displayModel.rightConnectorGroups.length > 1
-    ? ""
-    : denseLayout
-    ? buildKiCadDenseDocumentationSvg(displayModel)
-    : `
-      ${buildSvgTable({
-        x: 30,
-        y: 498,
-        width: 560,
-        title: "WIRING TABLE",
-        headers: ["LEFT PIN", "SIGNAL NAME", "COLOR", "AWG", "LENGTH\n(in)", "RIGHT\nPIN"],
-        rows: wiringRows,
-        colWidths: [92, 142, 84, 62, 82, 98],
-        rowHeight: 33
-      })}
-      ${buildKiCadSpecsSvg(620, 498, 340, 166, displayModel)}
-      ${buildSvgTable({
-        x: 990,
-        y: 498,
-        width: 570,
-        title: "BILL OF MATERIALS",
-        headers: ["ITEM", "QTY", "DESCRIPTION", "PART NUMBER"],
-        rows: bomRows,
-        colWidths: [60, 60, 250, 200],
-        rowHeight: 30
-      })}
-      <text class="note-title" x="36" y="680">NOTES:</text>
-      ${notes}
-      ${buildWireLegendSvg(548, 680, 260, 82, displayModel)}
-      ${buildKiCadTitleBlockSvg(840, 674, 720, 106, displayModel)}`;
+  const documentationSvg = "";
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${SVG_WIDTH} ${SVG_HEIGHT}" role="img" aria-label="${escapeXml(displayModel.cableName)} KiCad style harness drawing">
@@ -5933,6 +6061,18 @@ function buildKiCadHarnessSvg(result, model) {
         .rj45-latch { fill: #287db5; stroke: #17577f; stroke-width: 1.4; }
         .rj45-pin-number { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
         .rj45-color-label { fill: #31383b; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .picoblade-body { fill: #f1eee4; stroke: #47443d; stroke-width: 3; }
+        .picoblade-rim { fill: #fbfaf5; stroke: #8f8b80; stroke-width: 1.5; }
+        .picoblade-latch { fill: #ded8ca; stroke: #47443d; stroke-width: 2; }
+        .picoblade-circuit-one { fill: #d97706; stroke: #7c3e00; stroke-width: 1; }
+        .picoblade-cavity { fill: #313538; stroke: #111111; stroke-width: 1.5; }
+        .picoblade-cavity-unused { fill: #bec3c5; stroke: #747b7f; stroke-width: 1.3; stroke-dasharray: 4 3; }
+        .picoblade-pin { fill: #ffffff; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .pivot-power-shell { fill: #f28c18; stroke: #8f4500; stroke-width: 3; }
+        .pivot-power-nose { fill: #fb9f2e; stroke: #8f4500; stroke-width: 1.5; }
+        .pivot-power-stuffer { fill: #eef5f7; fill-opacity: .72; stroke: #5d686d; stroke-width: 1.5; }
+        .pivot-power-contact { fill: #d7b65b; stroke: #725b1d; stroke-width: 1.2; }
+        .pivot-power-contact-unused { opacity: .32; }
         .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
@@ -5983,13 +6123,13 @@ function buildKiCadHarnessSvg(result, model) {
 
   <text class="connector-heading" x="220" y="46">${leftPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}</text>
   <text class="connector-sub" x="220" y="72">${escapeXml(displayModel.leftConnector.name)}</text>
-  ${displayModel.leftConnector.type ? `<text class="connector-sub" x="220" y="96">${escapeXml(displayModel.leftConnector.type)}</text>` : ""}
+  ${kiCadConnectorHeaderType(displayModel.leftConnector) ? `<text class="connector-sub" x="220" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.leftConnector))}</text>` : ""}
   <text class="connector-sub" x="220" y="120">${escapeXml(displayModel.leftConnector.positionText)}</text>
   <text class="connector-view" x="220" y="144">(${escapeXml(displayModel.leftConnector.view)})</text>
 
   <text class="connector-heading" x="1360" y="46">${rightPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}</text>
   <text class="connector-sub" x="1360" y="72">${escapeXml(displayModel.rightConnector.name)}</text>
-  ${displayModel.rightConnector.type ? `<text class="connector-sub" x="1360" y="96">${escapeXml(displayModel.rightConnector.type)}</text>` : ""}
+  ${kiCadConnectorHeaderType(displayModel.rightConnector) ? `<text class="connector-sub" x="1360" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.rightConnector))}</text>` : ""}
   <text class="connector-sub" x="1360" y="120">${escapeXml(displayModel.rightConnector.positionText)}</text>
   <text class="connector-view" x="1360" y="144">(${escapeXml(displayModel.rightConnector.view)})</text>
 
@@ -6338,6 +6478,12 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
   if (isKiCadPcbConnector(connector)) {
     return buildKiCadPcbFaceSvg(x, wires, connector, side);
   }
+  if (isKiCadPicoBladeConnector(connector)) {
+    return buildKiCadPicoBladeConnectorFaceSvg(x, wires, connector, side);
+  }
+  if (isKiCadPivotPowerRj45Connector(connector)) {
+    return buildKiCadPivotPowerRj45FaceSvg(x, wires, connector, side);
+  }
   if (isKiCadRj45Connector(connector)) {
     return buildKiCadRj45ConnectorFaceSvg(x, wires, connector, side);
   }
@@ -6400,8 +6546,32 @@ function isKiCadCircularConnector(connector) {
   return text.includes("CPC") || text.includes("SUBCON") || text.includes("PBOF") || text.includes("CIRCULAR");
 }
 
+function connectorIdentityText(connector) {
+  return normalizeText(`${connector.name} ${connector.type} ${connector.housingPart || ""} ${connector.positionText || ""}`);
+}
+
+function isKiCadPicoBladeConnector(connector) {
+  const text = connectorIdentityText(connector);
+  return text.includes("PICOBLADE") || text.includes("2181120802") || text.includes("510210800");
+}
+
+function isKiCadPivotPowerRj45Connector(connector) {
+  const text = connectorIdentityText(connector);
+  return text.includes("A116128") || text.includes("22131451") || text.includes("PIVOT POWER");
+}
+
 function isKiCadRj45Connector(connector) {
-  return normalizeText(`${connector.name} ${connector.type}`).includes("RJ45");
+  return connectorIdentityText(connector).includes("RJ45");
+}
+
+function kiCadConnectorHeaderType(connector) {
+  if (isKiCadPicoBladeConnector(connector)) {
+    return "MOLEX PICOBLADE 218112-0802";
+  }
+  if (isKiCadPivotPowerRj45Connector(connector)) {
+    return "TE PIVOT POWER RJ45 2213145-1";
+  }
+  return connector.type || "";
 }
 
 function isKiCadPcbConnector(connector) {
@@ -6439,7 +6609,69 @@ function buildKiCadRj45ConnectorFaceSvg(x, wires, connector, side) {
     output.push(`<text class="rj45-color-label" x="${contactX + 7}" y="${faceY + 104}">${contact.label}</text>`);
   });
   output.push(`<rect class="rj45-latch" x="${faceX + 70}" y="${faceY + 116}" width="76" height="28" rx="3" />`);
-  output.push(`<text class="connector-unused-note" x="${faceX + faceWidth / 2}" y="${faceY + faceHeight + 18}">T568B TOP VIEW | PINS 1, 2, 3, 6 USED</text>`);
+  const usedPins = Array.from(activePins).sort((left, right) => left - right);
+  const usedLabel = usedPins.length === 8 ? "PINS 1-8 USED" : `PINS ${usedPins.join(", ")} USED`;
+  output.push(`<text class="connector-unused-note" x="${faceX + faceWidth / 2}" y="${faceY + faceHeight + 18}">T568B TOP VIEW | ${usedLabel}</text>`);
+  wires.forEach((wire) => {
+    const pin = side === "left" ? wire.fromPin : wire.toPin;
+    const pinX = side === "left" ? 348 : 1238;
+    output.push(`<text class="pin-label-compact" x="${pinX}" y="${wire.y + 4}">${escapeXml(pin)}</text>`);
+  });
+  return output.join("");
+}
+
+function buildKiCadPicoBladeConnectorFaceSvg(x, wires, connector, side) {
+  const slots = buildKiCadConnectorSlots(wires, connector, side);
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = x - 82;
+  const faceY = centerY - 48;
+  const width = 164;
+  const height = 96;
+  const output = [
+    `<g class="picoblade-face" aria-label="Molex PicoBlade 218112-0802 eight-circuit single-row mating face">`,
+    `<rect class="picoblade-body" x="${faceX}" y="${faceY}" width="${width}" height="${height}" rx="10" />`,
+    `<rect class="picoblade-rim" x="${faceX + 10}" y="${faceY + 18}" width="${width - 20}" height="${height - 34}" rx="5" />`,
+    `<path class="picoblade-latch" d="M ${faceX + 52} ${faceY} V ${faceY - 13} H ${faceX + 112} V ${faceY} Z" />`,
+    `<path class="picoblade-circuit-one" d="M ${faceX + 5} ${faceY + 5} H ${faceX + 20} L ${faceX + 5} ${faceY + 20} Z" />`
+  ];
+  slots.forEach((slot, index) => {
+    const slotX = faceX + 14 + index * 18;
+    output.push(`<rect class="${slot.wire ? "picoblade-cavity" : "picoblade-cavity-unused"}" x="${slotX}" y="${faceY + 31}" width="14" height="34" rx="3" />`);
+    output.push(`<text class="picoblade-pin" x="${slotX + 7}" y="${faceY + 79}">${escapeXml(slot.pin)}</text>`);
+  });
+  output.push(`<text class="connector-unused-note" x="${faceX + width / 2}" y="${faceY + height + 18}">MOLEX 218112-0802 | 8 CIRCUITS | 1.25 mm | MATING FACE</text>`);
+  output.push(`</g>`);
+  wires.forEach((wire) => {
+    const pin = side === "left" ? wire.fromPin : wire.toPin;
+    const pinX = side === "left" ? 348 : 1238;
+    output.push(`<text class="pin-label-compact" x="${pinX}" y="${wire.y + 4}">${escapeXml(pin)}</text>`);
+  });
+  return output.join("");
+}
+
+function buildKiCadPivotPowerRj45FaceSvg(x, wires, connector, side) {
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = x - 18;
+  const faceY = centerY - 82;
+  const faceWidth = 216;
+  const faceHeight = 164;
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
+  const output = [
+    `<g class="pivot-power-face" aria-label="TE 2213145-1 Pivot Power RJ45 contact view">`,
+    `<rect class="pivot-power-shell" x="${faceX}" y="${faceY}" width="${faceWidth}" height="${faceHeight}" rx="14" />`,
+    `<path class="pivot-power-nose" d="M ${faceX + 18} ${faceY + 18} H ${faceX + faceWidth - 18} V ${faceY + 108} H ${faceX + 150} L ${faceX + 136} ${faceY + 128} H ${faceX + 80} L ${faceX + 66} ${faceY + 108} H ${faceX + 18} Z" />`,
+    `<rect class="pivot-power-stuffer" x="${faceX + 70}" y="${faceY + 118}" width="76" height="30" rx="4" />`
+  ];
+  for (let pin = 1; pin <= 8; pin += 1) {
+    const contactX = faceX + 23 + (pin - 1) * 22;
+    const activeClass = activePins.has(pin) ? "" : " pivot-power-contact-unused";
+    output.push(`<rect class="pivot-power-contact${activeClass}" x="${contactX}" y="${faceY + 34}" width="14" height="58" rx="2" />`);
+    output.push(`<text class="rj45-pin-number" x="${contactX + 7}" y="${faceY + 29}">${pin}</text>`);
+    output.push(`<text class="rj45-color-label" x="${contactX + 7}" y="${faceY + 104}">${pin % 2 ? "ODD" : "EVEN"}</text>`);
+  }
+  output.push(`<text class="connector-unused-note" x="${faceX + faceWidth / 2}" y="${faceY + faceHeight + 18}">TE 2213145-1 PIVOT POWER | ODD COMMON / EVEN COMMON | 2 x 18 AWG</text>`);
+  output.push(`</g>`);
   wires.forEach((wire) => {
     const pin = side === "left" ? wire.fromPin : wire.toPin;
     const pinX = side === "left" ? 348 : 1238;
@@ -9483,8 +9715,8 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
   addVertex("title", model.cableName, 650, 22, 300, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=38;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("subtitle", model.description, 560, 64, 480, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=5;fontColor=#000000;align=center;");
-  addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${model.leftConnector.type || ""}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 130, 30, 180, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-  addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${model.rightConnector.type || ""}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1270, 30, 190, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${kiCadConnectorHeaderType(model.leftConnector)}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 80, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${kiCadConnectorHeaderType(model.rightConnector)}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1220, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addEdge("dim_length", `OVERALL LENGTH: ${formatLengthMeasurement(model.length)} +/-0.25 in`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
   addHorizontalDrawioProtection(addVertex, {
     id: "main_protection",
@@ -9494,6 +9726,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
     bottom: model.wires[model.wires.length - 1].y + 30
   });
   const leftIsCircular = isKiCadCircularConnector(model.leftConnector);
+  const leftIsPicoBlade = isKiCadPicoBladeConnector(model.leftConnector);
   const pairAnalysis = model.twistedPairAnalysis || analyzeSheetTwistedPairs(model.wires);
   addKiCadDrawioLeftConnectorFace(addVertex, model);
   addKiCadDrawioRightConnectorFaces(addVertex, model);
@@ -9507,7 +9740,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
       ? twistGeometry.points
       : [[wireStartX, wire.y], [wireEndX, targetY]];
     const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
-    if (!leftIsCircular && !leftIsPcb) {
+    if (!leftIsCircular && !leftIsPcb && !leftIsPicoBlade) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
     if (!leftIsPcb) {
@@ -9628,6 +9861,10 @@ function addKiCadDrawioLeftConnectorFace(addVertex, model) {
     addKiCadDrawioPcbFace(addVertex, model.leftConnector, model.wires, "left");
     return;
   }
+  if (isKiCadPicoBladeConnector(model.leftConnector)) {
+    addKiCadDrawioPicoBladeFace(addVertex, model.leftConnector, model.wires, "left");
+    return;
+  }
   if (!isKiCadCircularConnector(model.leftConnector)) {
     const slots = buildKiCadConnectorSlots(model.wires, model.leftConnector, "left");
     addVertex(
@@ -9688,6 +9925,10 @@ function addKiCadDrawioLeftConnectorFace(addVertex, model) {
 function addKiCadDrawioRightConnectorFaces(addVertex, model) {
   if (isKiCadPcbConnector(model.rightConnector)) {
     addKiCadDrawioPcbFace(addVertex, model.rightConnector, model.wires, "right");
+    return;
+  }
+  if (isKiCadPivotPowerRj45Connector(model.rightConnector)) {
+    addKiCadDrawioPivotPowerRj45Face(addVertex, model.rightConnector, model.wires, "right");
     return;
   }
   if (isKiCadRj45Connector(model.rightConnector)) {
@@ -9890,13 +10131,56 @@ function addKiCadDrawioRj45Face(addVertex, connector, wires, side) {
   );
   addVertex(
     `${side}_rj45_note`,
-    "T568B TOP VIEW | PINS 1, 2, 3, 6 USED",
+    `T568B TOP VIEW | ${activePins.size === 8 ? "PINS 1-8 USED" : `PINS ${Array.from(activePins).sort((left, right) => left - right).join(", ")} USED`}`,
     faceX + 8,
     faceY + 166,
     faceWidth - 16,
     20,
     "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#4b5357;align=center;"
   );
+}
+
+function addKiCadDrawioPicoBladeFace(addVertex, connector, wires, side) {
+  const slots = buildKiCadConnectorSlots(wires, connector, side);
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = side === "left" ? 88 : 1278;
+  const faceY = centerY - 48;
+  addVertex(`${side}_picoblade_body`, "", faceX, faceY, 164, 96, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f1eee4;strokeColor=#47443d;strokeWidth=3;");
+  addVertex(`${side}_picoblade_rim`, "", faceX + 10, faceY + 18, 144, 62, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#fbfaf5;strokeColor=#8f8b80;strokeWidth=1.5;");
+  addVertex(`${side}_picoblade_latch`, "", faceX + 52, faceY - 13, 60, 15, "rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ded8ca;strokeColor=#47443d;strokeWidth=2;");
+  addVertex(`${side}_picoblade_circuit_one`, "", faceX + 5, faceY + 5, 16, 16, "shape=triangle;direction=east;whiteSpace=wrap;html=1;fillColor=#d97706;strokeColor=#7c3e00;strokeWidth=1;");
+  slots.forEach((slot, index) => {
+    addVertex(
+      `${side}_picoblade_cavity_${index + 1}`,
+      escapeHtml(slot.pin),
+      faceX + 14 + index * 18,
+      faceY + 31,
+      14,
+      34,
+      slot.wire
+        ? "rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#313538;strokeColor=#111111;strokeWidth=1.5;fontColor=#ffffff;fontSize=7;fontStyle=1;"
+        : "rounded=1;arcSize=14;whiteSpace=wrap;html=1;fillColor=#bec3c5;strokeColor=#747b7f;strokeWidth=1.3;dashed=1;dashPattern=4 3;fontColor=#ffffff;fontSize=7;fontStyle=1;"
+    );
+  });
+  addVertex(`${side}_picoblade_note`, "MOLEX 218112-0802 | 8 CIRCUITS | 1.25 mm | MATING FACE", faceX - 36, faceY + 98, 236, 22, "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#4b5357;align=center;");
+}
+
+function addKiCadDrawioPivotPowerRj45Face(addVertex, connector, wires, side) {
+  const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
+  const faceX = side === "left" ? 108 : 1282;
+  const faceY = centerY - 82;
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
+  addVertex(`${side}_pivot_shell`, "", faceX, faceY, 216, 164, "rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=#f28c18;strokeColor=#8f4500;strokeWidth=3;");
+  addVertex(`${side}_pivot_nose`, "", faceX + 18, faceY + 18, 180, 92, "rounded=1;arcSize=7;whiteSpace=wrap;html=1;fillColor=#fb9f2e;strokeColor=#8f4500;strokeWidth=1.5;");
+  addVertex(`${side}_pivot_stuffer`, "", faceX + 70, faceY + 118, 76, 30, "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#eef5f7;strokeColor=#5d686d;strokeWidth=1.5;opacity=72;");
+  for (let pin = 1; pin <= 8; pin += 1) {
+    const contactX = faceX + 23 + (pin - 1) * 22;
+    const opacity = activePins.has(pin) ? 100 : 32;
+    addVertex(`${side}_pivot_contact_${pin}`, "", contactX, faceY + 34, 14, 58, `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#d7b65b;strokeColor=#725b1d;strokeWidth=1.2;opacity=${opacity};`);
+    addVertex(`${side}_pivot_pin_${pin}`, `<b>${pin}</b><br><font style="font-size:7px">${pin % 2 ? "ODD" : "EVEN"}</font>`, contactX - 5, faceY + 8, 24, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#111111;align=center;verticalAlign=middle;");
+  }
+  addVertex(`${side}_pivot_note`, "TE 2213145-1 PIVOT POWER | ODD COMMON / EVEN COMMON | 2 x 18 AWG", faceX - 18, faceY + 166, 252, 22, "text;html=1;strokeColor=none;fillColor=none;fontSize=9;fontStyle=1;fontColor=#7a2e00;align=center;");
 }
 
 function addKiCadDrawioPcbFace(addVertex, connector, wires, side) {

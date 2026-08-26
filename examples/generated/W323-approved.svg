@@ -47,6 +47,18 @@
         .rj45-latch { fill: #287db5; stroke: #17577f; stroke-width: 1.4; }
         .rj45-pin-number { fill: #111111; font: 900 9px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
         .rj45-color-label { fill: #31383b; font: 900 7px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .picoblade-body { fill: #f1eee4; stroke: #47443d; stroke-width: 3; }
+        .picoblade-rim { fill: #fbfaf5; stroke: #8f8b80; stroke-width: 1.5; }
+        .picoblade-latch { fill: #ded8ca; stroke: #47443d; stroke-width: 2; }
+        .picoblade-circuit-one { fill: #d97706; stroke: #7c3e00; stroke-width: 1; }
+        .picoblade-cavity { fill: #313538; stroke: #111111; stroke-width: 1.5; }
+        .picoblade-cavity-unused { fill: #bec3c5; stroke: #747b7f; stroke-width: 1.3; stroke-dasharray: 4 3; }
+        .picoblade-pin { fill: #ffffff; font: 900 8px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
+        .pivot-power-shell { fill: #f28c18; stroke: #8f4500; stroke-width: 3; }
+        .pivot-power-nose { fill: #fb9f2e; stroke: #8f4500; stroke-width: 1.5; }
+        .pivot-power-stuffer { fill: #eef5f7; fill-opacity: .72; stroke: #5d686d; stroke-width: 1.5; }
+        .pivot-power-contact { fill: #d7b65b; stroke: #725b1d; stroke-width: 1.2; }
+        .pivot-power-contact-unused { opacity: .32; }
         .connector-unused-note { fill: #4b5357; font: 900 10px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-label { fill: #000000; font: 900 16px Aptos, Segoe UI, sans-serif; text-anchor: middle; }
       .pin-side { fill: #000000; font: 900 15px Aptos, Segoe UI, sans-serif; text-anchor: middle; }

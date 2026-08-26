@@ -21,8 +21,14 @@
     return match ? Number(match[0]) : NaN;
   };
   const isDnpRow = (row) => {
-    const text = normalizedText([row.wireName, row.rightWireName, row.branchRole].join(" "));
-    return /\b(?:DNP|NOT IN USE|UNUSED|NO CONNECT)\b/.test(text);
+    const text = normalizedText([
+      row.leftLegName,
+      row.wireName,
+      row.rightLegName,
+      row.rightWireName,
+      row.branchRole
+    ].join(" "));
+    return /\b(?:DNP|NOT IN USE|NOT USED|UNUSED|DO NOT POPULATE|NO WIRE|NO CONNECT(?:ION)?|N\/C|NC)\b/.test(text);
   };
   const endpointKey = (row, side) => {
     const prefix = side === "left" ? "left" : "right";
@@ -59,7 +65,12 @@
         row[`${prefix}HousingPart`]
       ].join(" "));
       if (text.includes("RJ45")) counts.push(8);
+      if (text.includes("2181120802") || text.includes("218112-0802")) counts.push(8);
       for (const match of text.matchAll(/\b(\d{1,2})\s*(?:PIN|PINS|POS|POSITION|POSITIONS)\b/g)) {
+        const count = Number(match[1]);
+        if (count >= 1 && count <= 64) counts.push(count);
+      }
+      for (const match of text.matchAll(/\b(\d{1,2})\s*(?:CIRC|CIRCUIT|CIRCUITS)\b/g)) {
         const count = Number(match[1]);
         if (count >= 1 && count <= 64) counts.push(count);
       }
@@ -81,13 +92,25 @@
     });
     return Array.from(grouped, ([id, endpointRows]) => {
       const activeRows = endpointRows.filter((row) => !isDnpRow(row));
-      const pins = endpointRows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
       const usedPins = Array.from(new Set(activeRows.map((row) => String(row[`${prefix}PinPos`] || "").trim()).filter(Boolean)));
-      const unusedPins = Array.from(new Set(endpointRows.filter(isDnpRow).map((row) => String(row[`${prefix}PinPos`] || "").trim()).filter(Boolean)));
       const singlePosition = isSinglePositionTermination(activeRows.length ? activeRows : endpointRows, side);
       const declared = declaredPositionCount(endpointRows, side);
+      const capacityRows = declared
+        ? endpointRows.filter((row) => {
+            const pin = numericPin(row[`${prefix}PinPos`]);
+            return !isDnpRow(row) || !Number.isFinite(pin) || pin <= declared;
+          })
+        : endpointRows;
+      const pins = capacityRows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
       const highestPin = pins.length ? Math.max(...pins) : 0;
       const positionCount = singlePosition ? 1 : Math.max(1, declared, highestPin, usedPins.length);
+      const unusedPins = Array.from(new Set(endpointRows
+        .filter(isDnpRow)
+        .map((row) => String(row[`${prefix}PinPos`] || "").trim())
+        .filter((pin) => {
+          const numeric = numericPin(pin);
+          return Boolean(pin) && (!Number.isFinite(numeric) || numeric <= positionCount);
+        })));
       return {
         id,
         side,
