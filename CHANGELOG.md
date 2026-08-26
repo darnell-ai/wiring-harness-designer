@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.5 - 2026-08-26
+
+- Made the physical `Color` column authoritative for conductor rendering, with right-side RJ45 wire names used only when Color is blank.
+- Restored separate left and right wire names as endpoint labels instead of replacing the left name with the RJ45 designation.
+- Preserved submitted twisted-pair IDs and source-row order rather than silently regrouping a harness into T568B pairs.
+- Added a nonblocking warning when a complete T568B pin-name mapping uses pair IDs that do not follow Ethernet pairs 1-2, 3-6, 4-5, and 7-8.
+- Updated the BOTBLOX regression fixture to match the corrected physical wire colors.
+
 ## v2.1.4 - 2026-08-26
 
 - Corrected complete T568B harness routing to pair pins 1-2 (orange), 3-6 (green), 4-5 (blue), and 7-8 (brown), independent of incorrect adjacent-row pair IDs.
