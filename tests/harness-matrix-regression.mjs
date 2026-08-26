@@ -67,9 +67,14 @@ const botbloxModel = api.buildKiCadHarnessModel(botblox.result.sheetHarness);
 assert.equal(botbloxModel.wires.length, 8);
 assert.equal(botbloxModel.twistedPairAnalysis.validGroups.length, 4);
 assert.deepEqual(
+  Array.from(botbloxModel.wires, (wire) => wire.name),
+  ["Orange / White", "Orange", "Green / White", "Green", "Blue", "Blue / White", "Brown / White", "Brown"],
+  "complete T568B wire labels must follow the right-side RJ45 names"
+);
+assert.deepEqual(
   Array.from(botbloxModel.wires, (wire) => wire.colorLabel),
-  ["RED", "ORANGE", "GREEN", "VIOLET", "YELLOW", "BLUE", "BROWN", "BLACK"],
-  "the physical Color column must control the rendered conductor colors"
+  ["ORANGE / WHITE", "ORANGE", "GREEN / WHITE", "GREEN", "BLUE", "BLUE / WHITE", "BROWN / WHITE", "BROWN"],
+  "a complete T568B RJ45 termination must use the right-side wire names as its rendered conductor colors"
 );
 assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.fromPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
 assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.toPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);

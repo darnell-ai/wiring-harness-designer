@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.1.8 - 2026-08-26
+
+- Made the right-side wire names authoritative for conductor colors and stripe patterns when the submitted termination is a complete eight-pin T568B RJ45 mapping.
+- Preserved the normal Color-column behavior for partial, nonstandard, and non-RJ45 harnesses.
+- Added regression coverage for all eight rendered T568B colors in arranged twisted-pair order.
+
 ## v2.1.7 - 2026-08-26
 
 - Kept every single-connector RJ45 endpoint aligned with its arranged conductor lane in the editable Draw.io output.

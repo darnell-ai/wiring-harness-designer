@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.7";
+const APP_VERSION = "2.1.8";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -2666,7 +2666,10 @@ function isRj45TerminationRow(row) {
   ].join(" ")).includes("RJ45");
 }
 
-function kiCadWireColorSource(row) {
+function kiCadWireColorSource(row, preferRightWireColor = false) {
+  if (preferRightWireColor && isRecognizedWireColor(row?.rightWireName)) {
+    return row.rightWireName;
+  }
   if (isRecognizedWireColor(row?.color)) {
     return row.color;
   }
@@ -5521,16 +5524,17 @@ function buildKiCadHarnessModel(sheet) {
     ? `${shortListLabel(groupNames, 4)} TO ${rightName}`.replace(/\s+/g, " ").trim()
     : `${leftName} TO ${rightName}`.replace(/\s+/g, " ").trim();
   const routingRows = isMultiGroup ? rows : orderKiCadRowsBySubmittedPairs(rows);
+  const useRightT568bColors = isCompleteT568bMapping(rows);
   const wireStartY = isMultiGroup ? 205 : routingRows.length > 12 ? 180 : 208;
   const wireGap = routingRows.length > 12 ? 38 : routingRows.length > 8 ? 44 : routingRows.length <= 4 ? 66 : 52;
   const wires = routingRows.map((row, index) => {
     const leftWireName = sheetRowLeftWireName(row, `WIRE ${index + 1}`);
     const rightWireName = sheetRowRightWireName(row, `WIRE ${index + 1}`);
-    const colorSource = kiCadWireColorSource(row);
+    const colorSource = kiCadWireColorSource(row, useRightT568bColors);
     return {
       index,
       row,
-      name: leftWireName,
+      name: useRightT568bColors ? rightWireName : leftWireName,
       leftName: leftWireName,
       rightName: rightWireName,
       colorName: normalizeColorName(colorSource),
