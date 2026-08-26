@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.1.6 - 2026-08-26
+
+- Grouped each valid submitted twisted pair onto adjacent visual lanes, even when pair members are separated in spreadsheet row or pin order.
+- Preserved the original physical colors, pin numbers, left/right wire names, and pair IDs while changing only the drawing order.
+- Updated the BOTBLOX fixture to the corrected TP2 pins 3/6 and TP3 pins 4/5 mapping.
+- Added regression coverage proving every BOTBLOX pair occupies adjacent lanes and the T568B pair warning clears for the corrected data.
+
 ## v2.1.5 - 2026-08-26
 
 - Made the physical `Color` column authoritative for conductor rendering, with right-side RJ45 wire names used only when Color is blank.

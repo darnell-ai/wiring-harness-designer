@@ -60,7 +60,7 @@ assert.equal(core.buildEndpointRecords(botblox.sheet.objects, "right")[0].positi
 assert.ok(botblox.sheet.diagnostics.some((item) => item.code === "PICOBLADE_PIGTAIL_SPEC_MISMATCH"));
 const botbloxPartDiagnostic = botblox.sheet.diagnostics.find((item) => item.code === "PIVOT_POWER_NOT_EIGHT_INDEPENDENT_CONTACTS");
 assert.equal(botbloxPartDiagnostic?.severity, "warning", "a complete T568B map should remain drawable while flagging the incompatible submitted part number");
-assert.equal(botblox.sheet.diagnostics.find((item) => item.code === "T568B_TWISTED_PAIR_MISMATCH")?.severity, "warning");
+assert.equal(botblox.sheet.diagnostics.find((item) => item.code === "T568B_TWISTED_PAIR_MISMATCH"), undefined);
 assert.equal(botblox.sheet.diagnostics.filter((item) => item.severity === "error").length, 0);
 assert.equal(api.createSheetRenderPlan(botblox.result).kind, "kicad");
 const botbloxModel = api.buildKiCadHarnessModel(botblox.result.sheetHarness);
@@ -68,13 +68,16 @@ assert.equal(botbloxModel.wires.length, 8);
 assert.equal(botbloxModel.twistedPairAnalysis.validGroups.length, 4);
 assert.deepEqual(
   Array.from(botbloxModel.wires, (wire) => wire.colorLabel),
-  ["RED", "ORANGE", "GREEN", "YELLOW", "BLUE", "VIOLET", "BROWN", "BLACK"],
+  ["RED", "ORANGE", "GREEN", "VIOLET", "YELLOW", "BLUE", "BROWN", "BLACK"],
   "the physical Color column must control the rendered conductor colors"
 );
-assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.fromPin), ["1", "2", "3", "4", "5", "6", "7", "8"]);
-assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.toPin), ["1", "2", "3", "4", "5", "6", "7", "8"]);
-assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.leftName), ["Red", "Orange", "Green", "Yellow", "Blue", "Purple", "brown", "black"]);
-assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.rightName), ["Orange / White", "Orange", "Green / White", "Blue", "Blue / White", "Green", "Brown / White", "Brown"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.fromPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.toPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.leftName), ["Red", "Orange", "Green", "Purple", "Yellow", "Blue", "brown", "black"]);
+assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.rightName), ["Orange / White", "Orange", "Green / White", "Green", "Blue", "Blue / White", "Brown / White", "Brown"]);
+for (const pair of botbloxModel.twistedPairAnalysis.validGroups) {
+  assert.equal(Math.abs(pair.routes[0].y - pair.routes[1].y), 52, `${pair.id} members must occupy adjacent visual lanes`);
+}
 assert.deepEqual(
   Array.from(botbloxModel.twistedPairAnalysis.validGroups, (group) => group.id),
   ["TP1", "TP2", "TP3", "TP4"]

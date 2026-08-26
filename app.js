@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.5";
+const APP_VERSION = "2.1.6";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -2711,6 +2711,34 @@ function hasSubmittedT568bPairMismatch(rows) {
     return firstId && firstId === secondId ? firstId : "";
   });
   return pairIds.some((id) => !id) || new Set(pairIds).size !== expectedPairs.length;
+}
+
+function orderKiCadRowsBySubmittedPairs(rows) {
+  const pairMembers = new Map();
+  rows.forEach((row) => {
+    const pairId = normalizeText(row.twistedPairId);
+    if (!pairId) {
+      return;
+    }
+    const members = pairMembers.get(pairId) || [];
+    members.push(row);
+    pairMembers.set(pairId, members);
+  });
+  const emittedPairs = new Set();
+  const ordered = [];
+  rows.forEach((row) => {
+    const pairId = normalizeText(row.twistedPairId);
+    const members = pairMembers.get(pairId);
+    if (pairId && members?.length === 2) {
+      if (!emittedPairs.has(pairId)) {
+        ordered.push(...members);
+        emittedPairs.add(pairId);
+      }
+      return;
+    }
+    ordered.push(row);
+  });
+  return ordered;
 }
 
 function buildBraidPatternDefs() {
@@ -5492,9 +5520,10 @@ function buildKiCadHarnessModel(sheet) {
   const description = isMultiGroup
     ? `${shortListLabel(groupNames, 4)} TO ${rightName}`.replace(/\s+/g, " ").trim()
     : `${leftName} TO ${rightName}`.replace(/\s+/g, " ").trim();
-  const wireStartY = isMultiGroup ? 205 : rows.length > 12 ? 180 : 208;
-  const wireGap = rows.length > 12 ? 38 : rows.length > 8 ? 44 : rows.length <= 4 ? 66 : 52;
-  const wires = rows.map((row, index) => {
+  const routingRows = isMultiGroup ? rows : orderKiCadRowsBySubmittedPairs(rows);
+  const wireStartY = isMultiGroup ? 205 : routingRows.length > 12 ? 180 : 208;
+  const wireGap = routingRows.length > 12 ? 38 : routingRows.length > 8 ? 44 : routingRows.length <= 4 ? 66 : 52;
+  const wires = routingRows.map((row, index) => {
     const leftWireName = sheetRowLeftWireName(row, `WIRE ${index + 1}`);
     const rightWireName = sheetRowRightWireName(row, `WIRE ${index + 1}`);
     const colorSource = kiCadWireColorSource(row);
