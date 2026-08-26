@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.1.3 - 2026-08-26
+
+- Made complete RJ45 mappings use recognized right-side wire names as the conductor color source, including white tracer stripes.
+- Rendered eight independent RJ45 pin/color rows with the standard T568B 8P8C connector face.
+- Removed redundant `TWISTED PAIR` wording and pair-ID pills from KiCad-style SVG and Draw.io drawings while retaining the intertwined paths and pair validation.
+- Added regression coverage for all eight submitted RJ45 colors, the standard termination face, and label removal.
+
 ## v2.1.2 - 2026-08-26
 
 - Recognized `Left Pin Position #` and corresponding right/number variants as valid pin-position headers.

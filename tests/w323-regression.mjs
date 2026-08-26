@@ -119,8 +119,7 @@ assert.equal(api.normalizeHarnessTerminology("FURREL / FERRAELS"), "FERRULE / FE
 const svg = api.buildSheetHarnessSvg(result);
 const drawio = api.buildSheetDrawioXml(result);
 for (const output of [svg, drawio]) {
-  assert.match(output, /TWISTED PAIR TP1/);
-  assert.match(output, /TWISTED PAIR TP2/);
+  assert.doesNotMatch(output, /TWISTED PAIR/, "visible twists do not need repeated text labels");
   assert.match(output, /FERRULE/);
   assert.doesNotMatch(output, /FURREL|FERRAEL/i);
 }

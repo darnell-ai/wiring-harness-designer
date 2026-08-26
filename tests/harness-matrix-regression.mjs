@@ -41,7 +41,8 @@ const w320 = loadFixture("W320.csv");
 assert.equal(w320.sheet.objects.filter((row) => !core.isDnpRow(row)).length, 4);
 assert.deepEqual(Array.from(core.buildEndpointRecords(w320.sheet.objects, "left")[0].unusedPins), ["1", "2", "3", "4", "5", "6", "7", "12", "13"]);
 assert.equal(w320.sheet.diagnostics.filter((item) => item.code === "INVALID_TWISTED_PAIR").length, 0);
-assert.match(api.buildSheetHarnessSvg(w320.result), /TWISTED PAIR TP1/);
+assert.equal(api.buildKiCadHarnessModel(w320.result.sheetHarness).twistedPairAnalysis.validGroups.length, 2);
+assert.doesNotMatch(api.buildSheetHarnessSvg(w320.result), /TWISTED PAIR/);
 
 const w126 = loadFixture("W126.csv");
 const w126Right = core.buildEndpointRecords(w126.sheet.objects, "right");
@@ -62,17 +63,24 @@ assert.equal(api.createSheetRenderPlan(botblox.result).kind, "kicad");
 const botbloxModel = api.buildKiCadHarnessModel(botblox.result.sheetHarness);
 assert.equal(botbloxModel.wires.length, 8);
 assert.equal(botbloxModel.twistedPairAnalysis.validGroups.length, 4);
+assert.deepEqual(
+  Array.from(botbloxModel.wires, (wire) => wire.colorLabel),
+  ["ORANGE / WHITE", "ORANGE", "GREEN / WHITE", "BLUE", "BLUE / WHITE", "GREEN", "BROWN / WHITE", "BROWN"],
+  "RJ45 rows must use the right-side conductor colors"
+);
 assert.match(botbloxModel.leftConnector.housingPart, /900-2181120802-ND/);
 assert.match(botbloxModel.rightConnector.housingPart, /A116128-ND/);
 const botbloxSvg = api.buildSheetHarnessSvg(botblox.result);
 const botbloxDrawio = api.buildSheetDrawioXml(botblox.result);
 assert.match(botbloxSvg, /class="picoblade-face"/);
-assert.match(botbloxSvg, /class="pivot-power-face"/);
-assert.match(botbloxSvg, /ODD COMMON \/ EVEN COMMON/);
+assert.match(botbloxSvg, /class="rj45-shell"/);
+assert.match(botbloxSvg, /RJ45 T568B 8P8C/);
+assert.doesNotMatch(botbloxSvg, /class="pivot-power-face"|TWISTED PAIR/);
 assert.doesNotMatch(botbloxSvg, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
 assert.doesNotMatch(botbloxSvg, /WIRING TABLE|BILL OF MATERIALS|TEMPLATE NOTES/);
 assert.match(botbloxDrawio, /left_picoblade_body/);
-assert.match(botbloxDrawio, /right_pivot_shell/);
+assert.match(botbloxDrawio, /right_rj45_shell/);
+assert.doesNotMatch(botbloxDrawio, /right_pivot_shell|TWISTED PAIR/);
 assert.doesNotMatch(botbloxDrawio, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
 
 const header = fs.readFileSync(path.join(root, "tests", "fixtures", "W300.csv"), "utf8").split(/\r?\n/, 1)[0];

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.2";
+const APP_VERSION = "2.1.3";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -2640,6 +2640,24 @@ function sheetColorToStroke(color) {
 
 function normalizeWireColorLabel(color) {
   return wireColorSpec(color).label;
+}
+
+function isRecognizedWireColor(value) {
+  return Boolean(WIRE_COLOR_STROKES[wireColorSpec(value).baseName]);
+}
+
+function isRj45TerminationRow(row) {
+  return normalizeText([
+    row?.rightLegName,
+    row?.rightHousingType,
+    row?.rightHousingPart
+  ].join(" ")).includes("RJ45");
+}
+
+function kiCadWireColorSource(row) {
+  return isRj45TerminationRow(row) && isRecognizedWireColor(row?.rightWireName)
+    ? row.rightWireName
+    : row.color;
 }
 
 function buildBraidPatternDefs() {
@@ -5423,29 +5441,35 @@ function buildKiCadHarnessModel(sheet) {
     : `${leftName} TO ${rightName}`.replace(/\s+/g, " ").trim();
   const wireStartY = isMultiGroup ? 205 : rows.length > 12 ? 180 : 208;
   const wireGap = rows.length > 12 ? 38 : rows.length > 8 ? 44 : rows.length <= 4 ? 66 : 52;
-  const wires = rows.map((row, index) => ({
-    index,
-    row,
-    name: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
-    leftName: sheetRowLeftWireName(row, `WIRE ${index + 1}`),
-    rightName: sheetRowRightWireName(row, `WIRE ${index + 1}`),
-    colorName: normalizeColorName(row.color),
-    colorLabel: normalizeWireColorLabel(row.color),
-    stroke: sheetColorToStroke(row.color),
-    awg: row.awg || awg,
-    length: row.length || length,
-    fromPin: row.leftPinPos || String(index + 1),
-    toPin: row.rightPinPos || String(index + 1),
-    leftHousingPart: row.leftHousingPart || "",
-    leftPinPart: row.leftPinPart || "",
-    rightHousingPart: row.rightHousingPart || "",
-    rightPinPart: row.rightPinPart || "",
-    groupKey: groupKeyForSheetRow(row),
-    y: isMultiGroup ? multiGroupWireY(row, groups) : wireStartY + index * wireGap,
-    rightLocalPin: isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos,
-    leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
-    maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
-  }));
+  const wires = rows.map((row, index) => {
+    const leftWireName = sheetRowLeftWireName(row, `WIRE ${index + 1}`);
+    const rightWireName = sheetRowRightWireName(row, `WIRE ${index + 1}`);
+    const colorSource = kiCadWireColorSource(row);
+    const usesRightColor = colorSource === row.rightWireName;
+    return {
+      index,
+      row,
+      name: usesRightColor ? rightWireName : leftWireName,
+      leftName: leftWireName,
+      rightName: rightWireName,
+      colorName: normalizeColorName(colorSource),
+      colorLabel: normalizeWireColorLabel(colorSource),
+      stroke: sheetColorToStroke(colorSource),
+      awg: row.awg || awg,
+      length: row.length || length,
+      fromPin: row.leftPinPos || String(index + 1),
+      toPin: row.rightPinPos || String(index + 1),
+      leftHousingPart: row.leftHousingPart || "",
+      leftPinPart: row.leftPinPart || "",
+      rightHousingPart: row.rightHousingPart || "",
+      rightPinPart: row.rightPinPart || "",
+      groupKey: groupKeyForSheetRow(row),
+      y: isMultiGroup ? multiGroupWireY(row, groups) : wireStartY + index * wireGap,
+      rightLocalPin: isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos,
+      leftLocalPin: isMultiGroup ? localPinNumber(row.leftPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.leftBasePin) : row.leftPinPos,
+      maestroRole: maestroPinRole(row, isMultiGroup ? localPinNumber(row.rightPinPos, groups.find((group) => group.key === groupKeyForSheetRow(row))?.rightBasePin) : row.rightPinPos)
+    };
+  });
   const rightConnectorGroups = isMultiGroup ? [] : inferKiCadRightConnectorGroups(wires, rightPositionRows);
   const hasMultipleRightConnectors = !isMultiGroup && rightConnectorGroups.length > 1;
   if (hasMultipleRightConnectors) {
@@ -6104,13 +6128,13 @@ function buildKiCadHarnessSvg(result, model) {
 
   <text class="connector-heading" x="220" y="46">${leftPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}</text>
   <text class="connector-sub" x="220" y="72">${escapeXml(displayModel.leftConnector.name)}</text>
-  ${kiCadConnectorHeaderType(displayModel.leftConnector) ? `<text class="connector-sub" x="220" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.leftConnector))}</text>` : ""}
+  ${kiCadConnectorHeaderType(displayModel.leftConnector, displayModel.wires, "left") ? `<text class="connector-sub" x="220" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.leftConnector, displayModel.wires, "left"))}</text>` : ""}
   <text class="connector-sub" x="220" y="120">${escapeXml(displayModel.leftConnector.positionText)}</text>
   <text class="connector-view" x="220" y="144">(${escapeXml(displayModel.leftConnector.view)})</text>
 
   <text class="connector-heading" x="1360" y="46">${rightPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}</text>
   <text class="connector-sub" x="1360" y="72">${escapeXml(displayModel.rightConnector.name)}</text>
-  ${kiCadConnectorHeaderType(displayModel.rightConnector) ? `<text class="connector-sub" x="1360" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.rightConnector))}</text>` : ""}
+  ${kiCadConnectorHeaderType(displayModel.rightConnector, displayModel.wires, "right") ? `<text class="connector-sub" x="1360" y="96">${escapeXml(kiCadConnectorHeaderType(displayModel.rightConnector, displayModel.wires, "right"))}</text>` : ""}
   <text class="connector-sub" x="1360" y="120">${escapeXml(displayModel.rightConnector.positionText)}</text>
   <text class="connector-view" x="1360" y="144">(${escapeXml(displayModel.rightConnector.view)})</text>
 
@@ -6462,7 +6486,7 @@ function buildKiCadConnectorFaceSvg(x, wires, connector, side, connectorGroups =
   if (isKiCadPicoBladeConnector(connector)) {
     return buildKiCadPicoBladeConnectorFaceSvg(x, wires, connector, side);
   }
-  if (isKiCadPivotPowerRj45Connector(connector)) {
+  if (isKiCadPivotPowerRj45Connector(connector) && !isKiCadStandardEthernetRj45Connector(connector, wires, side)) {
     return buildKiCadPivotPowerRj45FaceSvg(x, wires, connector, side);
   }
   if (isKiCadRj45Connector(connector)) {
@@ -6545,9 +6569,22 @@ function isKiCadRj45Connector(connector) {
   return connectorIdentityText(connector).includes("RJ45");
 }
 
-function kiCadConnectorHeaderType(connector) {
+function isKiCadStandardEthernetRj45Connector(connector, wires, side = "right") {
+  if (!isKiCadRj45Connector(connector) || Number(connector.positionCount) !== 8) {
+    return false;
+  }
+  const pinKey = side === "left" ? "fromPin" : "toPin";
+  const activePins = new Set(wires.map((wire) => numericPin(wire[pinKey])).filter(Number.isFinite));
+  const colorNames = wires.map((wire) => side === "left" ? wire.leftName : wire.rightName);
+  return activePins.size === 8 && colorNames.every(isRecognizedWireColor);
+}
+
+function kiCadConnectorHeaderType(connector, wires = [], side = "right") {
   if (isKiCadPicoBladeConnector(connector)) {
     return "MOLEX PICOBLADE 218112-0802";
+  }
+  if (isKiCadStandardEthernetRj45Connector(connector, wires, side)) {
+    return "RJ45 T568B 8P8C";
   }
   if (isKiCadPivotPowerRj45Connector(connector)) {
     return "TE PIVOT POWER RJ45 2213145-1";
@@ -6785,9 +6822,8 @@ function buildKiCadWireSvg(wire, {
   const markHalf = compact ? 4 : 7;
   const wireStartX = leftPcb ? 300 : 426;
   const wireEndX = rightPcb ? 1316 : 1164;
-  const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+  const colorSpec = wireColorSpec(wire.colorLabel || wire.colorName || wire.row?.color);
   const routeGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
-  const twistedPairId = sheetTwistedPairId(wire.row);
   const leftTerminal = leftPcb ? "" : `
   <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
   <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
@@ -6801,7 +6837,7 @@ function buildKiCadWireSvg(wire, {
   ${rightTerminal}
   <path class="${compact ? "wire-line-compact" : "wire-line"}" d="${routeGeometry.svgPath}" stroke="${color}" />
   ${colorSpec.stripeStroke ? `<path class="${compact ? "wire-stripe-compact" : "wire-stripe"}" d="${routeGeometry.svgPath}" stroke="${colorSpec.stripeStroke}" />` : ""}
-  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.detailLabelY ?? wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)} (${escapeXml(wire.colorLabel || wire.colorName)}) ${escapeXml(formatWireLengthLabel(wire.length))}${twistedPairId ? ` | TWISTED PAIR ${escapeXml(twistedPairId)}` : ""}</text>
+  <text class="${compact ? "wire-label-compact" : "wire-label"}" x="796" y="${wire.detailLabelY ?? wire.y - (compact ? 6 : 14)}">${escapeXml(wire.name)}${normalizeText(wire.name) === normalizeText(wire.colorLabel || wire.colorName) ? "" : ` (${escapeXml(wire.colorLabel || wire.colorName)})`} ${escapeXml(formatWireLengthLabel(wire.length))}</text>
   `;
 }
 
@@ -9667,8 +9703,8 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addVertex("border", "", 10, 10, 1580, 780, "shape=rectangle;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#000000;strokeWidth=2;");
   addVertex("title", model.cableName, 650, 22, 300, 42, "text;html=1;strokeColor=none;fillColor=none;fontSize=38;fontStyle=1;fontColor=#000000;align=center;");
   addVertex("subtitle", model.description, 560, 64, 480, 32, "text;html=1;strokeColor=none;fillColor=none;fontSize=24;fontStyle=5;fontColor=#000000;align=center;");
-  addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${kiCadConnectorHeaderType(model.leftConnector)}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 80, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
-  addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${kiCadConnectorHeaderType(model.rightConnector)}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1220, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("left_heading", `${leftIsPcb ? "LEFT PCB TERMINATION" : "LEFT CONNECTOR"}<br>${model.leftConnector.name}<br>${kiCadConnectorHeaderType(model.leftConnector, model.wires, "left")}<br>${model.leftConnector.positionText}<br>(${model.leftConnector.view})`, 80, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
+  addVertex("right_heading", `${rightIsPcb ? "RIGHT PCB TERMINATION" : "RIGHT CONNECTOR"}<br>${model.rightConnector.name}<br>${kiCadConnectorHeaderType(model.rightConnector, model.wires, "right")}<br>${model.rightConnector.positionText}<br>(${model.rightConnector.view})`, 1220, 30, 280, 124, "text;html=1;strokeColor=none;fillColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;");
   addEdge("dim_length", `OVERALL LENGTH: ${formatLengthMeasurement(model.length)} +/-0.25 in`, 382, 150, 1210, 150, "edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=#000000;strokeWidth=2;startArrow=classic;endArrow=classic;fontStyle=1;fontSize=15;labelBackgroundColor=#ffffff;");
   addHorizontalDrawioProtection(addVertex, {
     id: "main_protection",
@@ -9684,7 +9720,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
   addKiCadDrawioRightConnectorFaces(addVertex, model);
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
-    const colorSpec = wireColorSpec(wire.row?.color || wire.colorLabel || wire.colorName);
+    const colorSpec = wireColorSpec(wire.colorLabel || wire.colorName || wire.row?.color);
     const wireStartX = leftIsPcb ? 300 : 426;
     const wireEndX = rightIsPcb ? 1316 : 1164;
     const twistGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
@@ -9722,8 +9758,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
       }
     }
     const leftLabel = wire.leftName;
-    const twistedPairId = sheetTwistedPairId(wire.row);
-    const detailLabel = `${wire.colorLabel || colorSpec.label} | ${formatWireLengthLabel(wire.length, model.length)}${twistedPairId ? ` | TWISTED PAIR ${twistedPairId}` : ""}`;
+    const detailLabel = `${wire.colorLabel || colorSpec.label} | ${formatWireLengthLabel(wire.length, model.length)}`;
     const rightLabel = wire.rightName;
     const leftLabelWidth = drawioLabelWidth(leftLabel, 11, 72, 220);
     const detailLabelWidth = drawioLabelWidth(detailLabel, 12, 90, 180);
@@ -9756,18 +9791,6 @@ function buildKiCadHarnessDrawioXml(result, model) {
       rightLabelWidth,
       22,
       `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=${endpointFontColor};align=right;verticalAlign=middle;spacing=0;`
-    );
-  });
-  (model.rightConnectorGroups.length > 1 ? [] : pairAnalysis.validGroups).forEach((group, index) => {
-    const midY = average(group.routes.map((wire) => wire.y));
-    addVertex(
-      `twisted_pair_${index + 1}_label`,
-      `<b>TWISTED PAIR ${escapeHtml(group.id)}</b>`,
-      520 + index % 2 * 154,
-      midY - 12,
-      140,
-      24,
-      "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#fffdf5;strokeColor=#5c4b17;strokeWidth=1;fontSize=9;fontStyle=1;fontColor=#3c3210;align=center;spacing=0;"
     );
   });
   // Add pin numbers last so they remain above wires, terminals, and connector faces.
@@ -9879,7 +9902,7 @@ function addKiCadDrawioRightConnectorFaces(addVertex, model) {
     addKiCadDrawioPcbFace(addVertex, model.rightConnector, model.wires, "right");
     return;
   }
-  if (isKiCadPivotPowerRj45Connector(model.rightConnector)) {
+  if (isKiCadPivotPowerRj45Connector(model.rightConnector) && !isKiCadStandardEthernetRj45Connector(model.rightConnector, model.wires, "right")) {
     addKiCadDrawioPivotPowerRj45Face(addVertex, model.rightConnector, model.wires, "right");
     return;
   }
