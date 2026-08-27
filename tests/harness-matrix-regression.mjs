@@ -19,7 +19,7 @@ const context = vm.createContext({
 });
 vm.runInContext(fs.readFileSync(path.join(root, "harness-core.js"), "utf8"), context, { filename: "harness-core.js" });
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
-source += `\nglobalThis.__matrixApi = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildKiCadHarnessModel, buildSheetHarnessSvg, buildSheetDrawioXml, createSheetRenderPlan };`;
+source += `\nglobalThis.__matrixApi = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildKiCadHarnessModel, buildSheetHarnessSvg, buildSheetDrawioXml, createSheetRenderPlan, sheetWireRouteGeometry };`;
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__matrixApi;
 const core = context.DigiWireCore;
@@ -76,6 +76,11 @@ assert.deepEqual(
   ["ORANGE / WHITE", "ORANGE", "GREEN / WHITE", "GREEN", "BLUE", "BLUE / WHITE", "BROWN / WHITE", "BROWN"],
   "a complete T568B RJ45 termination must use the right-side wire names as its rendered conductor colors"
 );
+assert.deepEqual(
+  Array.from(botbloxModel.wires, (wire) => wire.leftTerminalColorName),
+  ["RED", "ORANGE", "GREEN", "VIOLET", "YELLOW", "BLUE", "BROWN", "BLACK"],
+  "left terminal housings must retain the submitted left-side lead colors"
+);
 assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.fromPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
 assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.toPin), ["1", "2", "3", "6", "4", "5", "7", "8"]);
 assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.leftName), ["Red", "Orange", "Green", "Purple", "Yellow", "Blue", "brown", "black"]);
@@ -83,7 +88,11 @@ assert.deepEqual(Array.from(botbloxModel.wires, (wire) => wire.rightName), ["Ora
 for (const pair of botbloxModel.twistedPairAnalysis.validGroups) {
   assert.equal(Math.abs(pair.routes[0].y - pair.routes[1].y), 52, `${pair.id} members must occupy adjacent visual lanes`);
 }
-assert.ok(botbloxModel.wires.every((wire) => wire.rightTargetY === wire.y), "RJ45 targets must stay aligned with the pair lanes");
+assert.deepEqual(
+  Array.from(botbloxModel.wires, (wire) => [wire.toPin, wire.rightTargetY]),
+  [["1", 208], ["2", 260], ["3", 312], ["6", 468], ["4", 364], ["5", 416], ["7", 520], ["8", 572]],
+  "right terminal housings must be positioned by RJ45 pin number while pair lanes remain adjacent"
+);
 assert.deepEqual(
   Array.from(botbloxModel.twistedPairAnalysis.validGroups, (group) => group.id),
   ["TP1", "TP2", "TP3", "TP4"]
@@ -105,6 +114,37 @@ assert.match(botbloxDrawio, /main_protection_label/);
 assert.match(botbloxDrawio, /EXPANDABLE BRAIDED SLEEVING \(EXPANDO\)/);
 assert.doesNotMatch(botbloxDrawio, /right_pivot_shell|TWISTED PAIR/);
 assert.doesNotMatch(botbloxDrawio, /WIRE 9|WIRE 10|WIRE 11|WIRE 12|WIRE 13|WIRE 14|WIRE 15|WIRE 16/);
+
+// Check the actual exported geometry, not just the model's target coordinates.
+const svgRightPins = [...botbloxSvg.matchAll(/<text class="pin-label-compact" x="1238" y="([\d.]+)">(\d+)<\/text>/g)]
+  .map((match) => ({ y: Number(match[1]), pin: match[2] })).sort((left, right) => left.y - right.y);
+assert.deepEqual(svgRightPins.map((item) => item.pin), ["1", "2", "3", "4", "5", "6", "7", "8"], "SVG pin labels must use numeric RJ45 terminal order");
+const svgCavityPins = [...botbloxSvg.matchAll(/<text class="picoblade-pin" x="([\d.]+)" y="([\d.]+)">(\d+)<\/text>/g)];
+assert.deepEqual(svgCavityPins.map((match) => match[3]), ["1", "2", "3", "4", "5", "6", "7", "8"], "SVG PicoBlade cavity labels must retain physical order");
+assert.ok(svgCavityPins.every((match) => Number(match[2]) === 393), "white cavity labels must be inside the dark cavities");
+const drawioCell = (id) => {
+  const cell = botbloxDrawio.match(new RegExp(`<mxCell id="${id}"[\\s\\S]*?<\\/mxCell>`))?.[0];
+  assert.ok(cell, `Draw.io cell ${id} must exist`);
+  return cell;
+};
+for (const wire of botbloxModel.wires) {
+  const geometry = api.sheetWireRouteGeometry(wire, botbloxModel.twistedPairAnalysis, 426, 1164);
+  assert.deepEqual(Array.from(geometry.points.at(-1)), [1164, wire.rightTargetY], `wire ${wire.toPin} must reach its own right terminal`);
+  assert.ok(drawioCell(`left_term_${wire.index}`).includes(`fillColor=${wire.leftTerminalStroke};`));
+  assert.ok(drawioCell(`right_term_${wire.index}`).includes(`y="${wire.rightTargetY - 16}"`));
+  assert.ok(drawioCell(`right_pin_num_${wire.index}`).includes(`y="${wire.rightTargetY - 14}"`));
+  assert.ok(drawioCell(`wire_${wire.index}`).includes(`x="1164" y="${wire.rightTargetY}" as="targetPoint"`));
+  assert.ok(drawioCell(`left_pin_num_${wire.index}`).includes("fontColor=#000000;"), "pin labels outside a black terminal must remain visible");
+}
+for (const pair of botbloxModel.twistedPairAnalysis.validGroups) {
+  const waves = pair.routes.map((wire) => api.sheetWireRouteGeometry(wire, botbloxModel.twistedPairAnalysis, 426, 1164).points.slice(1, 16));
+  assert.deepEqual(Array.from(waves[0], (point) => point[0]), Array.from(waves[1], (point) => point[0]), `${pair.id} strands must share one twist pitch before fan-out`);
+}
+for (let pin = 1; pin <= 8; pin += 1) {
+  assert.ok(drawioCell(`left_picoblade_cavity_${pin}`).includes(`value="${pin}"`), "PicoBlade face numbering must stay physical, not pair-lane order");
+}
+const partialRj45Model = api.buildKiCadHarnessModel(w320.result.sheetHarness);
+assert.ok(partialRj45Model.wires.every((wire) => wire.rightTargetY === wire.y), "partial RJ45 harnesses must retain their previous layout");
 
 const header = fs.readFileSync(path.join(root, "tests", "fixtures", "W300.csv"), "utf8").split(/\r?\n/, 1)[0];
 const w127Rows = [];

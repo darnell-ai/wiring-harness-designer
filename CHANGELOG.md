@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.1.9 - 2026-08-27
+
+- Separated left terminal-housing color from conductor color so the BOTBLOX side remains red, orange, green, purple, yellow, blue, brown, and black.
+- Arranged right terminal housings in numeric RJ45 order from pin 1 through pin 8.
+- Added a compact right-side fan-out between the adjacent twisted-pair lanes and the numerically ordered RJ45 terminals.
+- Added regression coverage for both terminal color systems and the right-pin target positions.
+- Kept PicoBlade cavity numbering physical, improved terminal-label contrast, and separated the SVG length and sleeve captions.
+
 ## v2.1.8 - 2026-08-26
 
 - Made the right-side wire names authoritative for conductor colors and stripe patterns when the submitted termination is a complete eight-pin T568B RJ45 mapping.

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.1.8";
+const APP_VERSION = "2.1.9";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -2511,8 +2511,19 @@ function analyzeSheetTwistedPairs(routes) {
 }
 
 function sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX) {
+  const targetY = route.rightPinOrdered && Number.isFinite(route.rightTargetY) ? route.rightTargetY : route.y;
+  const hasRightFanout = targetY !== route.y;
   const membership = pairAnalysis.byRouteIndex.get(route.index);
   if (!membership) {
+    if (hasRightFanout) {
+      const fanoutX = rightX - 92;
+      const settleX = rightX - 28;
+      return {
+        twisted: false,
+        points: [[leftX, route.y], [fanoutX, route.y], [settleX, targetY], [rightX, targetY]],
+        svgPath: `M ${leftX} ${route.y} L ${fanoutX} ${route.y} L ${settleX} ${targetY} L ${rightX} ${targetY}`
+      };
+    }
     return {
       twisted: false,
       points: [[leftX, route.y], [rightX, route.y]],
@@ -2520,23 +2531,31 @@ function sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX) {
     };
   }
   const { group, memberIndex } = membership;
+  const pairHasRightFanout = group.routes.some((wire) => wire.rightPinOrdered && Number.isFinite(wire.rightTargetY) && wire.rightTargetY !== wire.y);
   const pairMidY = average(group.routes.map((item) => item.y));
   const separation = Math.abs(group.routes[0].y - group.routes[1].y);
   const amplitude = clamp(separation * 0.36, 7, 12);
   const sign = memberIndex === 0 ? -1 : 1;
   const twistStartX = leftX + 105;
-  const twistEndX = rightX - 105;
+  const twistEndX = rightX - (pairHasRightFanout ? 170 : 105);
   const halfWaveCount = 14;
   const halfWaveWidth = (twistEndX - twistStartX) / halfWaveCount;
   const wavePoints = Array.from({ length: halfWaveCount + 1 }, (_, index) => [
     twistStartX + index * halfWaveWidth,
     pairMidY + sign * amplitude * (index % 2 ? -1 : 1)
   ]);
-  const points = [[leftX, route.y], ...wavePoints, [rightX, route.y]];
+  const fanoutStartX = twistEndX + 20;
+  const settleX = rightX - 28;
+  const points = hasRightFanout
+    ? [[leftX, route.y], ...wavePoints, [fanoutStartX, route.y], [settleX, targetY], [rightX, targetY]]
+    : [[leftX, route.y], ...wavePoints, [rightX, route.y]];
+  const svgPath = hasRightFanout
+    ? `${smoothTwistedPairSvgPath([[leftX, route.y], ...wavePoints, [fanoutStartX, route.y]])} L ${settleX} ${targetY} L ${rightX} ${targetY}`
+    : smoothTwistedPairSvgPath(points);
   return {
     twisted: true,
     points,
-    svgPath: smoothTwistedPairSvgPath(points)
+    svgPath
   };
 }
 
@@ -5531,6 +5550,7 @@ function buildKiCadHarnessModel(sheet) {
     const leftWireName = sheetRowLeftWireName(row, `WIRE ${index + 1}`);
     const rightWireName = sheetRowRightWireName(row, `WIRE ${index + 1}`);
     const colorSource = kiCadWireColorSource(row, useRightT568bColors);
+    const leftTerminalColorSource = isRecognizedWireColor(row.color) ? row.color : colorSource;
     return {
       index,
       row,
@@ -5540,6 +5560,9 @@ function buildKiCadHarnessModel(sheet) {
       colorName: normalizeColorName(colorSource),
       colorLabel: normalizeWireColorLabel(colorSource),
       stroke: sheetColorToStroke(colorSource),
+      leftTerminalColorName: normalizeColorName(leftTerminalColorSource),
+      leftTerminalColorLabel: normalizeWireColorLabel(leftTerminalColorSource),
+      leftTerminalStroke: sheetColorToStroke(leftTerminalColorSource),
       awg: row.awg || awg,
       length: row.length || length,
       fromPin: row.leftPinPos || String(index + 1),
@@ -5560,8 +5583,20 @@ function buildKiCadHarnessModel(sheet) {
   const rightConnectorIsRj45 = normalizeText(`${rightName} ${rightType} ${rightHousingPart}`).includes("RJ45");
   if (rightConnectorIsRj45 && rightConnectorGroups.length === 1) {
     wires.forEach((wire) => {
-      wire.rightTargetY = wire.y;
+      const pin = numericPin(wire.toPin);
+      wire.rightPinOrdered = useRightT568bColors;
+      wire.rightTargetY = useRightT568bColors && Number.isFinite(pin) ? wireStartY + (pin - 1) * wireGap : wire.y;
     });
+    if (useRightT568bColors) {
+      const group = rightConnectorGroups[0];
+      group.slots.forEach((slot) => {
+        if (slot.wire) {
+          slot.y = slot.wire.rightTargetY;
+        }
+      });
+      group.top = wireStartY - 24;
+      group.bottom = wireStartY + (Math.max(1, group.positionCount) - 1) * wireGap + 24;
+    }
   }
   if (hasMultipleRightConnectors) {
     alignKiCadWiresToRightConnectorGroups(wires, rightConnectorGroups);
@@ -6232,8 +6267,8 @@ function buildKiCadHarnessSvg(result, model) {
   <line class="dim-ext" x1="372" y1="138" x2="372" y2="186" />
   <line class="dim-ext" x1="1220" y1="138" x2="1220" y2="186" />
   <line class="dimension" x1="382" y1="150" x2="1210" y2="150" />
-  <rect class="dim-label-bg" x="630" y="112" width="332" height="28" rx="5" />
-  <text class="dim-text" x="796" y="132">OVERALL LENGTH: ${escapeXml(formatLengthMeasurement(displayModel.length))} +/-0.25 in</text>
+  <rect class="dim-label-bg" x="630" y="94" width="332" height="28" rx="5" />
+  <text class="dim-text" x="796" y="114">OVERALL LENGTH: ${escapeXml(formatLengthMeasurement(displayModel.length))} +/-0.25 in</text>
 
   ${buildHorizontalProtectionSvg({
     x1: 452,
@@ -6724,13 +6759,14 @@ function buildKiCadRj45ConnectorFaceSvg(x, wires, connector, side) {
   wires.forEach((wire) => {
     const pin = side === "left" ? wire.fromPin : wire.toPin;
     const pinX = side === "left" ? 348 : 1238;
-    output.push(`<text class="pin-label-compact" x="${pinX}" y="${wire.y + 4}">${escapeXml(pin)}</text>`);
+    const pinY = side === "right" && wire.rightPinOrdered && Number.isFinite(wire.rightTargetY) ? wire.rightTargetY : wire.y;
+    output.push(`<text class="pin-label-compact" x="${pinX}" y="${pinY + 4}">${escapeXml(pin)}</text>`);
   });
   return output.join("");
 }
 
 function buildKiCadPicoBladeConnectorFaceSvg(x, wires, connector, side) {
-  const slots = buildKiCadConnectorSlots(wires, connector, side);
+  const slots = buildKiCadConnectorSlots(wires, connector, side).sort((left, right) => numericPin(left.pin) - numericPin(right.pin));
   const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
   const faceX = x - 82;
   const faceY = centerY - 48;
@@ -6746,7 +6782,7 @@ function buildKiCadPicoBladeConnectorFaceSvg(x, wires, connector, side) {
   slots.forEach((slot, index) => {
     const slotX = faceX + 14 + index * 18;
     output.push(`<rect class="${slot.wire ? "picoblade-cavity" : "picoblade-cavity-unused"}" x="${slotX}" y="${faceY + 31}" width="14" height="34" rx="3" />`);
-    output.push(`<text class="picoblade-pin" x="${slotX + 7}" y="${faceY + 79}">${escapeXml(slot.pin)}</text>`);
+    output.push(`<text class="picoblade-pin" x="${slotX + 7}" y="${faceY + 51}">${escapeXml(slot.pin)}</text>`);
   });
   output.push(`<text class="connector-unused-note" x="${faceX + width / 2}" y="${faceY + height + 18}">MOLEX 218112-0802 | 8 CIRCUITS | 1.25 mm | MATING FACE</text>`);
   output.push(`</g>`);
@@ -6907,22 +6943,21 @@ function buildKiCadWireSvg(wire, {
   pairAnalysis = { byRouteIndex: new Map() }
 } = {}) {
   const color = wire.stroke;
-  const textColorClass = wire.colorName === "RED" ? "table-red" : "table-text";
+  const leftTerminalColor = wire.leftTerminalStroke || color;
+  const leftTerminalColorName = wire.leftTerminalColorName || wire.colorName;
+  const targetY = wire.rightPinOrdered && Number.isFinite(wire.rightTargetY) ? wire.rightTargetY : wire.y;
   const terminalHeight = compact ? 18 : 32;
   const terminalHalf = terminalHeight / 2;
-  const markHalf = compact ? 4 : 7;
   const wireStartX = leftPcb ? 300 : 426;
   const wireEndX = rightPcb ? 1316 : 1164;
   const colorSpec = wireColorSpec(wire.colorLabel || wire.colorName || wire.row?.color);
   const routeGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
   const leftTerminal = leftPcb ? "" : `
-  <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
-  <path class="terminal-mark" d="M 393 ${wire.y - markHalf} L 393 ${wire.y + markHalf} M ${393 - markHalf} ${wire.y} L ${393 + markHalf} ${wire.y}" />
-  <text class="${textColorClass}" x="398" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+  <rect class="terminal" x="370" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${leftTerminalColor}" />
+  <text class="table-text" style="fill:${leftTerminalColorName === "BLACK" ? "#ffffff" : "#000000"}" x="398" y="${wire.y + 4}">${escapeXml(leftTerminalColorName === "BLACK" ? "-" : "+")}</text>`;
   const rightTerminal = rightPcb ? "" : `
-  <rect class="terminal" x="1164" y="${wire.y - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
-  <path class="terminal-mark" d="M 1192 ${wire.y - markHalf} L 1192 ${wire.y + markHalf} M ${1192 - markHalf} ${wire.y} L ${1192 + markHalf} ${wire.y}" />
-  <text class="${textColorClass}" x="1192" y="${wire.y + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
+  <rect class="terminal" x="1164" y="${targetY - terminalHalf}" width="56" height="${terminalHeight}" fill="${color}" />
+  <text class="table-text" style="fill:${wire.colorName === "BLACK" ? "#ffffff" : "#000000"}" x="1192" y="${targetY + 4}">${escapeXml(wire.colorName === "BLACK" ? "-" : "+")}</text>`;
   return `
   ${leftTerminal}
   ${rightTerminal}
@@ -9839,18 +9874,20 @@ function buildKiCadHarnessDrawioXml(result, model) {
     const wireStartX = leftIsPcb ? 300 : 426;
     const wireEndX = rightIsPcb ? 1316 : 1164;
     const twistGeometry = sheetWireRouteGeometry(wire, pairAnalysis, wireStartX, wireEndX);
-    const wirePoints = twistGeometry.twisted
+    const wirePoints = twistGeometry.twisted || wire.rightPinOrdered
       ? twistGeometry.points
       : [[wireStartX, wire.y], [wireEndX, targetY]];
-    const terminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
+    const leftTerminalColorName = wire.leftTerminalColorName || wire.colorName;
+    const leftTerminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.leftTerminalStroke || wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${leftTerminalColorName === "BLACK" ? "#ffffff" : "#000000"};`;
+    const rightTerminalStyle = `rounded=0;whiteSpace=wrap;html=1;fillColor=${wire.stroke};strokeColor=#000000;strokeWidth=2;fontStyle=1;fontColor=${wire.colorName === "BLACK" ? "#ffffff" : "#000000"};`;
     if (!leftIsCircular && !leftIsPcb && !leftIsPicoBlade) {
       addVertex(`left_cavity_${index}`, "", 194, wire.y - 17, 38, 34, "rounded=1;whiteSpace=wrap;html=1;fillColor=#000000;strokeColor=#000000;strokeWidth=1;");
     }
     if (!leftIsPcb) {
-      addVertex(`left_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 370, wire.y - 16, 56, 32, terminalStyle);
+      addVertex(`left_term_${index}`, leftTerminalColorName === "BLACK" ? "-" : "+", 370, wire.y - 16, 56, 32, leftTerminalStyle);
     }
     if (!rightIsPcb) {
-      addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1164, targetY - 16, 56, 32, terminalStyle);
+      addVertex(`right_term_${index}`, wire.colorName === "BLACK" ? "-" : "+", 1164, targetY - 16, 56, 32, rightTerminalStyle);
     }
     addRoutedEdge(
       `wire_${index}`,
@@ -9909,7 +9946,6 @@ function buildKiCadHarnessDrawioXml(result, model) {
   // Add pin numbers last so they remain above wires, terminals, and connector faces.
   model.wires.forEach((wire, index) => {
     const targetY = rightIsPcb ? wire.y : wire.rightTargetY || wire.y;
-    const pinFontColor = wire.colorName === "BLACK" ? "#ffffff" : "#000000";
     addVertex(
       `left_pin_num_${index}`,
       wire.fromPin,
@@ -9917,7 +9953,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
       wire.y - 14,
       55,
       28,
-      `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=${pinFontColor};align=center;`
+      "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;"
     );
     if (!rightIsPcb) {
       addVertex(
@@ -9927,7 +9963,7 @@ function buildKiCadHarnessDrawioXml(result, model) {
         targetY - 14,
         55,
         28,
-        `text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=${pinFontColor};align=center;`
+        "text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;"
       );
     }
   });
@@ -10229,7 +10265,7 @@ function addKiCadDrawioRj45Face(addVertex, connector, wires, side) {
 }
 
 function addKiCadDrawioPicoBladeFace(addVertex, connector, wires, side) {
-  const slots = buildKiCadConnectorSlots(wires, connector, side);
+  const slots = buildKiCadConnectorSlots(wires, connector, side).sort((left, right) => numericPin(left.pin) - numericPin(right.pin));
   const centerY = (wires[0].y + wires[wires.length - 1].y) / 2;
   const faceX = side === "left" ? 88 : 1278;
   const faceY = centerY - 48;

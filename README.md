@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.1.8**
+Current release: **v2.1.9**
 
-DigiWire 2.1.8 renders complete T568B RJ45 harnesses using the right-side wire names and stripe patterns: white/orange, orange, white/green, blue, white/blue, green, white/brown, and brown. Other harness types continue to use the submitted Color column.
+DigiWire 2.1.9 keeps complete T568B conductors in their right-side colors while independently coloring each left terminal housing from the submitted left Color column. Right terminal housings are arranged by actual RJ45 pin number 1-8 with a compact fan-out from the twisted-pair lanes.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 

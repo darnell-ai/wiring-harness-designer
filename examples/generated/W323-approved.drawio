@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<mxfile host="app.diagrams.net" modified="2026-08-26T19:21:13.689Z" agent="DIGIWIRE" type="device">
+<mxfile host="app.diagrams.net" modified="2026-08-27T13:31:20.584Z" agent="DIGIWIRE" type="device">
   <diagram id="W323_HARNESS_ASSEMBLY" name="W323 HARNESS ASSEMBLY">
     <mxGraphModel dx="0" dy="0" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="800" math="0" shadow="0">
       <root>
@@ -97,8 +97,8 @@
         <mxCell id="left_wire_name_5" value="ETHERNET RX+" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=#000000;align=left;verticalAlign=middle;spacing=1;" vertex="1" parent="1"><mxGeometry x="438" y="356" width="94" height="18" as="geometry" /></mxCell>
         <mxCell id="wire_details_5" value="GREEN / WHITE | 20.00 in" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=11;fontStyle=1;fontColor=#000000;align=center;spacing=1;" vertex="1" parent="1"><mxGeometry x="710" y="355" width="180" height="24" as="geometry" /></mxCell>
         <mxCell id="right_wire_name_5" value="ETHERNET RX+" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=#ffffff;whiteSpace=nowrap;overflow=visible;fontSize=10;fontStyle=1;fontColor=#000000;align=right;verticalAlign=middle;spacing=1;" vertex="1" parent="1"><mxGeometry x="1054" y="356" width="94" height="18" as="geometry" /></mxCell>
-        <mxCell id="left_pin_num_0" value="1" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#ffffff;align=center;" vertex="1" parent="1"><mxGeometry x="320" y="164" width="55" height="28" as="geometry" /></mxCell>
-        <mxCell id="right_pin_num_0" value="1" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#ffffff;align=center;" vertex="1" parent="1"><mxGeometry x="1218" y="164" width="55" height="28" as="geometry" /></mxCell>
+        <mxCell id="left_pin_num_0" value="1" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;" vertex="1" parent="1"><mxGeometry x="320" y="164" width="55" height="28" as="geometry" /></mxCell>
+        <mxCell id="right_pin_num_0" value="1" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;" vertex="1" parent="1"><mxGeometry x="1218" y="164" width="55" height="28" as="geometry" /></mxCell>
         <mxCell id="left_pin_num_1" value="3" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;" vertex="1" parent="1"><mxGeometry x="320" y="216" width="55" height="28" as="geometry" /></mxCell>
         <mxCell id="right_pin_num_1" value="1" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;" vertex="1" parent="1"><mxGeometry x="1218" y="216" width="55" height="28" as="geometry" /></mxCell>
         <mxCell id="left_pin_num_2" value="8" style="text;html=1;strokeColor=none;fillColor=none;labelBackgroundColor=none;fontSize=16;fontStyle=1;fontColor=#000000;align=center;" vertex="1" parent="1"><mxGeometry x="320" y="268" width="55" height="28" as="geometry" /></mxCell>
