@@ -101,7 +101,11 @@
   }
 
   function splitConnectorNames(value) {
-    return text(value).split(/[;|\r\n]+/).map((item) => item.trim()).filter(Boolean);
+    return text(value)
+      .replace(/<br\s*\/?>/gi, "\n")
+      .split(/[,;|\r\n]+/)
+      .map((item) => item.trim())
+      .filter(Boolean);
   }
 
   function extractHarnesses(rows, sourceName) {

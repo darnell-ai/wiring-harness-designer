@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.2.0";
+const APP_VERSION = "2.2.1";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -657,7 +657,7 @@ function applyMasterSheet(sheet, sourceName) {
 function renderMasterProject() {
   const graph = MasterDiagram.resolveProject(masterProject);
   const summary = MasterDiagram.projectSummary(masterProject);
-  dom.masterProjectBadge.textContent = `${summary.boardCount} boards | ${summary.harnessCount} cables`;
+  dom.masterProjectBadge.textContent = `${summary.boardCount} boards | ${summary.connectorCount} connectors | ${summary.harnessCount} cables`;
   dom.drawingTitle.textContent = "Master Wire Routing";
   dom.sourceTitle.textContent = masterProject.imports.length
     ? masterProject.imports[masterProject.imports.length - 1].sourceName

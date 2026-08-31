@@ -66,4 +66,22 @@ const unmatched = parser.normalizeSheetMatrix(parser.parseDelimitedText([
 Master.addSheet(project, unmatched, "W999.tsv");
 assert.ok(Master.resolveProject(project).diagnostics.some((item) => item.code === "UNMATCHED_MASTER_CONNECTOR"));
 
+const fullPlacementText = [
+  "PCB NAME\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM",
+  "BATTERY BOARD\tJ48, J38,\tJ46, J28,\t\tJ50, J49,",
+  "HB\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13",
+  "LB\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t",
+  "SENS\tJ2, J14,\tJ8, J19\t\tJ12, J11, J10, J9,",
+  "ESC\tJ2, J14,\tJ8\tJ13, J19\tJ12, J11, J10, J9, <br>"
+].join("\n");
+const fullPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText));
+const fullBoards = Master.extractBoards(fullPlacement.objects);
+assert.equal(fullBoards.length, 5);
+assert.equal(fullBoards.reduce((total, board) => total + board.connectors.length, 0), 44, "comma-separated connector cells must create individual ports");
+assert.deepEqual(
+  fullBoards.find((board) => board.name === "BATTERY BOARD").connectors.map((connector) => connector.name),
+  ["J48", "J38", "J46", "J28", "J50", "J49"]
+);
+assert.equal(fullBoards.find((board) => board.name === "ESC").connectors.at(-1).name, "J9");
+
 console.log("Master block regression passed.");

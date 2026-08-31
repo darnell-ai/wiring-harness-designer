@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.2.1 - 2026-08-31
+
+- Accepted comma-separated connector lists in every PCB placement side column, including trailing commas and pasted `<br>` line breaks.
+- Added the live connector count to the cumulative master-project badge.
+
 ## v2.2.0 - 2026-08-31
 
 - Added a Harness Drawing / Master Block Diagram mode selector.
