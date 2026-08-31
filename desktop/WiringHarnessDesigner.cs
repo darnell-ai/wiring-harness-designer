@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Offline sketch-to-schematic wiring harness reader")]
 [assembly: AssemblyCompany("DIGIWIRE")]
 [assembly: AssemblyProduct("DIGIWIRE")]
-[assembly: AssemblyVersion("2.1.9.0")]
-[assembly: AssemblyFileVersion("2.1.9.0")]
+[assembly: AssemblyVersion("2.2.0.0")]
+[assembly: AssemblyFileVersion("2.2.0.0")]
 
 internal static class WiringHarnessDesignerProgram
 {
@@ -19,6 +19,7 @@ internal static class WiringHarnessDesignerProgram
         "index.html",
         "styles.css",
         "harness-core.js",
+        "master-diagram.js",
         "app.js",
         "VERSION.txt",
         "CHANGELOG.md",
@@ -129,6 +130,7 @@ internal static class WiringHarnessDesignerProgram
         return File.Exists(Path.Combine(directory, "index.html"))
             && File.Exists(Path.Combine(directory, "styles.css"))
             && File.Exists(Path.Combine(directory, "harness-core.js"))
+            && File.Exists(Path.Combine(directory, "master-diagram.js"))
             && File.Exists(Path.Combine(directory, "app.js"))
             && File.Exists(Path.Combine(directory, @"vendor\tesseract\tesseract.min.js"))
             && File.Exists(Path.Combine(directory, @"vendor\tesseract\worker.min.js"))

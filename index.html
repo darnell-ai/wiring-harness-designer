@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v2.1.9</title>
-    <link rel="stylesheet" href="styles.css?v=2.1.9">
+    <title>DIGIWIRE v2.2.0</title>
+    <link rel="stylesheet" href="styles.css?v=2.2.0">
   </head>
   <body>
     <main class="app-shell">
@@ -28,6 +28,11 @@
               <div id="importDiagnostics" class="import-diagnostics" hidden></div>
             </div>
             <div class="pane-tools">
+              <fieldset class="drawing-mode-switch" aria-label="Drawing mode">
+                <legend>Drawing mode</legend>
+                <label><input type="radio" name="drawingMode" value="harness" checked><span>Harness</span></label>
+                <label><input type="radio" name="drawingMode" value="master"><span>Master block</span></label>
+              </fieldset>
               <button id="pasteButton" type="button" title="Read and draw a copied image from the clipboard">
                 <span class="icon">PST</span>
                 <span>Paste image</span>
@@ -35,6 +40,10 @@
               <button id="tablePasteButton" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
                 <span class="icon">TAB</span>
                 <span>Paste table</span>
+              </button>
+              <button id="addSheetButton" type="button" title="Add one or more Excel, CSV, or TSV files">
+                <span class="icon">ADD</span>
+                <span>Add files</span>
               </button>
               <button id="configureButton" type="button" title="Choose the layout and connector presentation">
                 <span class="icon">SET</span>
@@ -45,11 +54,14 @@
                 <span>Clear</span>
               </button>
               <span id="engineBadge">Multi-cable engine</span>
+              <span id="masterProjectBadge" hidden>0 boards | 0 cables</span>
             </div>
           </div>
 
+          <input id="sheetFileInput" class="hidden-input" type="file" multiple accept=".xlsx,.xls,.csv,.tsv,text/csv,text/tab-separated-values">
+
           <section id="pasteTablePanel" class="paste-table-panel pane-paste-panel" hidden>
-            <label for="tablePasteInput">Paste Excel / Sheets rows here</label>
+            <label id="tablePasteLabel" for="tablePasteInput">Paste Excel / Sheets rows here</label>
             <textarea id="tablePasteInput" rows="8" spellcheck="false" placeholder="Cable Name&#9;Left Leg&#9;Left Leg Name&#9;Wire Name&#9;...&#9;Twisted Pair ID&#9;Right Pin P#&#9;Right Wire Name"></textarea>
             <div class="paste-table-actions">
               <button id="closePasteTableButton" type="button">
@@ -135,7 +147,8 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="harness-core.js?v=2.1.9" defer></script>
-    <script src="app.js?v=2.1.9" defer></script>
+    <script src="harness-core.js?v=2.2.0" defer></script>
+    <script src="master-diagram.js?v=2.2.0" defer></script>
+    <script src="app.js?v=2.2.0" defer></script>
   </body>
 </html>

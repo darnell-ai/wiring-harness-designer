@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.2.0 - 2026-08-31
+
+- Added a Harness Drawing / Master Block Diagram mode selector.
+- Added cumulative imports for pasted tables, CSV/TSV files, workbooks, and workbook sheets.
+- Added PCB connector placement on the left, top, right, and bottom; `BOTTEM` is accepted as an alias for `BOTTOM`.
+- Added board-to-harness connector matching with visible unmatched and ambiguous warnings.
+- Added editable Draw.io master-routing diagrams and regression coverage for the cumulative project model.
+
 ## v2.1.9 - 2026-08-27
 
 - Separated left terminal-housing color from conductor color so the BOTBLOX side remains red, orange, green, purple, yellow, blue, brown, and black.

@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.1.9**
+Current release: **v2.2.0**
 
-DigiWire 2.1.9 keeps complete T568B conductors in their right-side colors while independently coloring each left terminal housing from the submitted left Color column. Right terminal housings are arranged by actual RJ45 pin number 1-8 with a compact fan-out from the twisted-pair lanes.
+DigiWire 2.2.0 adds a cumulative Master Block Diagram mode for building an overall board-to-board wire-routing scheme from repeated board-placement and harness-sheet imports. The original detailed Harness Drawing mode remains available beside it.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -19,6 +19,19 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor.
 
 The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
+
+## Master Block Diagram Mode
+
+Select **Master block** in the Drawing mode control. Paste or add as many board-placement and harness sheets as needed; new imports accumulate instead of replacing the drawing. Excel workbooks may contain multiple sheets, and multiple Excel/CSV/TSV files can be selected together.
+
+| PCB NAME | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTEM |
+| --- | --- | --- | --- | --- |
+| BATT | | | J49 | |
+| SENS | J1 | | | |
+
+`BOTTEM` is accepted exactly as shown in the production template, along with `BOTTOM` and `BOTTOM SIDE`. Separate multiple connector names with semicolons, vertical bars, or line breaks. A PCB name can appear once above several placement rows because DigiWire carries it forward.
+
+Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches names such as `BATT J49` to PCB `BATT`, connector `J49`. DNP/unused rows do not count as conductors. Missing or ambiguous connector assignments remain visible as red unmatched endpoints and warning badges.
 
 ## Length Units
 
@@ -48,6 +61,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Finds page edges, crops the sheet, suppresses graph-paper blue, and isolates pencil/pen ink.
 - Accepts pasted clipboard images as well as image drag-and-drop directly on the drawing area.
 - Loads tab-delimited rows copied from Excel, Google Sheets, or a text table immediately when Paste table is clicked.
+- Builds cumulative editable master block diagrams from repeated board-placement and harness-sheet imports.
 - Recovers headerless DIGIWIRE rows, skips repeated header rows, tolerates notes above the header, and realigns common one-column paste shifts while reporting each repair.
 - Treats an explicitly pasted header as authoritative and only pads missing trailing cells, preventing short Excel rows from being shifted into the wrong harness fields.
 - Provides a connector editor for left and right endpoint labels, connector families, 1-64 positions, front/rear view, plug/receptacle sex, and key orientation.
@@ -127,6 +141,7 @@ The application source is:
 
 - `index.html`: user interface.
 - `styles.css`: layout, appearance, responsive behavior, and schematic styles.
+- `master-diagram.js`: cumulative board/cable project model, connector matching, layout, and Draw.io export.
 - `app.js`: sketch reader, OCR pipeline, hidden model builder, schematic renderer, and exports.
 
 The optional Windows launcher remains in `desktop/` and can be rebuilt with `Build EXE.cmd`.

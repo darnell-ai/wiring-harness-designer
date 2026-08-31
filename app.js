@@ -1,9 +1,13 @@
 "use strict";
 
-const APP_VERSION = "2.1.9";
+const APP_VERSION = "2.2.0";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
+}
+const MasterDiagram = globalThis.DigiWireMaster;
+if (!MasterDiagram) {
+  throw new Error("DIGIWIRE master-diagram.js must load before app.js.");
 }
 const OCR_WORKER_PATH = "vendor/tesseract/worker.min.js";
 const OCR_CORE_PATH = "vendor/tesseract/core";
@@ -295,7 +299,12 @@ const POWERPOLE_HOUSING_PARTS = Object.freeze({
 });
 
 const dom = {
+  drawingModeInputs: Array.from(document.querySelectorAll('input[name="drawingMode"]')),
   tablePasteButton: document.querySelector("#tablePasteButton"),
+  addSheetButton: document.querySelector("#addSheetButton"),
+  sheetFileInput: document.querySelector("#sheetFileInput"),
+  masterProjectBadge: document.querySelector("#masterProjectBadge"),
+  tablePasteLabel: document.querySelector("#tablePasteLabel"),
   configureButton: document.querySelector("#configureButton"),
   designerPanel: document.querySelector("#designerPanel"),
   closeDesignerButton: document.querySelector("#closeDesignerButton"),
@@ -357,6 +366,8 @@ let ocrUnavailable = false;
 let drawioSession = null;
 let xlsxLoaderPromise = null;
 let pastedTableLoadTimer = null;
+let drawingMode = "harness";
+let masterProject = MasterDiagram.createProject();
 
 init();
 
@@ -376,14 +387,23 @@ function init() {
   });
 
   dom.drawingPane.addEventListener("drop", (event) => {
-    const [file] = event.dataTransfer?.files || [];
-    if (file) {
-      void loadDrawingFile(file);
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.length) {
+      void loadDroppedFiles(files);
     }
   });
 
   dom.pasteButton.addEventListener("click", () => void pasteClipboardImage());
   dom.tablePasteButton.addEventListener("click", () => void pasteClipboardTable());
+  dom.addSheetButton.addEventListener("click", () => dom.sheetFileInput.click());
+  dom.sheetFileInput.addEventListener("change", () => {
+    const files = Array.from(dom.sheetFileInput.files || []);
+    dom.sheetFileInput.value = "";
+    if (files.length) void loadSheetFiles(files);
+  });
+  dom.drawingModeInputs.forEach((input) => input.addEventListener("change", () => {
+    if (input.checked) setDrawingMode(input.value);
+  }));
   dom.configureButton.addEventListener("click", toggleDesignerPanel);
   dom.closeDesignerButton.addEventListener("click", closeDesignerPanel);
   dom.applyDesignerButton.addEventListener("click", applyDesignerConfiguration);
@@ -408,7 +428,59 @@ function init() {
   renderEmpty();
 }
 
+function isMasterMode() {
+  return drawingMode === "master";
+}
+
+function setDrawingMode(mode) {
+  drawingMode = mode === "master" ? "master" : "harness";
+  const master = isMasterMode();
+  dom.pasteButton.hidden = master;
+  dom.configureButton.hidden = master;
+  dom.masterProjectBadge.hidden = !master;
+  dom.tablePasteLabel.textContent = master
+    ? "Paste a board placement table or harness table (each paste is added to this project)"
+    : "Paste Excel / Sheets rows here";
+  dom.tablePasteInput.placeholder = master
+    ? "PCB NAME\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTEM ... or paste a standard harness table"
+    : "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\t...\tTwisted Pair ID\tRight Pin P#\tRight Wire Name";
+  dom.designerPanel.hidden = true;
+  dom.pasteTablePanel.hidden = true;
+  if (master) {
+    renderMasterProject();
+    setStatus("Master Block mode is ready. Add board placement sheets and harness sheets; every import joins the same project.");
+  } else if (appState.result) {
+    renderDrawioDiagram(appState.result);
+    renderFacts(appState.result);
+    renderImportDiagnostics(appState.result.diagnostics || []);
+    renderFindings(appState.result.findings || []);
+    setStatus(`${appState.result.fileName || "Harness"} restored in Harness Drawing mode.`);
+  } else {
+    renderImportDiagnostics([]);
+    renderEmpty();
+    setStatus("Harness Drawing mode is ready. Paste one harness table or image.");
+  }
+  document.querySelector("#engineBadge").textContent = master ? "Cumulative project" : "Multi-cable engine";
+}
+
+async function loadDroppedFiles(files) {
+  const sheets = files.filter(isSpreadsheetFile);
+  if (sheets.length) {
+    await loadSheetFiles(sheets);
+    return;
+  }
+  if (files[0]) await loadDrawingFile(files[0]);
+}
+
 async function loadDrawingFile(file) {
+  if (isSpreadsheetFile(file)) {
+    await loadSheetFiles([file]);
+    return;
+  }
+  if (isMasterMode()) {
+    setStatus("Master Block mode accepts Excel, CSV, TSV, or pasted tables. Switch to Harness Drawing to analyze an image.");
+    return;
+  }
   if (!file.type.startsWith("image/")) {
     setStatus("That file is not an image. Use a photo or scan.");
     return;
@@ -508,18 +580,101 @@ async function loadHarnessSheetFile(file) {
   }
 }
 
-async function readHarnessSheetFile(file) {
+function isSpreadsheetFile(file) {
+  const name = String(file?.name || "").toLowerCase();
+  return /\.(?:xlsx?|csv|tsv)$/.test(name) || [
+    "text/csv", "text/tab-separated-values", "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  ].includes(file?.type);
+}
+
+async function loadSheetFiles(files) {
+  try {
+    setBusy(true);
+    setStatus(isMasterMode() ? "Adding sheets to the master routing project..." : "Reading harness sheet...");
+    await waitForFrame();
+    let imported = 0;
+    for (const file of files) {
+      if (!isSpreadsheetFile(file)) continue;
+      const entries = await readSheetFileEntries(file);
+      for (const entry of entries) {
+        if (!entry.sheet.rows.length) continue;
+        if (isMasterMode()) {
+          applyMasterSheet(entry.sheet, entry.sourceName);
+        } else {
+          applyHarnessSheet(entry.sheet, entry.sourceName);
+        }
+        imported += 1;
+        if (!isMasterMode()) break;
+      }
+      if (!isMasterMode() && imported) break;
+    }
+    if (!imported) {
+      setStatus("No usable table was found. Include a harness header or PCB NAME plus a placement-side column.");
+    } else if (isMasterMode()) {
+      const summary = MasterDiagram.projectSummary(masterProject);
+      setStatus(`Added ${imported} sheet${imported === 1 ? "" : "s"}. Master project now has ${summary.boardCount} board${summary.boardCount === 1 ? "" : "s"} and ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus(error.message || "The sheet could not be loaded. Try CSV, TSV, or a standard .xlsx file.");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function readSheetFileEntries(file) {
   const name = file.name.toLowerCase();
   if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
     await ensureXlsxReader();
     const workbook = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const sheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[sheetName];
-    const matrix = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false, defval: "" });
-    return normalizeSheetMatrix(matrix);
+    return workbook.SheetNames.map((sheetName) => ({
+      sourceName: `${file.name} / ${sheetName}`,
+      sheet: normalizeSheetMatrix(window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+        header: 1, raw: false, defval: ""
+      }))
+    }));
   }
-  const text = await file.text();
-  return normalizeSheetMatrix(parseDelimitedText(text));
+  const content = await file.text();
+  return [{ sourceName: file.name, sheet: normalizeSheetMatrix(parseDelimitedText(content)) }];
+}
+
+async function readHarnessSheetFile(file) {
+  const [entry] = await readSheetFileEntries(file);
+  return entry?.sheet || normalizeSheetMatrix([]);
+}
+
+function applyMasterSheet(sheet, sourceName) {
+  const result = MasterDiagram.addSheet(masterProject, sheet, sourceName);
+  if (!result.addedBoards && !result.addedHarnesses) {
+    throw new Error(`${sourceName} did not contain board placements or active harness connections.`);
+  }
+  masterProject = result.project;
+  renderMasterProject();
+  return result;
+}
+
+function renderMasterProject() {
+  const graph = MasterDiagram.resolveProject(masterProject);
+  const summary = MasterDiagram.projectSummary(masterProject);
+  dom.masterProjectBadge.textContent = `${summary.boardCount} boards | ${summary.harnessCount} cables`;
+  dom.drawingTitle.textContent = "Master Wire Routing";
+  dom.sourceTitle.textContent = masterProject.imports.length
+    ? masterProject.imports[masterProject.imports.length - 1].sourceName
+    : "No master sheets";
+  dom.wireFact.textContent = String(summary.wireCount);
+  dom.connectorFact.textContent = String(summary.connectorCount);
+  dom.labelFact.textContent = String(summary.boardCount);
+  dom.findingCount.textContent = `${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}`;
+  dom.findingsList.innerHTML = masterProject.imports.length
+    ? masterProject.imports.slice(-12).reverse().map((item) => `<div class="finding"><strong>${escapeHtml(shortLabel(item.sourceName, 42))}</strong><span>${item.boardCount} boards | ${item.harnessCount} cables</span></div>`).join("")
+    : `<span class="quiet">Paste or add the first board placement sheet.</span>`;
+  renderImportDiagnostics(graph.diagnostics || []);
+  queueDrawioDiagram(
+    MasterDiagram.buildDrawioXml(masterProject),
+    "digiwire-master-routing.drawio",
+    "digiwire-master-routing.pdf"
+  );
 }
 
 function applyHarnessSheet(sheet, sourceName) {
@@ -759,7 +914,7 @@ function updateDetectedLayout(result) {
 async function pasteClipboardTable() {
   if (navigator.clipboard?.readText) {
     try {
-      setStatus("Reading copied harness table...");
+      setStatus(isMasterMode() ? "Reading copied project table..." : "Reading copied harness table...");
       const text = await navigator.clipboard.readText();
       if (looksLikeDelimitedTable(text)) {
         dom.tablePasteInput.value = text;
@@ -771,7 +926,9 @@ async function pasteClipboardTable() {
     }
   }
   dom.pasteTablePanel.hidden = false;
-  setStatus("Press Ctrl+V in the box. The pasted table will load automatically.");
+  setStatus(isMasterMode()
+    ? "Press Ctrl+V in the box. This board or harness table will be added to the master project."
+    : "Press Ctrl+V in the box. The pasted table will load automatically.");
   await waitForFrame();
   dom.tablePasteInput.value = "";
   dom.tablePasteInput.focus();
@@ -791,11 +948,18 @@ async function loadPastedHarnessTable(inputText = dom.tablePasteInput.value) {
 
   try {
     setBusy(true);
-    setStatus("Reading pasted harness table...");
+    setStatus(isMasterMode() ? "Adding pasted table to the master project..." : "Reading pasted harness table...");
     await waitForFrame();
     const sheet = normalizeSheetMatrix(parseDelimitedText(text));
     if (!sheet.rows.length) {
       setStatus(sheet.importError || "No drawable wire rows were found. Include the standard header or paste complete DIGIWIRE rows.");
+      return;
+    }
+    if (isMasterMode()) {
+      const added = applyMasterSheet(sheet, `Pasted table ${masterProject.imports.length + 1}`);
+      closePasteTablePanel();
+      const summary = MasterDiagram.projectSummary(masterProject);
+      setStatus(`Added ${added.addedBoards} board${added.addedBoards === 1 ? "" : "s"} and ${added.addedHarnesses} cable${added.addedHarnesses === 1 ? "" : "s"}. Master project: ${summary.boardCount} board${summary.boardCount === 1 ? "" : "s"}, ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
       return;
     }
     const result = applyHarnessSheet(sheet, "Pasted Harness Table");
@@ -1003,7 +1167,8 @@ function validateKnownHousingPartRows(rows) {
 function isLikelySheetHeaderRow(row) {
   const keys = row.map((value) => normalizeSheetKey(value)).filter(Boolean);
   const normalized = row.map((value) => normalizeText(value).replace(/[^A-Z0-9]+/g, ""));
-  return keys.length >= 4 &&
+  const boardPlacementHeader = keys.includes("pcbName") && keys.some((key) => ["pcbLeft", "pcbTop", "pcbRight", "pcbBottom"].includes(key));
+  return boardPlacementHeader || keys.length >= 4 &&
     (normalized.includes("WIRENAME") || normalized.includes("LEFTWIRENAME")) &&
     normalized.some((value) => value.includes("PINPOS"));
 }
@@ -1178,7 +1343,18 @@ function normalizeSheetKey(header) {
     RIGHTLEG: "rightLeg",
     RIGHTLEGNAME: "rightLegName",
     TOOLUSED: "toolUsed",
-    COMMENTS: "comments"
+    COMMENTS: "comments",
+    PCBNAME: "pcbName",
+    BOARDNAME: "pcbName",
+    PCBPART: "pcbPart",
+    PCBPARTNUMBER: "pcbPart",
+    LEFTSIDE: "pcbLeft",
+    TOPSIDE: "pcbTop",
+    RIGHTSIDE: "pcbRight",
+    BOTTEM: "pcbBottom",
+    BOTTEMSIDE: "pcbBottom",
+    BOTTOM: "pcbBottom",
+    BOTTOMSIDE: "pcbBottom"
   };
   return map[normalized] || "";
 }
@@ -8359,7 +8535,9 @@ function renderEmpty() {
 function setBusy(isBusy) {
   dom.pasteButton.disabled = isBusy;
   dom.tablePasteButton.disabled = isBusy;
+  dom.addSheetButton.disabled = isBusy;
   dom.resetButton.disabled = isBusy;
+  dom.drawingModeInputs.forEach((input) => { input.disabled = isBusy; });
 }
 
 function setStatus(text) {
@@ -8389,6 +8567,15 @@ function diagnosticChipLabel(item) {
 }
 
 function resetApp() {
+  if (isMasterMode()) {
+    masterProject = MasterDiagram.createProject();
+    dom.pasteTablePanel.hidden = true;
+    dom.tablePasteInput.value = "";
+    renderImportDiagnostics([]);
+    renderMasterProject();
+    setStatus("Master project cleared. Add the first board placement or harness sheet.");
+    return;
+  }
   appState = {
     fileName: "",
     dataUrl: "",
@@ -8478,7 +8665,9 @@ function handleDrawioMessage(event) {
   if (message.event === "init") {
     drawioSession.ready = true;
     postDrawioLoad();
-    setStatus(appState.result
+    setStatus(isMasterMode() && masterProject.imports.length
+      ? "Master routing project is loaded in Draw.io. Keep adding sheets or edit the diagram directly."
+      : appState.result
       ? `${drawioSession.title} is loaded in Draw.io. Edit it here; Save downloads a PDF.`
       : "Draw.io is ready. Paste an Excel table or image to build a harness.");
     return;

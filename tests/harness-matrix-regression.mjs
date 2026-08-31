@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const context = vm.createContext({
   console,
-  document: { querySelector: () => null },
+  document: { querySelector: () => null, querySelectorAll: () => [] },
   window: {},
   navigator: {},
   TextEncoder,
@@ -18,6 +18,7 @@ const context = vm.createContext({
   clearTimeout
 });
 vm.runInContext(fs.readFileSync(path.join(root, "harness-core.js"), "utf8"), context, { filename: "harness-core.js" });
+vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
 source += `\nglobalThis.__matrixApi = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildKiCadHarnessModel, buildSheetHarnessSvg, buildSheetDrawioXml, createSheetRenderPlan, sheetWireRouteGeometry };`;
 vm.runInContext(source, context, { filename: "app.js" });

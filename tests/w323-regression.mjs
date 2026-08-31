@@ -21,7 +21,7 @@ source += `\nglobalThis.__digiwireTest = {
 
 const context = vm.createContext({
   console,
-  document: { querySelector: () => null },
+  document: { querySelector: () => null, querySelectorAll: () => [] },
   window: {},
   navigator: {},
   TextEncoder,
@@ -32,6 +32,7 @@ const context = vm.createContext({
   clearTimeout
 });
 vm.runInContext(coreSource, context, { filename: "harness-core.js" });
+vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__digiwireTest;
 const core = context.DigiWireCore;
