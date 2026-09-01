@@ -107,7 +107,7 @@ assert.equal(resolvedRight.boardName, "SENS", "SENS J1 must never fall through t
 assert.equal(resolvedRight.name, "J1");
 assert.equal(resolvedRight.side, "left", "an inferred connector on a RIGHT board should face the routing field");
 assert.equal(resolvedRight.inferred, true);
-assert.ok(resolvedCompass.diagnostics.some((item) => item.code === "INFERRED_MASTER_CONNECTOR"));
+assert.ok(!resolvedCompass.diagnostics.some((item) => item.code === "INFERRED_MASTER_CONNECTOR"), "a connector inferred from an explicit board-and-connector leg name should not create a warning");
 assert.equal(Master.projectSummary(compassProject).connectorCount, 45, "the inferred SENS J1 connector must be included in the resolved drawing");
 const compassXml = Master.buildDrawioXml(compassProject);
 const geometry = (name) => {
@@ -120,7 +120,9 @@ assert.ok(geometry("HB").y < middle.y, "TOP board must render above MIDDLE");
 assert.ok(geometry("ESC").y > middle.y, "BOTTEM board must render below MIDDLE");
 assert.ok(geometry("LB").x < middle.x, "LEFT board must render left of MIDDLE");
 assert.ok(geometry("SENS").x > middle.x, "RIGHT board must render right of MIDDLE");
-assert.match(compassXml, /value="J1 \*"/, "an inferred connector must be visibly marked");
+assert.doesNotMatch(compassXml, /value="J1 \*"/, "an inferred connector should render like a normal connector");
+assert.match(compassXml, /value="W300"/, "the master route label should contain the cable name");
+assert.doesNotMatch(compassXml, /W300 \| 2 WIRES \| 9/, "the master route label should not include conductor count or length");
 const w300Edge = compassXml.match(/<mxCell id="cable_W300_[^"]+"[\s\S]*?<Array as="points">([\s\S]*?)<\/Array>/);
 assert.ok(w300Edge, "W300 must use explicit routing waypoints");
 assert.ok((w300Edge[1].match(/<mxPoint/g) || []).length >= 4, "W300 must leave each connector on a straight stub before turning");

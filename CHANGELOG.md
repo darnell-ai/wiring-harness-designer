@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.4.1 - 2026-09-01
+
+- Rendered connectors inferred from explicit board-and-connector wire-leg names as normal connectors without a warning, red outline, or asterisk.
+- Simplified master-routing cable labels to the cable name only, such as `W300`.
+
 ## v2.4.0 - 2026-09-01
 
 - Made the board portion of combined wire-leg names authoritative, so `SENS J1` can no longer be routed to `HB J1`.

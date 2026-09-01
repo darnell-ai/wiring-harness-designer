@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");

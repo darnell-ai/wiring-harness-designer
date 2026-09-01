@@ -200,11 +200,6 @@
           };
           if (board && !board.connectors.some((item) => item.key === connector.key)) board.connectors.push(connector);
           if (!connectors.some((item) => item.boardKey === match.connector.boardKey && item.key === connector.key)) connectors.push(match.connector);
-          diagnostics.push({
-            severity: "warning",
-            code: "INFERRED_MASTER_CONNECTOR",
-            message: `${harness.name} ${endpoint.side} endpoint ${endpoint.name} names ${match.connector.boardName}, but ${match.connector.name} was not in that PCB placement sheet. DigiWire added it to the ${match.connector.side} side for routing.`
-          });
         }
         if (!match.connector) {
           diagnostics.push({
@@ -332,10 +327,9 @@
       addVertex(item.cellId, `${board.name}${board.part ? ` | ${board.part}` : ""}`, item.x, item.y, item.width, item.height,
         "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=18;");
       item.ports.forEach((port) => {
-        const sideColor = port.connector.inferred ? "#ffedd5" : { left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff" }[port.connector.side];
-        const label = `${port.connector.name}${port.connector.inferred ? " *" : ""}`;
-        addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
-          `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=${port.connector.inferred ? "#c2410c" : "#374151"};strokeWidth=2;${port.connector.inferred ? "dashed=1;" : ""}fontSize=11;fontStyle=1;`);
+        const sideColor = { left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff" }[port.connector.side];
+        addVertex(port.cellId, port.connector.name, port.x, port.y, port.width, port.height,
+          `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
       });
     });
 
@@ -381,7 +375,7 @@
   }
 
   function harnessLabel(harness) {
-    return [harness.name, `${harness.wireCount} WIRE${harness.wireCount === 1 ? "" : "S"}`, harness.length].filter(Boolean).join(" | ");
+    return harness.name;
   }
 
   function cableColor(name) {
