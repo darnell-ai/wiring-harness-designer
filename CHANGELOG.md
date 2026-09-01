@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.5 - 2026-09-01
+
+- Increased compass-layout separation around the square PCB bodies.
+- Guaranteed at least 300 pixels of vertical routing corridor between TOP, MIDDLE, and BOTTEM boards.
+- Guaranteed at least 500 pixels of horizontal routing corridor between LEFT, MIDDLE, and RIGHT boards.
+- Added regression coverage for the new board-to-board clearances.
+
 ## v2.5.4 - 2026-09-01
 
 - Standardized every Master block PCB body to the same 560-by-560 square footprint.

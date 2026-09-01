@@ -22,6 +22,9 @@
     "#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#9333ea", "#4b5563"
   ]);
   const MASTER_BOARD_SIZE = 560;
+  const MASTER_BOARD_GAP = 320;
+  const MASTER_CENTER_X = 1600;
+  const MASTER_TOP_Y = 140;
 
   const text = (value) => String(value ?? "").trim();
   const normalized = (value) => text(value).toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -687,11 +690,14 @@
         y += heights[index] + 140;
       });
     };
-    placeHorizontal(groups.top, 1500, 140);
-    placeVertical(groups.left, 140, 1100);
-    placeHorizontal(groups.middle, 1500, 820);
-    placeVertical(groups.right, 2460, 1100);
-    placeHorizontal(groups.bottom, 1500, 1500);
+    const middleY = MASTER_TOP_Y + MASTER_BOARD_SIZE + MASTER_BOARD_GAP;
+    const bottomY = middleY + MASTER_BOARD_SIZE + MASTER_BOARD_GAP;
+    const middleCenterY = middleY + MASTER_BOARD_SIZE / 2;
+    placeHorizontal(groups.top, MASTER_CENTER_X, MASTER_TOP_Y);
+    placeVertical(groups.left, 120, middleCenterY);
+    placeHorizontal(groups.middle, MASTER_CENTER_X, middleY);
+    placeVertical(groups.right, 2680, middleCenterY);
+    placeHorizontal(groups.bottom, MASTER_CENTER_X, bottomY);
     const minX = Math.min(80, ...output.map((item) => item.x - 70));
     const minY = Math.min(100, ...output.map((item) => item.y - 40));
     if (minX < 80 || minY < 100) {

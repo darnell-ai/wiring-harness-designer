@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.4**
+Current release: **v2.5.5**
 
-DigiWire 2.5.4 uses consistent square PCB bodies throughout Master block diagrams. Master diagrams keep endpoints on the named PCB, support multi-connector branches and floating capped tails, use clear routing lanes, and label each route with only its cable name.
+DigiWire 2.5.5 adds wider routing corridors around the consistent square PCB bodies in Master block diagrams. Master diagrams keep endpoints on the named PCB, support multi-connector branches and floating capped tails, use clear routing lanes, and label each route with only its cable name.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -33,7 +33,7 @@ Select **Master block** in the Drawing mode control. Paste or add as many board-
 
 `ARRANGEMENT` controls the position of the whole PCB block and accepts `MIDDLE`, `TOP`, `LEFT`, `RIGHT`, and `BOTTEM`. `ORIENTATION` is also accepted, and the older misspelled `ORANGMENT` remains supported for existing sheets. If the column is absent, DigiWire keeps using its automatic connection-topology layout.
 
-All PCB bodies use the same spacious 560-by-560 square footprint so boards with fewer connectors do not look compressed or visually less important. Connector positions continue to follow their requested sides, corners, and center locations.
+All PCB bodies use the same spacious 560-by-560 square footprint so boards with fewer connectors do not look compressed or visually less important. At least 300 pixels of clear vertical corridor and 500 pixels of clear horizontal corridor separate the compass-positioned boards for readable wire routing. Connector positions continue to follow their requested sides, corners, and center locations.
 
 The four corner columns position connectors directly on the corresponding PCB corner. Connector names `CPC1`, `CPC2`, `CPC3`, and other `CPC` plus number names render as distinct 16-position circular connectors. The same CPC may be referenced by several cable sheets, or by one cable with several right-leg numbers, to create a shared branch to multiple destination connectors without duplicating the CPC.
 

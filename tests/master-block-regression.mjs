@@ -173,10 +173,18 @@ const boardRects = ["BATTERY BOARD", "HB", "LB", "SENS", "ESC"].map(geometry);
 assert.ok(boardRects.every((rect) => rect.width === rect.height), "every PCB body must remain square");
 assert.equal(new Set(boardRects.map((rect) => `${rect.width}x${rect.height}`)).size, 1, "all PCB bodies must use the same dimensions");
 assert.equal(middle.width, 560, "standard master PCB bodies must use the spacious 560-by-560 footprint");
-assert.ok(geometry("HB").y < middle.y, "TOP board must render above MIDDLE");
-assert.ok(geometry("ESC").y > middle.y, "BOTTEM board must render below MIDDLE");
-assert.ok(geometry("LB").x < middle.x, "LEFT board must render left of MIDDLE");
-assert.ok(geometry("SENS").x > middle.x, "RIGHT board must render right of MIDDLE");
+const hb = geometry("HB");
+const esc = geometry("ESC");
+const lb = geometry("LB");
+const sens = geometry("SENS");
+assert.ok(hb.y < middle.y, "TOP board must render above MIDDLE");
+assert.ok(esc.y > middle.y, "BOTTEM board must render below MIDDLE");
+assert.ok(lb.x < middle.x, "LEFT board must render left of MIDDLE");
+assert.ok(sens.x > middle.x, "RIGHT board must render right of MIDDLE");
+assert.ok(middle.y - (hb.y + hb.height) >= 300, "TOP and MIDDLE boards must leave a spacious routing corridor");
+assert.ok(esc.y - (middle.y + middle.height) >= 300, "MIDDLE and BOTTEM boards must leave a spacious routing corridor");
+assert.ok(middle.x - (lb.x + lb.width) >= 500, "LEFT and MIDDLE boards must leave a spacious routing corridor");
+assert.ok(sens.x - (middle.x + middle.width) >= 500, "MIDDLE and RIGHT boards must leave a spacious routing corridor");
 const portGeometry = (name) => {
   const match = compassXml.match(new RegExp(`value="[^"]*${name}[^"]*"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)"`));
   assert.ok(match, `${name} connector geometry must exist`);
@@ -187,7 +195,6 @@ assert.ok(portGeometry("CPC2").x > middle.x + 300 && portGeometry("CPC2").y > mi
 assert.ok(portGeometry("CPC1").x < middle.x && portGeometry("CPC1").y > middle.y + 150, "CPC1 must render at the bottom-left battery corner");
 const powerPole = portGeometry("POWER POLE");
 assert.ok(powerPole.x > middle.x && powerPole.x < middle.x + middle.width && powerPole.y > middle.y && powerPole.y < middle.y + middle.height, "POWER POLE must render inside the BATTERY board");
-const esc = geometry("ESC");
 for (const name of ["ESC SH", "ESC SV", "ESC PV", "ESC PH"]) {
   const point = portGeometry(name);
   assert.ok(point.x > esc.x && point.x < esc.x + esc.width && point.y > esc.y && point.y < esc.y + esc.height, `${name} must render inside the ESC board`);
