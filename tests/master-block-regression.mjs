@@ -67,19 +67,19 @@ Master.addSheet(project, unmatched, "W999.tsv");
 assert.ok(Master.resolveProject(project).diagnostics.some((item) => item.code === "UNMATCHED_MASTER_CONNECTOR"));
 
 const fullPlacementText = [
-  "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM\tCORNER LEFT AND TOP\tCORNER TOP AND RIGHT\tCORNER RIGHT AND BOTTOM\tCORNER BOTTEM AND LEFT",
-  "BATTERY BOARD\tMIDDLE\tJ48, J38,\tJ46, J28,\t\tJ50, J49,\t\tCPC3\tCPC2\tCPC1",
-  "HB\tTOP\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13\t\t\t\t",
-  "LB\tLEFT\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t\t\t\t\t",
-  "SENS\tRIGHT\tJ2, J14,\tJ8, J19\t\tJ12, J11, J10, J9,\t\t\t\t",
-  "ESC\tBOTTEM\tJ2, J14,\tJ8\tJ13, J19\tJ12, J11, J10, J9, <br>\t\t\t\t"
+  "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM\tCORNER LEFT AND TOP\tCORNER TOP AND RIGHT\tCORNER RIGHT AND BOTTOM\tCORNER BOTTEM AND LEFT\tCENTER",
+  "BATTERY BOARD\tMIDDLE\tJ48, J38,\tJ46, J28,\t\tJ50, J49,\t\tCPC3\tCPC2\tCPC1\t",
+  "HB\tTOP\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13\t\t\t\t\t",
+  "LB\tLEFT\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t\t\t\t\t\t",
+  "SENS\tRIGHT\tJ2, J14,\tJ8, J19\t\tJ12, J11, J10, J9,\t\t\t\t\t",
+  "ESC\tBOTTEM\tJ2, J14,\tJ8\tJ13, J19\tJ12, J11, J10, J9, <br>\t\t\t\t\tESC SH, ESC SV, ESC PV, ESC PH"
 ].join("\n");
 const fullPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText));
 const fullBoards = Master.extractBoards(fullPlacement.objects);
 const legacyArrangement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText.replace("ARRANGEMENT", "ORANGMENT")));
 assert.equal(Master.extractBoards(legacyArrangement.objects).find((board) => board.name === "HB").arrangement, "top", "legacy ORANGMENT headers must remain compatible");
 assert.equal(fullBoards.length, 5);
-assert.equal(fullBoards.reduce((total, board) => total + board.connectors.length, 0), 47, "edge and corner connector cells must create individual ports");
+assert.equal(fullBoards.reduce((total, board) => total + board.connectors.length, 0), 51, "edge, corner, and center connector cells must create individual ports");
 assert.deepEqual(
   fullBoards.find((board) => board.name === "BATTERY BOARD").connectors.map((connector) => connector.name),
   ["J48", "J38", "J46", "J28", "J50", "J49", "CPC3", "CPC2", "CPC1"]
@@ -88,7 +88,11 @@ assert.deepEqual(
   fullBoards.find((board) => board.name === "BATTERY BOARD").connectors.slice(-3).map((connector) => connector.side),
   ["corner-top-right", "corner-right-bottom", "corner-bottom-left"]
 );
-assert.equal(fullBoards.find((board) => board.name === "ESC").connectors.at(-1).name, "J9");
+assert.ok(fullBoards.find((board) => board.name === "ESC").connectors.some((connector) => connector.name === "J9"));
+assert.deepEqual(
+  fullBoards.find((board) => board.name === "ESC").connectors.filter((connector) => connector.side === "center").map((connector) => connector.name),
+  ["ESC SH", "ESC SV", "ESC PV", "ESC PH"]
+);
 assert.deepEqual(
   Object.fromEntries(fullBoards.map((board) => [board.name, board.arrangement])),
   { "BATTERY BOARD": "middle", HB: "top", LB: "left", SENS: "right", ESC: "bottom" }
@@ -112,14 +116,15 @@ assert.equal(resolvedRight.name, "J1");
 assert.equal(resolvedRight.side, "left", "an inferred connector on a RIGHT board should face the routing field");
 assert.equal(resolvedRight.inferred, true);
 assert.ok(!resolvedCompass.diagnostics.some((item) => item.code === "INFERRED_MASTER_CONNECTOR"), "a connector inferred from an explicit board-and-connector leg name should not create a warning");
-assert.equal(Master.projectSummary(compassProject).connectorCount, 48, "the three CPCs and inferred SENS J1 connector must be included in the resolved drawing");
+assert.equal(Master.projectSummary(compassProject).connectorCount, 52, "the CPCs, ESC center connectors, and inferred SENS J1 must be included in the resolved drawing");
 
 const cpcBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
   "CPC1-HB\t1\tBATTERY CPC1\tSIG A\t1\t1\tHB J7\tSIG A\t1",
   "CPC1-LB\t1\tBATTERY CPC1\tSIG B\t2\t1\tLB J2\tSIG B\t1",
   "CPC2-ESC\t1\tBATTERY CPC2\tSIG C\t1\t1\tESC J8\tSIG C\t1",
-  "CPC3-SENS\t1\tBATTERY CPC3\tSIG D\t1\t1\tSENS J8\tSIG D\t1"
+  "CPC3-SENS\t1\tBATTERY CPC3\tSIG D\t1\t1\tSENS J8\tSIG D\t1",
+  "CENTER-ESC\t1\tBATTERY CPC2\tSHIELD\t2\t1\tESC SH\tSHIELD\t1"
 ].join("\n")));
 Master.addSheet(compassProject, cpcBranchHarness, "CPC branches.tsv");
 const cpcMultiBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
@@ -136,6 +141,9 @@ const cpc1Matches = branchGraph.harnesses
 assert.equal(cpc1Matches.length, 3);
 assert.ok(cpc1Matches.every((connector) => connector.key === cpc1Matches[0].key), "multiple cables must branch from the same CPC1 connector instead of duplicating it");
 assert.equal(cpc1Matches[0].boardName, "BATTERY BOARD");
+const centerEsc = branchGraph.harnesses.find((harness) => harness.name === "CENTER-ESC");
+assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.name, "ESC SH", "ESC SH must match the full center connector name instead of stripping the ESC board prefix twice");
+assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.side, "center");
 const multiBranch = branchGraph.harnesses.find((harness) => harness.name === "CPC1-MULTI");
 assert.equal(multiBranch.endpoints.length, 4, "one CPC cable must support a shared circular connector branching to three different connectors");
 assert.equal(multiBranch.endpoints.filter((endpoint) => endpoint.match.connector?.name === "CPC1").length, 1);
@@ -158,6 +166,14 @@ const portGeometry = (name) => {
 assert.ok(portGeometry("CPC3").x > middle.x + 300 && portGeometry("CPC3").y < middle.y, "CPC3 must render at the top-right battery corner");
 assert.ok(portGeometry("CPC2").x > middle.x + 300 && portGeometry("CPC2").y > middle.y + 150, "CPC2 must render at the bottom-right battery corner");
 assert.ok(portGeometry("CPC1").x < middle.x && portGeometry("CPC1").y > middle.y + 150, "CPC1 must render at the bottom-left battery corner");
+const esc = geometry("ESC");
+for (const name of ["ESC SH", "ESC SV", "ESC PV", "ESC PH"]) {
+  const point = portGeometry(name);
+  assert.ok(point.x > esc.x && point.x < esc.x + 540 && point.y > esc.y && point.y < esc.y + 260, `${name} must render inside the ESC board`);
+}
+const centerPoints = ["ESC SH", "ESC SV", "ESC PV", "ESC PH"].map(portGeometry);
+assert.equal(new Set(centerPoints.map((point) => point.x)).size, 2, "four CENTER connectors should use two centered columns");
+assert.equal(new Set(centerPoints.map((point) => point.y)).size, 2, "four CENTER connectors should use two centered rows");
 assert.match(compassXml, /16 POS/, "CPC1, CPC2, and CPC3 must be identified as 16-position circular connectors");
 assert.match(compassXml, /CPC1-MULTI/, "a multi-endpoint CPC harness must render through a junction");
 assert.doesNotMatch(compassXml, /CPC1-MULTI \| 3 WIRES/, "branch junction labels should contain only the cable name");

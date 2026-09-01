@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.1 - 2026-09-01
+
+- Added `CENTER`, `CENTRE`, `CENTER POSITION`, and `CENTRE POSITION` PCB connector-placement headers.
+- Rendered centered connectors inside the PCB body using a spacious grid; four connectors use a 2-by-2 layout.
+- Preserved full board-prefixed connector names such as `ESC SH` during endpoint matching.
+- Added routing and regression coverage for a cable terminating at an ESC center connector.
+
 ## v2.5.0 - 2026-09-01
 
 - Added `CORNER LEFT AND TOP`, `CORNER TOP AND RIGHT`, `CORNER RIGHT AND BOTTOM`, and `CORNER BOTTEM AND LEFT` PCB placement columns with corrected-spelling aliases.

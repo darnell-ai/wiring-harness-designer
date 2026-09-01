@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.5.1";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -442,7 +442,7 @@ function setDrawingMode(mode) {
     ? "Paste a board placement table or harness table (each paste is added to this project)"
     : "Paste Excel / Sheets rows here";
   dom.tablePasteInput.placeholder = master
-    ? "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM\tCORNER LEFT AND TOP ... or paste a standard harness table"
+    ? "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM\tCORNER LEFT AND TOP ...\tCENTER or paste a standard harness table"
     : "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\t...\tTwisted Pair ID\tRight Pin P#\tRight Wire Name";
   dom.designerPanel.hidden = true;
   dom.pasteTablePanel.hidden = true;
@@ -1169,7 +1169,7 @@ function isLikelySheetHeaderRow(row) {
   const normalized = row.map((value) => normalizeText(value).replace(/[^A-Z0-9]+/g, ""));
   const boardPlacementHeader = keys.includes("pcbName") && keys.some((key) => [
     "pcbLeft", "pcbTop", "pcbRight", "pcbBottom",
-    "pcbCornerLeftTop", "pcbCornerTopRight", "pcbCornerRightBottom", "pcbCornerBottomLeft"
+    "pcbCornerLeftTop", "pcbCornerTopRight", "pcbCornerRightBottom", "pcbCornerBottomLeft", "pcbCenter"
   ].includes(key));
   return boardPlacementHeader || keys.length >= 4 &&
     (normalized.includes("WIRENAME") || normalized.includes("LEFTWIRENAME")) &&
@@ -1385,7 +1385,13 @@ function normalizeSheetKey(header) {
     BOTTOMLEFTCORNER: "pcbCornerBottomLeft",
     BOTTEMLEFTCORNER: "pcbCornerBottomLeft",
     CORNERLEFTANDBOTTOM: "pcbCornerBottomLeft",
-    CORNERLEFTANDBOTTEM: "pcbCornerBottomLeft"
+    CORNERLEFTANDBOTTEM: "pcbCornerBottomLeft",
+    CENTER: "pcbCenter",
+    CENTRE: "pcbCenter",
+    CENTERSIDE: "pcbCenter",
+    CENTRESIDE: "pcbCenter",
+    CENTERPOSITION: "pcbCenter",
+    CENTREPOSITION: "pcbCenter"
   };
   return map[normalized] || "";
 }

@@ -15,7 +15,8 @@
     ["corner-left-top", "pcbCornerLeftTop"],
     ["corner-top-right", "pcbCornerTopRight"],
     ["corner-right-bottom", "pcbCornerRightBottom"],
-    ["corner-bottom-left", "pcbCornerBottomLeft"]
+    ["corner-bottom-left", "pcbCornerBottomLeft"],
+    ["center", "pcbCenter"]
   ]);
   const CABLE_COLORS = Object.freeze([
     "#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#9333ea", "#4b5563"
@@ -255,6 +256,9 @@
     if (boardMatch) {
       const connectorName = normalized(endpointName.replace(new RegExp(`^${boardMatch.alias}(?:\\s+|$)|(?:\\s+|^)${boardMatch.alias}$`, "i"), " "));
       const boardConnectors = connectors.filter((connector) => connector.boardKey === boardMatch.board.key);
+      const fullExact = boardConnectors.filter((connector) => normalized(connector.name) === endpointName);
+      if (fullExact.length === 1) return { connector: fullExact[0], ambiguous: false, candidates: fullExact, boardMatched: true };
+      if (fullExact.length > 1) return { connector: null, ambiguous: true, candidates: fullExact, boardMatched: true };
       const exact = boardConnectors.filter((connector) => normalized(connector.name) === connectorName);
       if (exact.length === 1) return { connector: exact[0], ambiguous: false, candidates: exact, boardMatched: true };
       if (exact.length > 1) return { connector: null, ambiguous: true, candidates: exact, boardMatched: true };
@@ -336,7 +340,7 @@
         const sideColor = {
           left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff",
           "corner-left-top": "#e0f2fe", "corner-top-right": "#e0f2fe",
-          "corner-right-bottom": "#e0f2fe", "corner-bottom-left": "#e0f2fe"
+          "corner-right-bottom": "#e0f2fe", "corner-bottom-left": "#e0f2fe", center: "#fce7f3"
         }[port.connector.side];
         const label = cpc ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">16 POS</font>` : port.connector.name;
         addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
@@ -399,12 +403,17 @@
     return { x: port.x + port.width / 2, y: port.y + port.height / 2 };
   }
 
+  function portDirection(port) {
+    return port.exitSide || port.connector.side;
+  }
+
   function portStub(port, distance = 130) {
     const point = portCenter(port);
-    if (port.connector.side.includes("left")) point.x -= distance;
-    if (port.connector.side.includes("right")) point.x += distance;
-    if (port.connector.side.includes("top")) point.y -= distance;
-    if (port.connector.side.includes("bottom")) point.y += distance;
+    const direction = portDirection(port);
+    if (direction.includes("left")) point.x -= distance;
+    if (direction.includes("right")) point.x += distance;
+    if (direction.includes("top")) point.y -= distance;
+    if (direction.includes("bottom")) point.y += distance;
     return point;
   }
 
@@ -419,9 +428,9 @@
     const horizontal = Math.abs(firstStub.x - secondStub.x) >= Math.abs(firstStub.y - secondStub.y);
     if (horizontal) {
       let channelY;
-      if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("bottom"))) {
+      if ([portDirection(first.port), portDirection(second.port)].some((side) => side.includes("bottom"))) {
         channelY = Math.max(firstStub.y, secondStub.y) + 70 + lane;
-      } else if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("top"))) {
+      } else if ([portDirection(first.port), portDirection(second.port)].some((side) => side.includes("top"))) {
         channelY = Math.min(firstStub.y, secondStub.y) - 70 - lane;
       } else {
         channelY = (firstStub.y + secondStub.y) / 2 + (laneIndex % 2 ? lane : -lane);
@@ -434,9 +443,9 @@
       ]);
     }
     let channelX;
-    if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("right"))) {
+    if ([portDirection(first.port), portDirection(second.port)].some((side) => side.includes("right"))) {
       channelX = Math.max(firstStub.x, secondStub.x) + 70 + lane;
-    } else if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("left"))) {
+    } else if ([portDirection(first.port), portDirection(second.port)].some((side) => side.includes("left"))) {
       channelX = Math.min(firstStub.x, secondStub.x) - 70 - lane;
     } else {
       channelX = (firstStub.x + secondStub.x) / 2 + (laneIndex % 2 ? lane : -lane);
@@ -657,11 +666,19 @@
 
   function boardSize(board) {
     const counts = Object.fromEntries(SIDES.map(([side]) => [side, board.connectors.filter((connector) => connector.side === side).length]));
-    const hasCorners = SIDES.slice(4).some(([side]) => counts[side] > 0);
+    const hasCorners = SIDES.slice(4, 8).some(([side]) => counts[side] > 0);
+    const centerColumns = centerGridColumns(counts.center || 0);
+    const centerRows = centerColumns ? Math.ceil(counts.center / centerColumns) : 0;
     return {
-      width: Math.max(hasCorners ? 380 : 320, Math.max(counts.top, counts.bottom) * 120 + 60),
-      height: Math.max(hasCorners ? 240 : 190, Math.max(counts.left, counts.right) * 42 + 90)
+      width: Math.max(hasCorners ? 380 : 320, Math.max(counts.top, counts.bottom) * 120 + 60, centerColumns * 126 + 140),
+      height: Math.max(hasCorners ? 240 : 190, Math.max(counts.left, counts.right) * 42 + 90, centerRows ? centerRows * 50 + 156 : 0)
     };
+  }
+
+  function centerGridColumns(count) {
+    if (!count) return 0;
+    if (count <= 4) return Math.min(2, count);
+    return Math.min(4, Math.ceil(Math.sqrt(count)));
   }
 
   function layoutBoardPorts(item) {
@@ -670,13 +687,21 @@
       const connectors = item.board.connectors.filter((connector) => connector.side === side);
       connectors.forEach((connector, index) => {
         const corner = side.startsWith("corner-");
+        const center = side === "center";
         const cpc = isCpcConnector(connector);
         const horizontal = side === "top" || side === "bottom";
-        const width = cpc ? 76 : horizontal ? 106 : 116;
-        const height = cpc ? 76 : 30;
+        const width = cpc ? 76 : center ? 104 : horizontal ? 106 : 116;
+        const height = cpc ? 76 : center ? 32 : 30;
         let x;
         let y;
-        if (corner) {
+        if (center) {
+          const columns = centerGridColumns(connectors.length);
+          const rows = Math.ceil(connectors.length / columns);
+          const column = index % columns;
+          const row = Math.floor(index / columns);
+          x = item.x + (column + 1) * item.width / (columns + 1) - width / 2;
+          y = item.y + item.height / 2 - ((rows - 1) * 50) / 2 + row * 50 - height / 2;
+        } else if (corner) {
           x = side.includes("left") ? item.x - width / 2 : item.x + item.width - width / 2;
           y = side.includes("top") ? item.y - height / 2 : item.y + item.height - height / 2;
           if (connectors.length > 1) {
@@ -692,6 +717,9 @@
         }
         output.push({
           connector,
+          exitSide: center
+            ? ({ top: "bottom", bottom: "top", left: "right", right: "left" }[item.board.arrangement] || "bottom")
+            : side,
           cellId: stableId("port", `${item.board.key}|${connector.key}`),
           x: Math.round(x),
           y: Math.round(y),
