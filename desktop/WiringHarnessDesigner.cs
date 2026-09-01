@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Offline sketch-to-schematic wiring harness reader")]
 [assembly: AssemblyCompany("DIGIWIRE")]
 [assembly: AssemblyProduct("DIGIWIRE")]
-[assembly: AssemblyVersion("2.5.8.0")]
-[assembly: AssemblyFileVersion("2.5.8.0")]
+[assembly: AssemblyVersion("2.5.9.0")]
+[assembly: AssemblyFileVersion("2.5.9.0")]
 
 internal static class WiringHarnessDesignerProgram
 {

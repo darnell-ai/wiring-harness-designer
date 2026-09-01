@@ -386,14 +386,14 @@
         addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
-          cableEdgeStyle(color), item.branchWaypoints[index]));
+          cableEdgeStyle(color, route.port), item.branchWaypoints[index]));
       } else if (item.endpointCells.length === 2) {
-        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color), item.waypoints);
+        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color, item.endpointRoutes[0].port, item.endpointRoutes[1].port), item.waypoints);
       } else if (item.endpointCells.length === 1) {
         const endpointCell = item.endpointCells[0];
         addVertex(`${item.cellId}_open`, "OPEN END", item.openX, item.openY, 110, 40,
           "rounded=1;whiteSpace=wrap;html=1;fillColor=#f9fafb;strokeColor=#6b7280;strokeWidth=2;dashed=1;fontSize=10;fontStyle=1;");
-        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color), item.waypoints);
+        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color, item.endpointRoutes[0].port), item.waypoints);
       }
     });
 
@@ -413,8 +413,20 @@
 </mxfile>`;
   }
 
-  function cableEdgeStyle(color) {
-    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=6;`;
+  function terminalConstraint(port, prefix) {
+    if (!port) return "";
+    const direction = portDirection(port);
+    const point = {
+      left: { x: 0, y: 0.5 },
+      right: { x: 1, y: 0.5 },
+      top: { x: 0.5, y: 0 },
+      bottom: { x: 0.5, y: 1 }
+    }[direction];
+    return point ? `${prefix}X=${point.x};${prefix}Y=${point.y};${prefix}Dx=0;${prefix}Dy=0;` : "";
+  }
+
+  function cableEdgeStyle(color, sourcePort, targetPort) {
+    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=6;${terminalConstraint(sourcePort, "exit")}${terminalConstraint(targetPort, "entry")}`;
   }
 
   function harnessLabel(harness) {
@@ -430,23 +442,27 @@
   }
 
   function portDirection(port) {
-    return port.exitSide || port.connector.side;
+    const direction = port.exitSide || port.connector.side || "left";
+    if (["left", "right", "top", "bottom"].includes(direction)) return direction;
+    const corner = direction.match(/^corner-(left|right|top|bottom)/);
+    if (corner) return corner[1];
+    return ["left", "right", "top", "bottom"].find((side) => direction.includes(side)) || "left";
   }
 
   function portStub(port, distance = 130) {
     const point = portCenter(port);
     const direction = portDirection(port);
-    if (direction.includes("left")) point.x -= distance;
-    if (direction.includes("right")) point.x += distance;
-    if (direction.includes("top")) point.y -= distance;
-    if (direction.includes("bottom")) point.y += distance;
+    if (direction === "left") point.x -= distance;
+    if (direction === "right") point.x += distance;
+    if (direction === "top") point.y -= distance;
+    if (direction === "bottom") point.y += distance;
     if (port.boardRect) {
       const horizontalEscape = Math.max(ROUTE_BOARD_CLEARANCE, port.width / 2 + 36);
       const verticalEscape = Math.max(ROUTE_BOARD_CLEARANCE, port.height / 2 + 36);
-      if (direction.includes("left")) point.x = port.boardRect.x - horizontalEscape;
-      if (direction.includes("right")) point.x = port.boardRect.x + port.boardRect.width + horizontalEscape;
-      if (direction.includes("top")) point.y = port.boardRect.y - verticalEscape;
-      if (direction.includes("bottom")) point.y = port.boardRect.y + port.boardRect.height + verticalEscape;
+      if (direction === "left") point.x = port.boardRect.x - horizontalEscape;
+      if (direction === "right") point.x = port.boardRect.x + port.boardRect.width + horizontalEscape;
+      if (direction === "top") point.y = port.boardRect.y - verticalEscape;
+      if (direction === "bottom") point.y = port.boardRect.y + port.boardRect.height + verticalEscape;
     }
     return point;
   }
@@ -609,10 +625,12 @@
     return length + bends * 22 + crossings * 260 + overlap * 3;
   }
 
-  function chooseOptimizedRoute(candidates, routedPaths) {
+  function chooseOptimizedRoute(candidates, routedPaths, boards) {
     const unique = new Map();
     candidates.forEach((points) => unique.set(points.map((point) => `${Math.round(point.x)},${Math.round(point.y)}`).join(";"), points));
-    return Array.from(unique.values()).sort((left, right) => optimizedRouteScore(left, routedPaths) - optimizedRouteScore(right, routedPaths))[0];
+    const legal = Array.from(unique.values()).filter((points) => !pathIntersectsBoards(points, boards));
+    return legal.sort((left, right) => optimizedRouteScore(left, routedPaths) - optimizedRouteScore(right, routedPaths))[0] ||
+      obstacleAwareWaypoints(candidates[0][0], candidates[0][candidates[0].length - 1], boards, candidates.length);
   }
 
   function optimizedCableWaypoints(first, second, boards, routedPaths) {
@@ -623,7 +641,7 @@
       keepRouteOutsideBoards([start, { x: start.x, y: end.y }, end], boards)
     ];
     for (let laneIndex = 0; laneIndex < 8; laneIndex += 1) candidates.push(cableWaypoints(first, second, laneIndex, boards));
-    return chooseOptimizedRoute(candidates, routedPaths);
+    return chooseOptimizedRoute(candidates, routedPaths, boards);
   }
 
   function optimizedEndpointWaypoints(route, target, boards, routedPaths) {
@@ -633,7 +651,7 @@
       keepRouteOutsideBoards([start, { x: start.x, y: target.y }, target], boards)
     ];
     for (let laneIndex = 0; laneIndex < 8; laneIndex += 1) candidates.push(routeWaypoints(route, target, laneIndex, boards));
-    return chooseOptimizedRoute(candidates, routedPaths);
+    return chooseOptimizedRoute(candidates, routedPaths, boards);
   }
 
   function cableWaypoints(first, second, laneIndex = 0, boards = []) {

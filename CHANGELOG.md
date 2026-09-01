@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.9 - 2026-09-01
+
+- Locked Master block cable endpoints to each connector's outward-facing edge.
+- Prevented Draw.io from replacing a safe final waypoint with an inward approach across a PCB.
+- Added a final board-collision rejection to the optimized-route candidate selection.
+- Added regression coverage for the optimized BATTERY J48 to LB J1 route shown crossing the LB board.
+
 ## v2.5.8 - 2026-09-01
 
 - Added an **Optimize routes** button to Master block mode.

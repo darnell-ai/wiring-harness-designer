@@ -250,9 +250,13 @@ const collisionHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
 const collisionProject = Master.createProject();
 Master.addSheet(collisionProject, collisionPlacement, "collision boards.tsv");
 Master.addSheet(collisionProject, collisionHarness, "W302.tsv");
-const collisionXml = Master.buildDrawioXml(collisionProject);
+const collisionXml = Master.buildDrawioXml(collisionProject, { optimizeRoutes: true });
+const collisionEdgeStyle = collisionXml.match(/<mxCell id="cable_W302_[^"]+"[^>]*style="([^"]+)"/);
+assert.ok(collisionEdgeStyle, "optimized W302 must render as a constrained cable edge");
+assert.match(collisionEdgeStyle[1], /exitX=0;exitY=0\.5/, "W302 must leave BATTERY J48 from its outward-facing left edge");
+assert.match(collisionEdgeStyle[1], /entryX=0;entryY=0\.5/, "W302 must enter LB J1 from its outward-facing left edge instead of crossing the LB PCB");
 const collisionEdge = collisionXml.match(/<mxCell id="cable_W302_[^"]+"[\s\S]*?<Array as="points">([\s\S]*?)<\/Array>/);
-assert.ok(collisionEdge, "the same-side W302 route must use explicit obstacle-aware waypoints");
+assert.ok(collisionEdge, "the optimized same-side W302 route must use explicit obstacle-aware waypoints");
 const collisionPoints = Array.from(collisionEdge[1].matchAll(/<mxPoint x="([^"]+)" y="([^"]+)"/g), (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
 assert.ok(collisionPoints.length >= 4, "W302 must turn around the LB board instead of crossing it");
 const collisionGeometry = (name) => {
