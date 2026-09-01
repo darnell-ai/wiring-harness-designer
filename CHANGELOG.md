@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.4 - 2026-09-01
+
+- Standardized every Master block PCB body to the same 560-by-560 square footprint.
+- Increased compass-layout spacing so the larger square boards do not overlap.
+- Added regression coverage for equal square board dimensions.
+
 ## v2.5.3 - 2026-09-01
 
 - Added `FLOATING` as an intentional unterminated harness endpoint in Master block mode.

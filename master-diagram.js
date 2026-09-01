@@ -21,6 +21,7 @@
   const CABLE_COLORS = Object.freeze([
     "#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#9333ea", "#4b5563"
   ]);
+  const MASTER_BOARD_SIZE = 560;
 
   const text = (value) => String(value ?? "").trim();
   const normalized = (value) => text(value).toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -686,11 +687,11 @@
         y += heights[index] + 140;
       });
     };
-    placeHorizontal(groups.top, 1400, 140);
-    placeVertical(groups.left, 140, 790);
-    placeHorizontal(groups.middle, 1400, 650);
-    placeVertical(groups.right, 2260, 790);
-    placeHorizontal(groups.bottom, 1400, 1180);
+    placeHorizontal(groups.top, 1500, 140);
+    placeVertical(groups.left, 140, 1100);
+    placeHorizontal(groups.middle, 1500, 820);
+    placeVertical(groups.right, 2460, 1100);
+    placeHorizontal(groups.bottom, 1500, 1500);
     const minX = Math.min(80, ...output.map((item) => item.x - 70));
     const minY = Math.min(100, ...output.map((item) => item.y - 40));
     if (minX < 80 || minY < 100) {
@@ -735,13 +736,9 @@
   }
 
   function boardSize(board) {
-    const counts = Object.fromEntries(SIDES.map(([side]) => [side, board.connectors.filter((connector) => connector.side === side).length]));
-    const hasCorners = SIDES.slice(4, 8).some(([side]) => counts[side] > 0);
-    const centerColumns = centerGridColumns(counts.center || 0);
-    const centerRows = centerColumns ? Math.ceil(counts.center / centerColumns) : 0;
     return {
-      width: Math.max(hasCorners ? 380 : 320, Math.max(counts.top, counts.bottom) * 120 + 60, centerColumns * 126 + 140),
-      height: Math.max(hasCorners ? 240 : 190, Math.max(counts.left, counts.right) * 42 + 90, centerRows ? centerRows * 50 + 156 : 0)
+      width: MASTER_BOARD_SIZE,
+      height: MASTER_BOARD_SIZE
     };
   }
 
