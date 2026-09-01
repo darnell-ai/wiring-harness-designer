@@ -67,12 +67,12 @@ Master.addSheet(project, unmatched, "W999.tsv");
 assert.ok(Master.resolveProject(project).diagnostics.some((item) => item.code === "UNMATCHED_MASTER_CONNECTOR"));
 
 const fullPlacementText = [
-  "PCB NAME\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM",
-  "BATTERY BOARD\tJ48, J38,\tJ46, J28,\t\tJ50, J49,",
-  "HB\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13",
-  "LB\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t",
-  "SENS\tJ2, J14,\tJ8, J19\t\tJ12, J11, J10, J9,",
-  "ESC\tJ2, J14,\tJ8\tJ13, J19\tJ12, J11, J10, J9, <br>"
+  "PCB NAME\tORANGMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM",
+  "BATTERY BOARD\tMIDDLE\tJ48, J38,\tJ46, J28,\t\tJ50, J49,",
+  "HB\tTOP\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13",
+  "LB\tLEFT\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t",
+  "SENS\tRIGHT\tJ2, J14,\tJ8, J19\t\tJ12, J11, J10, J9,",
+  "ESC\tBOTTEM\tJ2, J14,\tJ8\tJ13, J19\tJ12, J11, J10, J9, <br>"
 ].join("\n");
 const fullPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText));
 const fullBoards = Master.extractBoards(fullPlacement.objects);
@@ -83,5 +83,22 @@ assert.deepEqual(
   ["J48", "J38", "J46", "J28", "J50", "J49"]
 );
 assert.equal(fullBoards.find((board) => board.name === "ESC").connectors.at(-1).name, "J9");
+assert.deepEqual(
+  Object.fromEntries(fullBoards.map((board) => [board.name, board.arrangement])),
+  { "BATTERY BOARD": "middle", HB: "top", LB: "left", SENS: "right", ESC: "bottom" }
+);
+const compassProject = Master.createProject();
+Master.addSheet(compassProject, fullPlacement, "compass boards.tsv");
+const compassXml = Master.buildDrawioXml(compassProject);
+const geometry = (name) => {
+  const match = compassXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)"`));
+  assert.ok(match, `${name} board geometry must exist`);
+  return { x: Number(match[1]), y: Number(match[2]) };
+};
+const middle = geometry("BATTERY BOARD");
+assert.ok(geometry("HB").y < middle.y, "TOP board must render above MIDDLE");
+assert.ok(geometry("ESC").y > middle.y, "BOTTEM board must render below MIDDLE");
+assert.ok(geometry("LB").x < middle.x, "LEFT board must render left of MIDDLE");
+assert.ok(geometry("SENS").x > middle.x, "RIGHT board must render right of MIDDLE");
 
 console.log("Master block regression passed.");

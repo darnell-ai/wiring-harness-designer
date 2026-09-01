@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.3.0 - 2026-09-01
+
+- Added the board-level `ORANGMENT` column for compass placement in master diagrams.
+- Positioned `TOP`, `LEFT`, `MIDDLE`, `RIGHT`, and `BOTTEM` boards around the routing canvas while preserving connector-side placement.
+- Accepted corrected `ARRANGEMENT` and `ORIENTATION` headers and `CENTER`, `CENTRE`, and `BOTTOM` value aliases.
+- Kept topology-based automatic board layout as the fallback when no arrangement values are supplied.
+- Added regression coverage proving each compass board renders on the requested side of the middle board.
+
 ## v2.2.1 - 2026-08-31
 
 - Accepted comma-separated connector lists in every PCB placement side column, including trailing commas and pasted `<br>` line breaks.

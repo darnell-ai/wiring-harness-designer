@@ -37,6 +37,15 @@
   };
   const stableId = (prefix, value) => `${prefix}_${slug(value)}_${hash(value)}`;
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
+  const normalizeBoardArrangement = (value) => {
+    const key = normalized(value);
+    if (["MIDDLE", "CENTER", "CENTRE"].includes(key)) return "middle";
+    if (key === "TOP") return "top";
+    if (key === "LEFT") return "left";
+    if (key === "RIGHT") return "right";
+    if (["BOTTOM", "BOTTEM"].includes(key)) return "bottom";
+    return "";
+  };
   const isDnp = (row) => /\b(?:DNP|NOT IN USE|NOT USED|UNUSED|DO NOT POPULATE|NO WIRE|NO CONNECT(?:ION)?|N\/?C)\b/.test(normalized([
     row.leftLegName, row.wireName, row.rightLegName, row.rightWireName, row.branchRole
   ].join(" ")));
@@ -84,10 +93,14 @@
       if (!currentBoardName) return;
       const key = normalized(currentBoardName);
       if (!grouped.has(key)) {
-        grouped.set(key, { key, name: currentBoardName, part: "", connectors: [] });
+        grouped.set(key, { key, name: currentBoardName, part: "", arrangement: "", arrangementSource: "", connectors: [] });
       }
       const board = grouped.get(key);
       if (meaningful(row.pcbPart)) board.part = text(row.pcbPart);
+      if (meaningful(row.pcbArrangement)) {
+        board.arrangementSource = text(row.pcbArrangement);
+        board.arrangement = normalizeBoardArrangement(row.pcbArrangement);
+      }
       SIDES.forEach(([side, field]) => {
         splitConnectorNames(row[field]).forEach((name) => {
           const connectorKey = `${side}:${normalized(name)}`;
@@ -160,6 +173,15 @@
       boardPart: board.part
     })));
     const diagnostics = [];
+    project.boards.forEach((board) => {
+      if (board.arrangementSource && !board.arrangement) {
+        diagnostics.push({
+          severity: "warning",
+          code: "INVALID_BOARD_ARRANGEMENT",
+          message: `${board.name} arrangement ${board.arrangementSource} is not recognized. Use MIDDLE, TOP, LEFT, RIGHT, or BOTTEM.`
+        });
+      }
+    });
     const harnesses = project.harnesses.map((harness) => ({
       ...harness,
       endpoints: harness.endpoints.map((endpoint) => {
@@ -293,39 +315,11 @@
   }
 
   function layoutGraph(graph) {
-    const layers = boardLayers(graph);
-    const byLayer = new Map();
-    graph.boards.forEach((board) => {
-      const layer = layers.get(board.key) || 0;
-      if (!byLayer.has(layer)) byLayer.set(layer, []);
-      byLayer.get(layer).push(board);
-    });
-    byLayer.forEach((boards) => boards.sort((left, right) => left.name.localeCompare(right.name)));
-    const layerNumbers = Array.from(byLayer.keys()).sort((left, right) => left - right);
-    const boards = [];
-    let currentX = 120;
-    let pageHeight = 800;
-    layerNumbers.forEach((layer) => {
-      const layerBoards = byLayer.get(layer);
-      const layerWidth = Math.max(320, ...layerBoards.map((board) => boardSize(board).width));
-      let currentY = 140;
-      layerBoards.forEach((board) => {
-        const size = boardSize(board);
-        const item = {
-          board,
-          cellId: stableId("board", board.key),
-          x: currentX,
-          y: currentY,
-          width: size.width,
-          height: size.height
-        };
-        item.ports = layoutBoardPorts(item);
-        boards.push(item);
-        currentY += size.height + 170;
-      });
-      pageHeight = Math.max(pageHeight, currentY + 80);
-      currentX += layerWidth + 330;
-    });
+    const boards = graph.boards.some((board) => board.arrangement)
+      ? layoutBoardsByCompass(graph.boards)
+      : layoutBoardsByTopology(graph);
+    let pageHeight = Math.max(800, ...boards.map((item) => item.y + item.height + 120));
+    let currentX = Math.max(120, ...boards.map((item) => item.x + item.width + 220));
     const boardByKey = new Map(boards.map((item) => [item.board.key, item]));
     const portByKey = new Map(boards.flatMap((item) => item.ports.map((port) => [`${item.board.key}|${port.connector.key}`, port])));
     const externalStartX = Math.max(1120, currentX + 30);
@@ -374,6 +368,90 @@
     const warningTop = pageHeight;
     const finalPageHeight = pageHeight + Math.max(1, graph.diagnostics.length) * 34 + 80;
     return { boards, boardByKey, externals, harnesses, pageWidth, pageHeight: finalPageHeight, warningTop };
+  }
+
+  function layoutBoardsByTopology(graph) {
+    const layers = boardLayers(graph);
+    const byLayer = new Map();
+    graph.boards.forEach((board) => {
+      const layer = layers.get(board.key) || 0;
+      if (!byLayer.has(layer)) byLayer.set(layer, []);
+      byLayer.get(layer).push(board);
+    });
+    byLayer.forEach((boards) => boards.sort((left, right) => left.name.localeCompare(right.name)));
+    const layerNumbers = Array.from(byLayer.keys()).sort((left, right) => left - right);
+    const output = [];
+    let currentX = 120;
+    layerNumbers.forEach((layer) => {
+      const layerBoards = byLayer.get(layer);
+      const layerWidth = Math.max(320, ...layerBoards.map((board) => boardSize(board).width));
+      let currentY = 140;
+      layerBoards.forEach((board) => {
+        const size = boardSize(board);
+        const item = {
+          board,
+          cellId: stableId("board", board.key),
+          x: currentX,
+          y: currentY,
+          width: size.width,
+          height: size.height
+        };
+        item.ports = layoutBoardPorts(item);
+        output.push(item);
+        currentY += size.height + 170;
+      });
+      currentX += layerWidth + 330;
+    });
+    return output;
+  }
+
+  function layoutBoardsByCompass(sourceBoards) {
+    const groups = { top: [], left: [], middle: [], right: [], bottom: [] };
+    sourceBoards.forEach((board) => groups[board.arrangement || "middle"].push(board));
+    Object.values(groups).forEach((items) => items.sort((left, right) => left.name.localeCompare(right.name)));
+    const output = [];
+    const place = (board, x, y) => {
+      const size = boardSize(board);
+      const item = { board, cellId: stableId("board", board.key), x: Math.round(x), y: Math.round(y), width: size.width, height: size.height };
+      item.ports = layoutBoardPorts(item);
+      output.push(item);
+      return item;
+    };
+    const placeHorizontal = (items, centerX, y) => {
+      const widths = items.map((board) => boardSize(board).width);
+      const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, items.length - 1) * 140;
+      let x = centerX - total / 2;
+      items.forEach((board, index) => {
+        place(board, x, y);
+        x += widths[index] + 140;
+      });
+    };
+    const placeVertical = (items, x, centerY) => {
+      const heights = items.map((board) => boardSize(board).height);
+      const total = heights.reduce((sum, height) => sum + height, 0) + Math.max(0, items.length - 1) * 140;
+      let y = centerY - total / 2;
+      items.forEach((board, index) => {
+        place(board, x, y);
+        y += heights[index] + 140;
+      });
+    };
+    placeHorizontal(groups.top, 1400, 140);
+    placeVertical(groups.left, 140, 790);
+    placeHorizontal(groups.middle, 1400, 650);
+    placeVertical(groups.right, 2260, 790);
+    placeHorizontal(groups.bottom, 1400, 1180);
+    const minX = Math.min(80, ...output.map((item) => item.x - 70));
+    const minY = Math.min(100, ...output.map((item) => item.y - 40));
+    if (minX < 80 || minY < 100) {
+      const shiftX = Math.max(0, 80 - minX);
+      const shiftY = Math.max(0, 100 - minY);
+      output.forEach((item) => {
+        item.x += shiftX;
+        item.y += shiftY;
+        item.ports = layoutBoardPorts(item);
+      });
+    }
+    return output;
   }
 
   function boardLayers(graph) {
