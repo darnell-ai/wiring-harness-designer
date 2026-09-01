@@ -180,7 +180,16 @@ for (const name of ["POWER-POLE", "POWER-POLE-UNQUALIFIED"]) {
 const multiBranch = branchGraph.harnesses.find((harness) => harness.name === "CPC1-MULTI");
 assert.equal(multiBranch.endpoints.length, 4, "one CPC cable must support a shared circular connector branching to three different connectors");
 assert.equal(multiBranch.endpoints.filter((endpoint) => endpoint.match.connector?.name === "CPC1").length, 1);
+const w304Harness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W304\t1\tBATTERY CPC 1\tS_Horz A\t1\t1\tESC SH\tTO SH A\t1",
+  "\t1\tBATTERY CPC 1\tS_Vert A\t4\t2\tESC SV\tTO SV A\t1",
+  "\t1\tBATTERY CPC 1\tP_Vert A\t7\t3\tESC PV\tTO PV A\t1",
+  "\t1\tBATTERY CPC 1\tP_Horz A\t10\t4\tESC PH\tTO PH A\t1"
+].join("\n")));
+Master.addSheet(compassProject, w304Harness, "W304.tsv");
 const compassXml = Master.buildDrawioXml(compassProject);
+const optimizedCompassXml = Master.buildDrawioXml(compassProject, { optimizeRoutes: true });
 const geometry = (name) => {
   const match = compassXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"`));
   assert.ok(match, `${name} board geometry must exist`);
@@ -218,8 +227,11 @@ for (const name of ["ESC SH", "ESC SV", "ESC PV", "ESC PH"]) {
   assert.ok(point.x > esc.x && point.x < esc.x + esc.width && point.y > esc.y && point.y < esc.y + esc.height, `${name} must render inside the ESC board`);
 }
 const centerPoints = ["ESC SH", "ESC SV", "ESC PV", "ESC PH"].map(portGeometry);
-assert.equal(new Set(centerPoints.map((point) => point.x)).size, 2, "four CENTER connectors should use two centered columns");
-assert.equal(new Set(centerPoints.map((point) => point.y)).size, 2, "four CENTER connectors should use two centered rows");
+assert.equal(new Set(centerPoints.map((point) => point.x)).size, 4, "four vertically-routed CENTER connectors should use four separate columns");
+assert.equal(new Set(centerPoints.map((point) => point.y)).size, 1, "four vertically-routed CENTER connectors should use one centered row");
+const w304CenterBranchStarts = Array.from(optimizedCompassXml.matchAll(/<mxCell id="cable_W304_[^"]+_branch_\d+"[^>]*style="[^"]*exitY=0;[^"]*"[\s\S]*?<Array as="points"><mxPoint x="([^"]+)"/g), (match) => Number(match[1]));
+assert.equal(w304CenterBranchStarts.length, 4, "W304 must route one optimized branch from each ESC center connector");
+assert.equal(new Set(w304CenterBranchStarts).size, 4, "W304 ESC branches must start on four separately spaced vertical tracks");
 assert.match(compassXml, /16 POS/, "CPC1, CPC2, and CPC3 must be identified as 16-position circular connectors");
 assert.match(compassXml, /POWER POLE[\s\S]*CONNECTOR/, "POWER POLE must be identified as a connector");
 assert.match(compassXml, /gradientColor=#111827/, "POWER POLE must use its distinct red-and-black connector profile");

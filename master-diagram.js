@@ -972,9 +972,10 @@
     };
   }
 
-  function centerGridColumns(count) {
+  function centerGridColumns(count, exitSide) {
     if (!count) return 0;
-    if (count <= 4) return Math.min(2, count);
+    if (count <= 4 && (exitSide === "top" || exitSide === "bottom")) return count;
+    if (count <= 4 && (exitSide === "left" || exitSide === "right")) return 1;
     return Math.min(4, Math.ceil(Math.sqrt(count)));
   }
 
@@ -988,12 +989,15 @@
         const cpc = isCpcConnector(connector);
         const powerPole = isPowerPoleConnector(connector);
         const horizontal = side === "top" || side === "bottom";
+        const centerExitSide = center
+          ? ({ top: "bottom", bottom: "top", left: "right", right: "left" }[item.board.arrangement] || "bottom")
+          : null;
         const width = cpc ? 76 : powerPole ? 132 : center ? 104 : horizontal ? 106 : 116;
         const height = cpc ? 76 : powerPole ? 48 : center ? 32 : 30;
         let x;
         let y;
         if (center) {
-          const columns = centerGridColumns(connectors.length);
+          const columns = centerGridColumns(connectors.length, centerExitSide);
           const rows = Math.ceil(connectors.length / columns);
           const column = index % columns;
           const row = Math.floor(index / columns);
@@ -1016,9 +1020,7 @@
         output.push({
           connector,
           boardRect: { x: item.x, y: item.y, width: item.width, height: item.height },
-          exitSide: center
-            ? ({ top: "bottom", bottom: "top", left: "right", right: "left" }[item.board.arrangement] || "bottom")
-            : side,
+          exitSide: center ? centerExitSide : side,
           cellId: stableId("port", `${item.board.key}|${connector.key}`),
           x: Math.round(x),
           y: Math.round(y),

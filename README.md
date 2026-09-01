@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.9**
+Current release: **v2.5.10**
 
-DigiWire 2.5.9 locks every Master block cable to the outward-facing edge of its source and target connectors. Optimized routes can no longer let Draw.io choose an inward connector approach that visually cuts through a PCB, and every optimized candidate receives a final PCB-collision rejection before selection.
+DigiWire 2.5.10 spaces center-board connectors along the axis perpendicular to their cable exit direction. The four ESC center connectors now occupy four separate columns, giving W304's vertical branches independent tracks instead of stacking them in pairs.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -47,7 +47,7 @@ Use `FLOATING` as a left or right leg name when that end intentionally does not 
 
 Master cable routes leave every connector on a straight stub before turning into a spaced routing lane. The obstacle-aware router checks every orthogonal segment and moves any colliding route around the PCB boundary with visible clearance. Opaque bordered labels and thinner cable paths keep connector names and nearby wires readable.
 
-After adding the desired board and harness sheets, click **Optimize routes** to run a project-wide cleanup pass. DigiWire compares tight Manhattan paths and spaced routing lanes for each cable, rejects any path that enters a PCB, and scores the remaining options by wire length, bends, crossings, and overlapping segments. Future table imports remain optimized automatically until the Master project is cleared.
+After adding the desired board and harness sheets, click **Optimize routes** to run a project-wide cleanup pass. DigiWire compares tight Manhattan paths and spaced routing lanes for each cable, rejects any path that enters a PCB, and scores the remaining options by wire length, bends, crossings, and overlapping segments. Adding or undoing a Master table returns to the normal route layout so the button always runs a fresh optimization pass on the updated project.
 
 ## Length Units
 

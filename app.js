@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.9";
+const APP_VERSION = "2.5.10";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -701,6 +701,7 @@ function applyMasterSheet(sheet, sourceName) {
   }
   masterUndoHistory.push(previousProject);
   masterProject = result.project;
+  masterRoutesOptimized = false;
   renderMasterProject();
   updateUndoTableButton();
   return result;
@@ -8710,6 +8711,7 @@ function undoLastTableImport() {
     if (!previousProject) return;
     const removedImport = masterProject.imports[masterProject.imports.length - 1];
     masterProject = previousProject;
+    masterRoutesOptimized = false;
     dom.pasteTablePanel.hidden = true;
     renderMasterProject();
     updateUndoTableButton();

@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.5.10 - 2026-09-01
+
+- Arranged up to four vertically routed CENTER connectors in one evenly spaced row.
+- Arranged up to four horizontally routed CENTER connectors in one evenly spaced column.
+- Gave the four W304 ESC center branches separate vertical start tracks instead of two stacked pairs.
+- Reset route optimization after every Master table add or undo so the Optimize routes button always performs a fresh pass on the updated project.
+- Added W304-style multi-branch regression coverage for ESC SH, ESC SV, ESC PV, and ESC PH.
+
 ## v2.5.9 - 2026-09-01
 
 - Locked Master block cable endpoints to each connector's outward-facing edge.
