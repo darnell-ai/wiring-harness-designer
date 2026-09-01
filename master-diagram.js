@@ -48,6 +48,7 @@
     const compact = name.replace(/\s+/g, "");
     return /^POWERPOLE\d*$/.test(compact) ? compact : name;
   };
+  const isFloatingEndpointName = (value) => normalized(value) === "FLOATING";
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
     const key = normalized(value);
@@ -171,7 +172,7 @@
         text(row[`${prefix}HousingType`]) || (leg ? `${side.toUpperCase()} LEG ${leg}` : "");
       if (!name) return;
       const key = leg ? `LEG:${normalized(leg)}` : `NAME:${normalized(name)}`;
-      if (!grouped.has(key)) grouped.set(key, { key, name, side, leg, rowCount: 0 });
+      if (!grouped.has(key)) grouped.set(key, { key, name, side, leg, floating: isFloatingEndpointName(name), rowCount: 0 });
       grouped.get(key).rowCount += 1;
     });
     return Array.from(grouped.values());
@@ -201,7 +202,9 @@
     const harnesses = project.harnesses.map((harness) => ({
       ...harness,
       endpoints: harness.endpoints.map((endpoint) => {
-        const match = matchEndpoint(endpoint, connectors, boards);
+        const match = endpoint.floating
+          ? { connector: null, floating: true, ambiguous: false, candidates: [] }
+          : matchEndpoint(endpoint, connectors, boards);
         if (match.inferred) {
           const board = boards.find((item) => item.key === match.connector.boardKey);
           const connector = {
@@ -213,7 +216,7 @@
           if (board && !board.connectors.some((item) => item.key === connector.key)) board.connectors.push(connector);
           if (!connectors.some((item) => item.boardKey === match.connector.boardKey && item.key === connector.key)) connectors.push(match.connector);
         }
-        if (!match.connector) {
+        if (!match.connector && !match.floating) {
           diagnostics.push({
             severity: "warning",
             code: match.ambiguous ? "AMBIGUOUS_MASTER_CONNECTOR" : "UNMATCHED_MASTER_CONNECTOR",
@@ -368,6 +371,9 @@
     layout.externals.forEach((external) => addVertex(external.cellId, `UNMATCHED | ${external.endpoint.name}`, external.x, external.y, 170, 58,
       "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#fff1f2;strokeColor=#dc2626;strokeWidth=2;fontSize=11;fontStyle=1;"));
 
+    layout.floatingCaps.forEach((cap) => addVertex(cap.cellId, "CAP", cap.x, cap.y, cap.width, cap.height,
+      "rounded=1;arcSize=50;whiteSpace=wrap;html=1;fillColor=#f59e0b;gradientColor=#fef3c7;gradientDirection=south;strokeColor=#78350f;strokeWidth=3;fontColor=#111827;fontSize=9;fontStyle=1;"));
+
     layout.harnesses.forEach((item) => {
       const color = cableColor(item.harness.name);
       const label = harnessLabel(item.harness);
@@ -484,6 +490,42 @@
     return compactWaypoints([stub, { x: stub.x, y: channelY }, { x: target.x, y: channelY }]);
   }
 
+  function oppositeSide(side) {
+    return { left: "right", right: "left", top: "bottom", bottom: "top" }[side] || "left";
+  }
+
+  function floatingCapRoute(endpoint, anchorRoute, harnessKey, harnessIndex, fallbackX, fallbackY) {
+    const anchorPort = anchorRoute?.port;
+    const direction = anchorPort ? portDirection(anchorPort) : "right";
+    const center = anchorPort ? portStub(anchorPort, 190 + (harnessIndex % 3) * 22) : { x: fallbackX, y: fallbackY };
+    const horizontal = direction.includes("left") || direction.includes("right");
+    const width = horizontal ? 34 : 48;
+    const height = horizontal ? 24 : 22;
+    const cap = {
+      cellId: stableId("floating_cap", `${harnessKey}|${endpoint.side}|${endpoint.key}`),
+      x: Math.round(center.x - width / 2),
+      y: Math.round(center.y - height / 2),
+      width,
+      height
+    };
+    return {
+      cap,
+      route: {
+        cellId: cap.cellId,
+        endpoint,
+        floating: true,
+        port: {
+          x: cap.x,
+          y: cap.y,
+          width,
+          height,
+          exitSide: oppositeSide(direction),
+          connector: { side: oppositeSide(direction) }
+        }
+      }
+    };
+  }
+
   function branchJunction(endpointRoutes, cellId, fallbackX, fallbackY) {
     const hub = endpointRoutes.slice().sort((left, right) => {
       const cpcDifference = Number(isCpcConnector(right.port.connector)) - Number(isCpcConnector(left.port.connector));
@@ -503,14 +545,20 @@
     const portByKey = new Map(boards.flatMap((item) => item.ports.map((port) => [`${item.board.key}|${port.connector.key}`, port])));
     const externalStartX = Math.max(1120, currentX + 30);
     const externals = [];
+    const floatingCaps = [];
     const externalByKey = new Map();
     let externalY = 160;
     const harnesses = graph.harnesses.map((harness, harnessIndex) => {
+      const floatingEndpoints = [];
       const endpointRoutes = harness.endpoints.map((endpoint) => {
         const connector = endpoint.match.connector;
         if (connector) {
           const port = portByKey.get(`${connector.boardKey}|${connector.key}`);
           return port ? { cellId: port.cellId, port, endpoint } : null;
+        }
+        if (endpoint.match.floating) {
+          floatingEndpoints.push(endpoint);
+          return null;
         }
         const externalKey = `${harness.key}|${endpoint.side}|${endpoint.key}|${endpoint.name}`;
         if (!externalByKey.has(externalKey)) {
@@ -538,6 +586,11 @@
           }
         };
       }).filter(Boolean);
+      floatingEndpoints.forEach((endpoint) => {
+        const floating = floatingCapRoute(endpoint, endpointRoutes[0], harness.key, harnessIndex, externalStartX - 180, externalY);
+        floatingCaps.push(floating.cap);
+        endpointRoutes.push(floating.route);
+      });
       const endpointCells = endpointRoutes.map((route) => route.cellId);
       const connectedPoints = endpointRoutes.map((route) => portCenter(route.port));
       const averageX = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.x, 0) / connectedPoints.length : externalStartX - 180;
@@ -550,7 +603,9 @@
         endpointCells,
         endpointRoutes,
         waypoints: endpointRoutes.length === 2
-          ? cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex)
+          ? endpointRoutes.some((route) => route.floating)
+            ? [portStub(endpointRoutes.find((route) => !route.floating)?.port || endpointRoutes[0].port, 70)]
+            : cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex)
           : endpointRoutes.length === 1
             ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex)
             : [],
@@ -563,7 +618,7 @@
     const pageWidth = Math.max(1600, externalStartX + (externals.length ? 260 : 80));
     const warningTop = pageHeight;
     const finalPageHeight = pageHeight + Math.max(1, graph.diagnostics.length) * 34 + 80;
-    return { boards, boardByKey, externals, harnesses, pageWidth, pageHeight: finalPageHeight, warningTop };
+    return { boards, boardByKey, externals, floatingCaps, harnesses, pageWidth, pageHeight: finalPageHeight, warningTop };
   }
 
   function layoutBoardsByTopology(graph) {

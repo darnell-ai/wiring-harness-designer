@@ -106,6 +106,11 @@ const missingSensJ1Harness = parser.normalizeSheetMatrix(parser.parseDelimitedTe
   "\t1\tBATTERY J49\tGND\t1\t1\tSENS J1\tGND\t1\t9"
 ].join("\n")));
 Master.addSheet(compassProject, missingSensJ1Harness, "W300.tsv");
+const floatingHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W-FLOAT\t1\tESC J13\tESC GND\t1\t3\tFLOATING\tESC GND\t????????"
+].join("\n")));
+Master.addSheet(compassProject, floatingHarness, "W-FLOAT.tsv");
 const resolvedCompass = Master.resolveProject(compassProject);
 const resolvedW300 = resolvedCompass.harnesses.find((harness) => harness.name === "W300");
 const resolvedLeft = resolvedW300.endpoints.find((endpoint) => endpoint.side === "left").match.connector;
@@ -117,6 +122,9 @@ assert.equal(resolvedRight.name, "J1");
 assert.equal(resolvedRight.side, "left", "an inferred connector on a RIGHT board should face the routing field");
 assert.equal(resolvedRight.inferred, true);
 assert.ok(!resolvedCompass.diagnostics.some((item) => item.code === "INFERRED_MASTER_CONNECTOR"), "a connector inferred from an explicit board-and-connector leg name should not create a warning");
+const resolvedFloating = resolvedCompass.harnesses.find((harness) => harness.name === "W-FLOAT");
+assert.equal(resolvedFloating.endpoints.find((endpoint) => endpoint.side === "right").match.floating, true, "FLOATING must resolve as an intentional unterminated endpoint");
+assert.ok(!resolvedCompass.diagnostics.some((item) => item.message.includes("W-FLOAT")), "FLOATING must not create an unmatched-connector warning");
 assert.equal(Master.projectSummary(compassProject).connectorCount, 53, "the CPCs, Power Pole, ESC center connectors, and inferred SENS J1 must be included in the resolved drawing");
 
 const cpcBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
@@ -186,6 +194,9 @@ assert.equal(new Set(centerPoints.map((point) => point.y)).size, 2, "four CENTER
 assert.match(compassXml, /16 POS/, "CPC1, CPC2, and CPC3 must be identified as 16-position circular connectors");
 assert.match(compassXml, /POWER POLE[\s\S]*CONNECTOR/, "POWER POLE must be identified as a connector");
 assert.match(compassXml, /gradientColor=#111827/, "POWER POLE must use its distinct red-and-black connector profile");
+assert.match(compassXml, /id="floating_cap_[^"]+" value="CAP"/, "FLOATING must render as a capped wire tail");
+assert.doesNotMatch(compassXml, /UNMATCHED \| FLOATING/, "FLOATING must never render as an unmatched connector");
+assert.doesNotMatch(compassXml, /WARNING:[^<]*W-FLOAT/, "FLOATING must never add a diagram warning");
 assert.match(compassXml, /CPC1-MULTI/, "a multi-endpoint CPC harness must render through a junction");
 assert.doesNotMatch(compassXml, /CPC1-MULTI \| 3 WIRES/, "branch junction labels should contain only the cable name");
 const multiJunction = compassXml.match(/id="[^"]*CPC1_MULTI[^"]*_junction" value="CPC1-MULTI"[^>]*vertex="1"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)"/);

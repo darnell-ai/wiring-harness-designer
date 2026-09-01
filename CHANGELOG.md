@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.3 - 2026-09-01
+
+- Added `FLOATING` as an intentional unterminated harness endpoint in Master block mode.
+- Rendered floating endpoints as short free wire tails with an insulated cap instead of a connector.
+- Suppressed unmatched-connector warnings for intentionally floating endpoints.
+- Added regression coverage for floating endpoint parsing, warnings, and rendering.
+
 ## v2.5.2 - 2026-09-01
 
 - Recognized `POWER POLE` and `POWERPOLE` placement names as a distinct red-and-black connector profile.
