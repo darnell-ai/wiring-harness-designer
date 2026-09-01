@@ -1,6 +1,7 @@
 "use strict";
 
-const APP_VERSION = "2.5.5";
+const APP_VERSION = "2.5.6";
+const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -306,6 +307,7 @@ const dom = {
   masterProjectBadge: document.querySelector("#masterProjectBadge"),
   tablePasteLabel: document.querySelector("#tablePasteLabel"),
   configureButton: document.querySelector("#configureButton"),
+  undoTableButton: document.querySelector("#undoTableButton"),
   designerPanel: document.querySelector("#designerPanel"),
   closeDesignerButton: document.querySelector("#closeDesignerButton"),
   layoutModeSelect: document.querySelector("#layoutModeSelect"),
@@ -368,6 +370,8 @@ let xlsxLoaderPromise = null;
 let pastedTableLoadTimer = null;
 let drawingMode = "harness";
 let masterProject = MasterDiagram.createProject();
+const masterUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
+const harnessUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 
 init();
 
@@ -405,6 +409,7 @@ function init() {
     if (input.checked) setDrawingMode(input.value);
   }));
   dom.configureButton.addEventListener("click", toggleDesignerPanel);
+  dom.undoTableButton.addEventListener("click", undoLastTableImport);
   dom.closeDesignerButton.addEventListener("click", closeDesignerPanel);
   dom.applyDesignerButton.addEventListener("click", applyDesignerConfiguration);
   dom.resetDesignerButton.addEventListener("click", resetDesignerConfiguration);
@@ -421,6 +426,14 @@ function init() {
   document.addEventListener("paste", (event) => {
     void handlePasteEvent(event);
   });
+  document.addEventListener("keydown", (event) => {
+    const target = event.target;
+    const isEditingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable;
+    if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z" && !isEditingText && currentUndoHistory().size) {
+      event.preventDefault();
+      undoLastTableImport();
+    }
+  });
 
   populateConnectorEditorLibrary();
   writeDesignerControls(defaultDesignerConfig());
@@ -430,6 +443,37 @@ function init() {
 
 function isMasterMode() {
   return drawingMode === "master";
+}
+
+function createUndoHistory(limit = MAX_TABLE_UNDO_STEPS) {
+  const entries = [];
+  return {
+    push(entry) {
+      entries.push(entry);
+      if (entries.length > limit) entries.splice(0, entries.length - limit);
+    },
+    pop() {
+      return entries.pop();
+    },
+    clear() {
+      entries.length = 0;
+    },
+    get size() {
+      return entries.length;
+    }
+  };
+}
+
+function cloneMasterProject(project) {
+  return JSON.parse(JSON.stringify(project || MasterDiagram.createProject()));
+}
+
+function currentUndoHistory() {
+  return isMasterMode() ? masterUndoHistory : harnessUndoHistory;
+}
+
+function updateUndoTableButton() {
+  dom.undoTableButton.disabled = currentUndoHistory().size === 0;
 }
 
 function setDrawingMode(mode) {
@@ -446,6 +490,7 @@ function setDrawingMode(mode) {
     : "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\t...\tTwisted Pair ID\tRight Pin P#\tRight Wire Name";
   dom.designerPanel.hidden = true;
   dom.pasteTablePanel.hidden = true;
+  updateUndoTableButton();
   if (master) {
     renderMasterProject();
     setStatus("Master Block mode is ready. Add board placement sheets and harness sheets; every import joins the same project.");
@@ -645,12 +690,15 @@ async function readHarnessSheetFile(file) {
 }
 
 function applyMasterSheet(sheet, sourceName) {
-  const result = MasterDiagram.addSheet(masterProject, sheet, sourceName);
+  const previousProject = cloneMasterProject(masterProject);
+  const result = MasterDiagram.addSheet(cloneMasterProject(masterProject), sheet, sourceName);
   if (!result.addedBoards && !result.addedHarnesses) {
     throw new Error(`${sourceName} did not contain board placements or active harness connections.`);
   }
+  masterUndoHistory.push(previousProject);
   masterProject = result.project;
   renderMasterProject();
+  updateUndoTableButton();
   return result;
 }
 
@@ -680,6 +728,7 @@ function renderMasterProject() {
 function applyHarnessSheet(sheet, sourceName) {
   const designerConfig = designerConfigForSheet(sheet);
   const result = compileConfiguredHarnessResult(sheet, sourceName, designerConfig);
+  harnessUndoHistory.push(appState);
   appState = {
     fileName: cleanFileName(sourceName),
     dataUrl: "",
@@ -698,6 +747,7 @@ function applyHarnessSheet(sheet, sourceName) {
   renderImportDiagnostics(result.diagnostics || []);
   renderFindings(result.findings);
   renderSourcePreview(result);
+  updateUndoTableButton();
   return result;
 }
 
@@ -8573,6 +8623,7 @@ function setBusy(isBusy) {
   dom.pasteButton.disabled = isBusy;
   dom.tablePasteButton.disabled = isBusy;
   dom.addSheetButton.disabled = isBusy;
+  dom.undoTableButton.disabled = isBusy || currentUndoHistory().size === 0;
   dom.resetButton.disabled = isBusy;
   dom.drawingModeInputs.forEach((input) => { input.disabled = isBusy; });
 }
@@ -8612,11 +8663,13 @@ function diagnosticChipLabel(item) {
 function resetApp() {
   if (isMasterMode()) {
     masterProject = MasterDiagram.createProject();
+    masterUndoHistory.clear();
     dom.pasteTablePanel.hidden = true;
     dom.tablePasteInput.value = "";
     renderImportDiagnostics([]);
     renderMasterProject();
     setStatus("Master project cleared. Add the first board placement or harness sheet.");
+    updateUndoTableButton();
     return;
   }
   appState = {
@@ -8629,6 +8682,7 @@ function resetApp() {
     sourceName: "",
     designerConfig: defaultDesignerConfig()
   };
+  harnessUndoHistory.clear();
   writeDesignerControls(appState.designerConfig);
   dom.pasteButton.disabled = false;
   dom.tablePasteButton.disabled = false;
@@ -8640,6 +8694,43 @@ function resetApp() {
   document.querySelector("#engineBadge").textContent = "Multi-cable engine";
   setStatus("Cleared. Paste the next Excel table or image.");
   renderEmpty();
+  updateUndoTableButton();
+}
+
+function undoLastTableImport() {
+  if (isMasterMode()) {
+    const previousProject = masterUndoHistory.pop();
+    if (!previousProject) return;
+    const removedImport = masterProject.imports[masterProject.imports.length - 1];
+    masterProject = previousProject;
+    dom.pasteTablePanel.hidden = true;
+    renderMasterProject();
+    updateUndoTableButton();
+    const summary = MasterDiagram.projectSummary(masterProject);
+    setStatus(`Undid ${removedImport?.sourceName || "the last table"}. Master project now has ${summary.boardCount} board${summary.boardCount === 1 ? "" : "s"} and ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
+    return;
+  }
+
+  const previousState = harnessUndoHistory.pop();
+  if (!previousState) return;
+  const removedSource = appState.sourceName || appState.fileName || "the last table";
+  appState = previousState;
+  dom.pasteTablePanel.hidden = true;
+  if (appState.result) {
+    writeDesignerControls(appState.designerConfig);
+    updateDetectedLayout(appState.result);
+    dom.sourceTitle.textContent = appState.sourceName || appState.fileName;
+    renderDrawioDiagram(appState.result);
+    renderFacts(appState.result);
+    renderImportDiagnostics(appState.result.diagnostics || []);
+    renderFindings(appState.result.findings || []);
+    renderSourcePreview(appState.result);
+  } else {
+    renderImportDiagnostics([]);
+    renderEmpty();
+  }
+  updateUndoTableButton();
+  setStatus(`Undid ${removedSource}.`);
 }
 
 function initializeDrawioEditor() {

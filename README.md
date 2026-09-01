@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.5**
+Current release: **v2.5.6**
 
-DigiWire 2.5.5 adds wider routing corridors around the consistent square PCB bodies in Master block diagrams. Master diagrams keep endpoints on the named PCB, support multi-connector branches and floating capped tails, use clear routing lanes, and label each route with only its cable name.
+DigiWire 2.5.6 adds table-import undo. Use **Undo table** after a mistaken paste or file import to restore the complete diagram from immediately before that import; repeat it to step backward through earlier tables.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -23,6 +23,8 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 ## Master Block Diagram Mode
 
 Select **Master block** in the Drawing mode control. Paste or add as many board-placement and harness sheets as needed; new imports accumulate instead of replacing the drawing. Excel workbooks may contain multiple sheets, and multiple Excel/CSV/TSV files can be selected together.
+
+Each successfully pasted or uploaded sheet creates an undo step. Click **Undo table**, or press Ctrl+Z while focus is outside an editing field, to remove the latest import and restore replaced boards, connectors, and cable records exactly as they were. Up to 50 import steps are retained during the current session.
 
 | PCB NAME | ARRANGEMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTOM | CORNER LEFT AND TOP | CORNER TOP AND RIGHT | CORNER RIGHT AND BOTTOM | CORNER BOTTEM AND LEFT | CENTER |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

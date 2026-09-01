@@ -16,9 +16,18 @@ const context = vm.createContext({
 vm.runInContext(fs.readFileSync(path.join(root, "harness-core.js"), "utf8"), context, { filename: "harness-core.js" });
 vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
 let appSource = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
-appSource += "\nglobalThis.__masterParsing = { parseDelimitedText, normalizeSheetMatrix };";
+appSource += "\nglobalThis.__masterParsing = { parseDelimitedText, normalizeSheetMatrix, createUndoHistory, cloneMasterProject };";
 vm.runInContext(appSource, context, { filename: "app.js" });
 const parser = context.__masterParsing;
+
+const undoHistory = parser.createUndoHistory(2);
+undoHistory.push("first");
+undoHistory.push("second");
+undoHistory.push("third");
+assert.equal(undoHistory.size, 2, "table undo history must respect its bounded session limit");
+assert.equal(undoHistory.pop(), "third", "undo must restore the most recent table state first");
+assert.equal(undoHistory.pop(), "second", "repeated undo must walk backward through table states");
+assert.equal(undoHistory.size, 0);
 
 const placementText = [
   "PCB NAME\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTEM",
@@ -58,6 +67,15 @@ assert.doesNotMatch(xml, /UNMATCHED/);
 
 Master.addSheet(project, harness, "W300 replacement.tsv");
 assert.equal(project.harnesses.length, 2, "re-importing the same cable must replace it instead of duplicating it");
+
+const projectBeforeReplacement = parser.cloneMasterProject(project);
+Master.addSheet(project, parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Position #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W300\t1\tBATT J49\tREPLACED\t1\t1\tSENS J1\tREPLACED\t1"
+].join("\n"))), "W300 changed.tsv");
+assert.equal(project.harnesses.find((item) => item.name === "W300").wireCount, 1);
+project = projectBeforeReplacement;
+assert.equal(project.harnesses.find((item) => item.name === "W300").wireCount, 2, "restoring an undo snapshot must recover the complete replaced cable record");
 
 const unmatched = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Position #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",

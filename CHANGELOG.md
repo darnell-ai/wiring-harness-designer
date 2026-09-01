@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.6 - 2026-09-01
+
+- Added a DigiWire-level **Undo table** control for pasted and uploaded sheets.
+- Restored the full Master block project snapshot from before each import, including replaced board and cable records.
+- Supported repeated undo for up to 50 table imports and Ctrl+Z outside text-editing fields.
+- Kept invalid imports atomic so a failed paste cannot partially change the project or consume an undo step.
+
 ## v2.5.5 - 2026-09-01
 
 - Increased compass-layout separation around the square PCB bodies.
