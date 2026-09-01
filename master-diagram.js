@@ -11,7 +11,11 @@
     ["left", "pcbLeft"],
     ["top", "pcbTop"],
     ["right", "pcbRight"],
-    ["bottom", "pcbBottom"]
+    ["bottom", "pcbBottom"],
+    ["corner-left-top", "pcbCornerLeftTop"],
+    ["corner-top-right", "pcbCornerTopRight"],
+    ["corner-right-bottom", "pcbCornerRightBottom"],
+    ["corner-bottom-left", "pcbCornerBottomLeft"]
   ]);
   const CABLE_COLORS = Object.freeze([
     "#2563eb", "#dc2626", "#059669", "#d97706", "#7c3aed", "#0891b2", "#9333ea", "#4b5563"
@@ -36,6 +40,7 @@
     return (output >>> 0).toString(36);
   };
   const stableId = (prefix, value) => `${prefix}_${slug(value)}_${hash(value)}`;
+  const isCpcConnector = (connector) => /^CPC\s*\d+$/i.test(text(connector?.name));
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
     const key = normalized(value);
@@ -327,9 +332,17 @@
       addVertex(item.cellId, `${board.name}${board.part ? ` | ${board.part}` : ""}`, item.x, item.y, item.width, item.height,
         "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=18;");
       item.ports.forEach((port) => {
-        const sideColor = { left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff" }[port.connector.side];
-        addVertex(port.cellId, port.connector.name, port.x, port.y, port.width, port.height,
-          `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
+        const cpc = isCpcConnector(port.connector);
+        const sideColor = {
+          left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff",
+          "corner-left-top": "#e0f2fe", "corner-top-right": "#e0f2fe",
+          "corner-right-bottom": "#e0f2fe", "corner-bottom-left": "#e0f2fe"
+        }[port.connector.side];
+        const label = cpc ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">16 POS</font>` : port.connector.name;
+        addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
+          cpc
+            ? `ellipse;aspect=fixed;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#0f4c5c;strokeWidth=3;fontSize=12;fontStyle=1;`
+            : `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
       });
     });
 
@@ -340,7 +353,7 @@
       const color = cableColor(item.harness.name);
       const label = harnessLabel(item.harness);
       if (item.junction) {
-        addVertex(item.junction.cellId, `${item.harness.name} | ${item.harness.wireCount} WIRES`, item.junction.x, item.junction.y, 136, 54,
+        addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
           cableEdgeStyle(color), routeWaypoints(route, { x: item.junction.x + 68, y: item.junction.y + 27 }, index)));
@@ -388,10 +401,10 @@
 
   function portStub(port, distance = 130) {
     const point = portCenter(port);
-    if (port.connector.side === "left") point.x -= distance;
-    if (port.connector.side === "right") point.x += distance;
-    if (port.connector.side === "top") point.y -= distance;
-    if (port.connector.side === "bottom") point.y += distance;
+    if (port.connector.side.includes("left")) point.x -= distance;
+    if (port.connector.side.includes("right")) point.x += distance;
+    if (port.connector.side.includes("top")) point.y -= distance;
+    if (port.connector.side.includes("bottom")) point.y += distance;
     return point;
   }
 
@@ -406,9 +419,9 @@
     const horizontal = Math.abs(firstStub.x - secondStub.x) >= Math.abs(firstStub.y - secondStub.y);
     if (horizontal) {
       let channelY;
-      if ([first.port.connector.side, second.port.connector.side].includes("bottom")) {
+      if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("bottom"))) {
         channelY = Math.max(firstStub.y, secondStub.y) + 70 + lane;
-      } else if ([first.port.connector.side, second.port.connector.side].includes("top")) {
+      } else if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("top"))) {
         channelY = Math.min(firstStub.y, secondStub.y) - 70 - lane;
       } else {
         channelY = (firstStub.y + secondStub.y) / 2 + (laneIndex % 2 ? lane : -lane);
@@ -421,9 +434,9 @@
       ]);
     }
     let channelX;
-    if ([first.port.connector.side, second.port.connector.side].includes("right")) {
+    if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("right"))) {
       channelX = Math.max(firstStub.x, secondStub.x) + 70 + lane;
-    } else if ([first.port.connector.side, second.port.connector.side].includes("left")) {
+    } else if ([first.port.connector.side, second.port.connector.side].some((side) => side.includes("left"))) {
       channelX = Math.min(firstStub.x, secondStub.x) - 70 - lane;
     } else {
       channelX = (firstStub.x + secondStub.x) / 2 + (laneIndex % 2 ? lane : -lane);
@@ -445,6 +458,15 @@
     }
     const channelY = (stub.y + target.y) / 2 + lane;
     return compactWaypoints([stub, { x: stub.x, y: channelY }, { x: target.x, y: channelY }]);
+  }
+
+  function branchJunction(endpointRoutes, cellId, fallbackX, fallbackY) {
+    const hub = endpointRoutes.slice().sort((left, right) => {
+      const cpcDifference = Number(isCpcConnector(right.port.connector)) - Number(isCpcConnector(left.port.connector));
+      return cpcDifference || (right.endpoint.rowCount || 0) - (left.endpoint.rowCount || 0);
+    })[0];
+    const point = hub ? portStub(hub.port, 185) : { x: fallbackX, y: fallbackY };
+    return { cellId: `${cellId}_junction`, x: Math.round(point.x - 68), y: Math.round(point.y - 27) };
   }
 
   function layoutGraph(graph) {
@@ -497,6 +519,7 @@
       const averageX = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.x, 0) / connectedPoints.length : externalStartX - 180;
       const averageY = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.y, 0) / connectedPoints.length : externalY;
       const cellId = stableId("cable", harness.key);
+      const junction = endpointCells.length > 2 ? branchJunction(endpointRoutes, cellId, averageX, averageY) : null;
       return {
         harness,
         cellId,
@@ -507,7 +530,7 @@
           : endpointRoutes.length === 1
             ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex)
             : [],
-        junction: endpointCells.length > 2 ? { cellId: `${cellId}_junction`, x: averageX - 68, y: averageY - 27 } : null,
+        junction,
         openX: averageX + 180,
         openY: averageY - 20
       };
@@ -634,9 +657,10 @@
 
   function boardSize(board) {
     const counts = Object.fromEntries(SIDES.map(([side]) => [side, board.connectors.filter((connector) => connector.side === side).length]));
+    const hasCorners = SIDES.slice(4).some(([side]) => counts[side] > 0);
     return {
-      width: Math.max(320, Math.max(counts.top, counts.bottom) * 120 + 60),
-      height: Math.max(190, Math.max(counts.left, counts.right) * 42 + 90)
+      width: Math.max(hasCorners ? 380 : 320, Math.max(counts.top, counts.bottom) * 120 + 60),
+      height: Math.max(hasCorners ? 240 : 190, Math.max(counts.left, counts.right) * 42 + 90)
     };
   }
 
@@ -645,12 +669,21 @@
     SIDES.forEach(([side]) => {
       const connectors = item.board.connectors.filter((connector) => connector.side === side);
       connectors.forEach((connector, index) => {
+        const corner = side.startsWith("corner-");
+        const cpc = isCpcConnector(connector);
         const horizontal = side === "top" || side === "bottom";
-        const width = horizontal ? 106 : 116;
-        const height = 30;
+        const width = cpc ? 76 : horizontal ? 106 : 116;
+        const height = cpc ? 76 : 30;
         let x;
         let y;
-        if (horizontal) {
+        if (corner) {
+          x = side.includes("left") ? item.x - width / 2 : item.x + item.width - width / 2;
+          y = side.includes("top") ? item.y - height / 2 : item.y + item.height - height / 2;
+          if (connectors.length > 1) {
+            const offset = index * (cpc ? 84 : 124);
+            x += side.includes("left") ? -offset : offset;
+          }
+        } else if (horizontal) {
           x = item.x + (index + 1) * item.width / (connectors.length + 1) - width / 2;
           y = side === "top" ? item.y - 18 : item.y + item.height - 12;
         } else {

@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.4.1";
+const APP_VERSION = "2.5.0";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -442,7 +442,7 @@ function setDrawingMode(mode) {
     ? "Paste a board placement table or harness table (each paste is added to this project)"
     : "Paste Excel / Sheets rows here";
   dom.tablePasteInput.placeholder = master
-    ? "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTEM ... or paste a standard harness table"
+    ? "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM\tCORNER LEFT AND TOP ... or paste a standard harness table"
     : "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\t...\tTwisted Pair ID\tRight Pin P#\tRight Wire Name";
   dom.designerPanel.hidden = true;
   dom.pasteTablePanel.hidden = true;
@@ -1167,7 +1167,10 @@ function validateKnownHousingPartRows(rows) {
 function isLikelySheetHeaderRow(row) {
   const keys = row.map((value) => normalizeSheetKey(value)).filter(Boolean);
   const normalized = row.map((value) => normalizeText(value).replace(/[^A-Z0-9]+/g, ""));
-  const boardPlacementHeader = keys.includes("pcbName") && keys.some((key) => ["pcbLeft", "pcbTop", "pcbRight", "pcbBottom"].includes(key));
+  const boardPlacementHeader = keys.includes("pcbName") && keys.some((key) => [
+    "pcbLeft", "pcbTop", "pcbRight", "pcbBottom",
+    "pcbCornerLeftTop", "pcbCornerTopRight", "pcbCornerRightBottom", "pcbCornerBottomLeft"
+  ].includes(key));
   return boardPlacementHeader || keys.length >= 4 &&
     (normalized.includes("WIRENAME") || normalized.includes("LEFTWIRENAME")) &&
     normalized.some((value) => value.includes("PINPOS"));
@@ -1359,7 +1362,30 @@ function normalizeSheetKey(header) {
     BOTTEM: "pcbBottom",
     BOTTEMSIDE: "pcbBottom",
     BOTTOM: "pcbBottom",
-    BOTTOMSIDE: "pcbBottom"
+    BOTTOMSIDE: "pcbBottom",
+    CORNERLEFTANDTOP: "pcbCornerLeftTop",
+    CORNERLEFTTOP: "pcbCornerLeftTop",
+    TOPLEFTCORNER: "pcbCornerLeftTop",
+    CORNERTOPANDLEFT: "pcbCornerLeftTop",
+    CORNERTOPANDRIGHT: "pcbCornerTopRight",
+    CORNERTOPRIGHT: "pcbCornerTopRight",
+    TOPRIGHTCORNER: "pcbCornerTopRight",
+    CORNERRIGHTANDTOP: "pcbCornerTopRight",
+    CORNERRIGHTANDBOTTOM: "pcbCornerRightBottom",
+    CORNERRIGHTANDBOTTEM: "pcbCornerRightBottom",
+    CORNERRIGHTBOTTOM: "pcbCornerRightBottom",
+    BOTTOMRIGHTCORNER: "pcbCornerRightBottom",
+    BOTTEMRIGHTCORNER: "pcbCornerRightBottom",
+    CORNERBOTTOMANDRIGHT: "pcbCornerRightBottom",
+    CORNERBOTTEMANDRIGHT: "pcbCornerRightBottom",
+    CORNERBOTTOMANDLEFT: "pcbCornerBottomLeft",
+    CORNERBOTTEMANDLEFT: "pcbCornerBottomLeft",
+    CORNERBOTTOMLEFT: "pcbCornerBottomLeft",
+    CORNERBOTTEMLEFT: "pcbCornerBottomLeft",
+    BOTTOMLEFTCORNER: "pcbCornerBottomLeft",
+    BOTTEMLEFTCORNER: "pcbCornerBottomLeft",
+    CORNERLEFTANDBOTTOM: "pcbCornerBottomLeft",
+    CORNERLEFTANDBOTTEM: "pcbCornerBottomLeft"
   };
   return map[normalized] || "";
 }

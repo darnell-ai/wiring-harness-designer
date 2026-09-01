@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.5.0 - 2026-09-01
+
+- Added `CORNER LEFT AND TOP`, `CORNER TOP AND RIGHT`, `CORNER RIGHT AND BOTTOM`, and `CORNER BOTTEM AND LEFT` PCB placement columns with corrected-spelling aliases.
+- Positioned corner connectors directly on their requested board corners.
+- Rendered numbered CPC connectors as distinct circular `16 POS` connection points.
+- Supported multiple cables sharing the same CPC and single CPC harnesses branching to several destination connectors.
+- Kept branch-junction labels limited to the cable name.
+
 ## v2.4.1 - 2026-09-01
 
 - Rendered connectors inferred from explicit board-and-connector wire-leg names as normal connectors without a warning, red outline, or asterisk.

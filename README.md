@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.4.1**
+Current release: **v2.5.0**
 
-DigiWire 2.4.1 treats the board and connector together in wire-leg names such as `SENS J1`. Master diagrams keep endpoints on the named PCB, use clear routing lanes with straight connector exits, and label each route with only its cable name.
+DigiWire 2.5.0 adds PCB corner connector placement and shared 16-position CPC connectors to cumulative master routing. Master diagrams keep endpoints on the named PCB, support multi-connector branches, use clear routing lanes, and label each route with only its cable name.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -24,14 +24,16 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 
 Select **Master block** in the Drawing mode control. Paste or add as many board-placement and harness sheets as needed; new imports accumulate instead of replacing the drawing. Excel workbooks may contain multiple sheets, and multiple Excel/CSV/TSV files can be selected together.
 
-| PCB NAME | ARRANGEMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTEM |
-| --- | --- | --- | --- | --- | --- |
-| BATTERY BOARD | MIDDLE | J48, J38 | J46, J28 | | J50, J49 |
-| HB | TOP | J1, J11 | | J15, J14 | J7, J10 |
+| PCB NAME | ARRANGEMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTOM | CORNER LEFT AND TOP | CORNER TOP AND RIGHT | CORNER RIGHT AND BOTTOM | CORNER BOTTEM AND LEFT |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| BATTERY | MIDDLE | J48, J38 | J46, J28 | | J50, J49 | | CPC3 | CPC2 | CPC1 |
+| HB | TOP | J1, J11 | | J15, J14 | J7, J10 | | | | |
 
 `BOTTEM` is accepted exactly as shown in the production template, along with `BOTTOM` and `BOTTOM SIDE`. Separate multiple connector names with semicolons, vertical bars, or line breaks. A PCB name can appear once above several placement rows because DigiWire carries it forward.
 
 `ARRANGEMENT` controls the position of the whole PCB block and accepts `MIDDLE`, `TOP`, `LEFT`, `RIGHT`, and `BOTTEM`. `ORIENTATION` is also accepted, and the older misspelled `ORANGMENT` remains supported for existing sheets. If the column is absent, DigiWire keeps using its automatic connection-topology layout.
+
+The four corner columns position connectors directly on the corresponding PCB corner. Connector names `CPC1`, `CPC2`, `CPC3`, and other `CPC` plus number names render as distinct 16-position circular connectors. The same CPC may be referenced by several cable sheets, or by one cable with several right-leg numbers, to create a shared branch to multiple destination connectors without duplicating the CPC.
 
 Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches the board first and its connector second: `BATTERY J49` maps to `J49` on `BATTERY BOARD`, while `SENS J1` can never fall through to an identically named connector on `HB`. If the named PCB exists but the connector is missing from its placement row, DigiWire uses the explicit wire-leg name to add that connector normally on the correct PCB. DNP/unused rows do not count as conductors. Missing board assignments and genuinely ambiguous connector-only names remain visible as red unmatched endpoints and warning badges.
 
