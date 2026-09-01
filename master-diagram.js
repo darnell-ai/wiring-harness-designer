@@ -166,14 +166,18 @@
   }
 
   function resolveProject(project) {
-    const connectors = project.boards.flatMap((board) => board.connectors.map((connector) => ({
+    const boards = project.boards.map((board) => ({
+      ...board,
+      connectors: board.connectors.map((connector) => ({ ...connector }))
+    }));
+    const connectors = boards.flatMap((board) => board.connectors.map((connector) => ({
       ...connector,
       boardKey: board.key,
       boardName: board.name,
       boardPart: board.part
     })));
     const diagnostics = [];
-    project.boards.forEach((board) => {
+    boards.forEach((board) => {
       if (board.arrangementSource && !board.arrangement) {
         diagnostics.push({
           severity: "warning",
@@ -185,7 +189,23 @@
     const harnesses = project.harnesses.map((harness) => ({
       ...harness,
       endpoints: harness.endpoints.map((endpoint) => {
-        const match = matchEndpoint(endpoint, connectors);
+        const match = matchEndpoint(endpoint, connectors, boards);
+        if (match.inferred) {
+          const board = boards.find((item) => item.key === match.connector.boardKey);
+          const connector = {
+            key: match.connector.key,
+            name: match.connector.name,
+            side: match.connector.side,
+            inferred: true
+          };
+          if (board && !board.connectors.some((item) => item.key === connector.key)) board.connectors.push(connector);
+          if (!connectors.some((item) => item.boardKey === match.connector.boardKey && item.key === connector.key)) connectors.push(match.connector);
+          diagnostics.push({
+            severity: "warning",
+            code: "INFERRED_MASTER_CONNECTOR",
+            message: `${harness.name} ${endpoint.side} endpoint ${endpoint.name} names ${match.connector.boardName}, but ${match.connector.name} was not in that PCB placement sheet. DigiWire added it to the ${match.connector.side} side for routing.`
+          });
+        }
         if (!match.connector) {
           diagnostics.push({
             severity: "warning",
@@ -198,19 +218,69 @@
         return { ...endpoint, match };
       })
     }));
-    return { boards: project.boards, harnesses, connectors, diagnostics };
+    return { boards, harnesses, connectors, diagnostics };
   }
 
-  function matchEndpoint(endpoint, connectors) {
+  function boardAliases(board) {
+    const full = normalized(board.name);
+    const short = full.replace(/\s+(?:BOARD|PCB)$/, "").trim();
+    return Array.from(new Set([full, short].filter(Boolean))).sort((left, right) => right.length - left.length);
+  }
+
+  function namedBoard(endpointName, boards) {
+    const matches = [];
+    boards.forEach((board) => boardAliases(board).forEach((alias) => {
+      if (endpointName === alias || endpointName.startsWith(`${alias} `) || endpointName.endsWith(` ${alias}`)) {
+        matches.push({ board, alias });
+      }
+    }));
+    if (!matches.length) return null;
+    matches.sort((left, right) => right.alias.length - left.alias.length);
+    const longest = matches[0].alias.length;
+    const best = matches.filter((item) => item.alias.length === longest);
+    return new Set(best.map((item) => item.board.key)).size === 1 ? best[0] : null;
+  }
+
+  function inferredConnectorSide(board, endpointSide) {
+    if (board.arrangement === "left") return "right";
+    if (board.arrangement === "right") return "left";
+    if (board.arrangement === "top") return "bottom";
+    if (board.arrangement === "bottom") return "top";
+    return endpointSide === "left" ? "right" : "left";
+  }
+
+  function matchEndpoint(endpoint, connectors, boards) {
     const endpointName = normalized(endpoint.name);
+    const boardMatch = namedBoard(endpointName, boards);
+    if (boardMatch) {
+      const connectorName = normalized(endpointName.replace(new RegExp(`^${boardMatch.alias}(?:\\s+|$)|(?:\\s+|^)${boardMatch.alias}$`, "i"), " "));
+      const boardConnectors = connectors.filter((connector) => connector.boardKey === boardMatch.board.key);
+      const exact = boardConnectors.filter((connector) => normalized(connector.name) === connectorName);
+      if (exact.length === 1) return { connector: exact[0], ambiguous: false, candidates: exact, boardMatched: true };
+      if (exact.length > 1) return { connector: null, ambiguous: true, candidates: exact, boardMatched: true };
+      if (connectorName && /^J?[A-Z0-9][A-Z0-9._/-]*$/.test(connectorName.replace(/\s+/g, ""))) {
+        const displayName = text(endpoint.name)
+          .replace(new RegExp(`^${boardMatch.alias}(?:\\s+|$)`, "i"), "")
+          .trim() || connectorName;
+        const side = inferredConnectorSide(boardMatch.board, endpoint.side);
+        const existing = boardConnectors.find((connector) => connector.inferred && normalized(connector.name) === normalized(displayName));
+        const connector = existing || {
+          key: `inferred:${side}:${normalized(displayName)}`,
+          name: displayName,
+          side,
+          inferred: true,
+          boardKey: boardMatch.board.key,
+          boardName: boardMatch.board.name,
+          boardPart: boardMatch.board.part
+        };
+        return { connector, ambiguous: false, candidates: [connector], boardMatched: true, inferred: !existing };
+      }
+      return { connector: null, ambiguous: false, candidates: [], boardMatched: true };
+    }
     const candidates = connectors.map((connector) => {
       const connectorName = normalized(connector.name);
-      const boardName = normalized(connector.boardName);
-      const composite = normalized(`${connector.boardName} ${connector.name}`);
       let score = 0;
       if (endpointName === connectorName) score = 100;
-      if (endpointName === composite || endpointName === normalized(`${connector.name} ${connector.boardName}`)) score = 110;
-      if (endpointName.includes(boardName) && endpointName.includes(connectorName)) score = Math.max(score, 95);
       if (connectorName.length >= 2 && (endpointName.endsWith(` ${connectorName}`) || endpointName.startsWith(`${connectorName} `))) score = Math.max(score, 75);
       if (endpointName.length >= 3 && connectorName.includes(endpointName)) score = Math.max(score, 60);
       return { connector, score };
@@ -226,8 +296,8 @@
   function projectSummary(project) {
     const graph = resolveProject(project);
     return {
-      boardCount: project.boards.length,
-      connectorCount: project.boards.reduce((total, board) => total + board.connectors.length, 0),
+      boardCount: graph.boards.length,
+      connectorCount: graph.connectors.length,
       harnessCount: project.harnesses.length,
       wireCount: project.harnesses.reduce((total, harness) => total + harness.wireCount, 0),
       warningCount: graph.diagnostics.length
@@ -244,9 +314,12 @@
     const addVertex = (id, value, x, y, width, height, style) => cells.push(
       `<mxCell id="${escapeXml(id)}" value="${escapeXml(value)}" style="${escapeXml(style)}" vertex="1" parent="1"><mxGeometry x="${x}" y="${y}" width="${width}" height="${height}" as="geometry" /></mxCell>`
     );
-    const addEdge = (id, value, source, target, style) => cells.push(
-      `<mxCell id="${escapeXml(id)}" value="${escapeXml(value)}" style="${escapeXml(style)}" edge="1" parent="1" source="${escapeXml(source)}" target="${escapeXml(target)}"><mxGeometry relative="1" as="geometry" /></mxCell>`
-    );
+    const addEdge = (id, value, source, target, style, points = []) => {
+      const waypointXml = points.length
+        ? `<Array as="points">${points.map((point) => `<mxPoint x="${Math.round(point.x)}" y="${Math.round(point.y)}" />`).join("")}</Array>`
+        : "";
+      cells.push(`<mxCell id="${escapeXml(id)}" value="${escapeXml(value)}" style="${escapeXml(style)}" edge="1" parent="1" source="${escapeXml(source)}" target="${escapeXml(target)}"><mxGeometry relative="1" as="geometry">${waypointXml}</mxGeometry></mxCell>`);
+    };
 
     addVertex("master_title", "DIGIWIRE MASTER WIRE ROUTING", 40, 24, Math.max(780, layout.pageWidth - 80), 42,
       "text;html=1;strokeColor=none;fillColor=none;fontSize=28;fontStyle=1;fontColor=#111827;align=left;");
@@ -259,9 +332,10 @@
       addVertex(item.cellId, `${board.name}${board.part ? ` | ${board.part}` : ""}`, item.x, item.y, item.width, item.height,
         "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=18;");
       item.ports.forEach((port) => {
-        const sideColor = { left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff" }[port.connector.side];
-        addVertex(port.cellId, port.connector.name, port.x, port.y, port.width, port.height,
-          `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
+        const sideColor = port.connector.inferred ? "#ffedd5" : { left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff" }[port.connector.side];
+        const label = `${port.connector.name}${port.connector.inferred ? " *" : ""}`;
+        addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
+          `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=${port.connector.inferred ? "#c2410c" : "#374151"};strokeWidth=2;${port.connector.inferred ? "dashed=1;" : ""}fontSize=11;fontStyle=1;`);
       });
     });
 
@@ -274,15 +348,15 @@
       if (item.junction) {
         addVertex(item.junction.cellId, `${item.harness.name} | ${item.harness.wireCount} WIRES`, item.junction.x, item.junction.y, 136, 54,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
-        item.endpointCells.forEach((cellId, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", cellId, item.junction.cellId,
-          cableEdgeStyle(color)));
+        item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
+          cableEdgeStyle(color), routeWaypoints(route, { x: item.junction.x + 68, y: item.junction.y + 27 }, index)));
       } else if (item.endpointCells.length === 2) {
-        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color));
+        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color), item.waypoints);
       } else if (item.endpointCells.length === 1) {
         const endpointCell = item.endpointCells[0];
         addVertex(`${item.cellId}_open`, "OPEN END", item.openX, item.openY, 110, 40,
           "rounded=1;whiteSpace=wrap;html=1;fillColor=#f9fafb;strokeColor=#6b7280;strokeWidth=2;dashed=1;fontSize=10;fontStyle=1;");
-        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color));
+        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color), item.waypoints);
       }
     });
 
@@ -303,7 +377,7 @@
   }
 
   function cableEdgeStyle(color) {
-    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=${color};strokeWidth=5;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;`;
+    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=6;`;
   }
 
   function harnessLabel(harness) {
@@ -312,6 +386,71 @@
 
   function cableColor(name) {
     return CABLE_COLORS[parseInt(hash(name), 36) % CABLE_COLORS.length];
+  }
+
+  function portCenter(port) {
+    return { x: port.x + port.width / 2, y: port.y + port.height / 2 };
+  }
+
+  function portStub(port, distance = 130) {
+    const point = portCenter(port);
+    if (port.connector.side === "left") point.x -= distance;
+    if (port.connector.side === "right") point.x += distance;
+    if (port.connector.side === "top") point.y -= distance;
+    if (port.connector.side === "bottom") point.y += distance;
+    return point;
+  }
+
+  function compactWaypoints(points) {
+    return points.filter((point, index) => !index || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
+  }
+
+  function cableWaypoints(first, second, laneIndex = 0) {
+    const firstStub = portStub(first.port);
+    const secondStub = portStub(second.port);
+    const lane = (laneIndex % 8) * 42;
+    const horizontal = Math.abs(firstStub.x - secondStub.x) >= Math.abs(firstStub.y - secondStub.y);
+    if (horizontal) {
+      let channelY;
+      if ([first.port.connector.side, second.port.connector.side].includes("bottom")) {
+        channelY = Math.max(firstStub.y, secondStub.y) + 70 + lane;
+      } else if ([first.port.connector.side, second.port.connector.side].includes("top")) {
+        channelY = Math.min(firstStub.y, secondStub.y) - 70 - lane;
+      } else {
+        channelY = (firstStub.y + secondStub.y) / 2 + (laneIndex % 2 ? lane : -lane);
+      }
+      return compactWaypoints([
+        firstStub,
+        { x: firstStub.x, y: channelY },
+        { x: secondStub.x, y: channelY },
+        secondStub
+      ]);
+    }
+    let channelX;
+    if ([first.port.connector.side, second.port.connector.side].includes("right")) {
+      channelX = Math.max(firstStub.x, secondStub.x) + 70 + lane;
+    } else if ([first.port.connector.side, second.port.connector.side].includes("left")) {
+      channelX = Math.min(firstStub.x, secondStub.x) - 70 - lane;
+    } else {
+      channelX = (firstStub.x + secondStub.x) / 2 + (laneIndex % 2 ? lane : -lane);
+    }
+    return compactWaypoints([
+      firstStub,
+      { x: channelX, y: firstStub.y },
+      { x: channelX, y: secondStub.y },
+      secondStub
+    ]);
+  }
+
+  function routeWaypoints(route, target, laneIndex = 0) {
+    const stub = portStub(route.port);
+    const lane = (laneIndex % 8) * 36;
+    if (Math.abs(stub.x - target.x) >= Math.abs(stub.y - target.y)) {
+      const channelX = (stub.x + target.x) / 2 + lane;
+      return compactWaypoints([stub, { x: channelX, y: stub.y }, { x: channelX, y: target.y }]);
+    }
+    const channelY = (stub.y + target.y) / 2 + lane;
+    return compactWaypoints([stub, { x: stub.x, y: channelY }, { x: target.x, y: channelY }]);
   }
 
   function layoutGraph(graph) {
@@ -326,10 +465,13 @@
     const externals = [];
     const externalByKey = new Map();
     let externalY = 160;
-    const harnesses = graph.harnesses.map((harness) => {
-      const endpointCells = harness.endpoints.map((endpoint) => {
+    const harnesses = graph.harnesses.map((harness, harnessIndex) => {
+      const endpointRoutes = harness.endpoints.map((endpoint) => {
         const connector = endpoint.match.connector;
-        if (connector) return portByKey.get(`${connector.boardKey}|${connector.key}`)?.cellId;
+        if (connector) {
+          const port = portByKey.get(`${connector.boardKey}|${connector.key}`);
+          return port ? { cellId: port.cellId, port, endpoint } : null;
+        }
         const externalKey = `${harness.key}|${endpoint.side}|${endpoint.key}|${endpoint.name}`;
         if (!externalByKey.has(externalKey)) {
           const external = {
@@ -343,14 +485,21 @@
           externals.push(external);
           externalY += 90;
         }
-        return externalByKey.get(externalKey).cellId;
+        const external = externalByKey.get(externalKey);
+        return {
+          cellId: external.cellId,
+          endpoint,
+          port: {
+            x: external.x,
+            y: external.y,
+            width: 170,
+            height: 58,
+            connector: { side: endpoint.side === "left" ? "right" : "left" }
+          }
+        };
       }).filter(Boolean);
-      const connectedPoints = harness.endpoints.map((endpoint) => {
-        const connector = endpoint.match.connector;
-        if (!connector) return null;
-        const port = portByKey.get(`${connector.boardKey}|${connector.key}`);
-        return port ? { x: port.x + port.width / 2, y: port.y + port.height / 2 } : null;
-      }).filter(Boolean);
+      const endpointCells = endpointRoutes.map((route) => route.cellId);
+      const connectedPoints = endpointRoutes.map((route) => portCenter(route.port));
       const averageX = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.x, 0) / connectedPoints.length : externalStartX - 180;
       const averageY = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.y, 0) / connectedPoints.length : externalY;
       const cellId = stableId("cable", harness.key);
@@ -358,6 +507,12 @@
         harness,
         cellId,
         endpointCells,
+        endpointRoutes,
+        waypoints: endpointRoutes.length === 2
+          ? cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex)
+          : endpointRoutes.length === 1
+            ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex)
+            : [],
         junction: endpointCells.length > 2 ? { cellId: `${cellId}_junction`, x: averageX - 68, y: averageY - 27 } : null,
         openX: averageX + 180,
         openY: averageY - 20

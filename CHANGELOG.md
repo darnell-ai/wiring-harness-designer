@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.4.0 - 2026-09-01
+
+- Made the board portion of combined wire-leg names authoritative, so `SENS J1` can no longer be routed to `HB J1`.
+- Added `BATTERY` to `BATTERY BOARD` alias matching and safely inferred missing connectors only on an explicitly named PCB.
+- Marked inferred placement connectors on the drawing and added a focused warning chip explaining the placement-sheet correction needed.
+- Added straight connector exit stubs, spaced orthogonal routing lanes, thinner cable paths, and opaque bordered cable labels for improved readability.
+- Added regression coverage for the exact W300 `BATTERY J49` to missing-placement `SENS J1` case and explicit route waypoints.
+
 ## v2.3.1 - 2026-09-01
 
 - Made `ARRANGEMENT` the official displayed board-placement column name in the UI, example template, documentation, and regression fixture.

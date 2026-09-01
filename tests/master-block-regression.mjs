@@ -91,6 +91,24 @@ assert.deepEqual(
 );
 const compassProject = Master.createProject();
 Master.addSheet(compassProject, fullPlacement, "compass boards.tsv");
+const missingSensJ1Harness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #\tLength inches",
+  "W300\t1\tBATTERY J49\t48V\t2\t1\tSENS J1\t48V\t2\t9",
+  "\t1\tBATTERY J49\tGND\t1\t1\tSENS J1\tGND\t1\t9"
+].join("\n")));
+Master.addSheet(compassProject, missingSensJ1Harness, "W300.tsv");
+const resolvedCompass = Master.resolveProject(compassProject);
+const resolvedW300 = resolvedCompass.harnesses.find((harness) => harness.name === "W300");
+const resolvedLeft = resolvedW300.endpoints.find((endpoint) => endpoint.side === "left").match.connector;
+const resolvedRight = resolvedW300.endpoints.find((endpoint) => endpoint.side === "right").match.connector;
+assert.equal(resolvedLeft.boardName, "BATTERY BOARD", "BATTERY must match the BATTERY BOARD alias");
+assert.equal(resolvedLeft.name, "J49");
+assert.equal(resolvedRight.boardName, "SENS", "SENS J1 must never fall through to HB J1");
+assert.equal(resolvedRight.name, "J1");
+assert.equal(resolvedRight.side, "left", "an inferred connector on a RIGHT board should face the routing field");
+assert.equal(resolvedRight.inferred, true);
+assert.ok(resolvedCompass.diagnostics.some((item) => item.code === "INFERRED_MASTER_CONNECTOR"));
+assert.equal(Master.projectSummary(compassProject).connectorCount, 45, "the inferred SENS J1 connector must be included in the resolved drawing");
 const compassXml = Master.buildDrawioXml(compassProject);
 const geometry = (name) => {
   const match = compassXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)"`));
@@ -102,5 +120,9 @@ assert.ok(geometry("HB").y < middle.y, "TOP board must render above MIDDLE");
 assert.ok(geometry("ESC").y > middle.y, "BOTTEM board must render below MIDDLE");
 assert.ok(geometry("LB").x < middle.x, "LEFT board must render left of MIDDLE");
 assert.ok(geometry("SENS").x > middle.x, "RIGHT board must render right of MIDDLE");
+assert.match(compassXml, /value="J1 \*"/, "an inferred connector must be visibly marked");
+const w300Edge = compassXml.match(/<mxCell id="cable_W300_[^"]+"[\s\S]*?<Array as="points">([\s\S]*?)<\/Array>/);
+assert.ok(w300Edge, "W300 must use explicit routing waypoints");
+assert.ok((w300Edge[1].match(/<mxPoint/g) || []).length >= 4, "W300 must leave each connector on a straight stub before turning");
 
 console.log("Master block regression passed.");

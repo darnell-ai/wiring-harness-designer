@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.3.1**
+Current release: **v2.4.0**
 
-DigiWire 2.3.1 uses the correctly spelled `ARRANGEMENT` heading for compass placement in cumulative Master Block Diagrams. The original detailed Harness Drawing mode remains available beside it.
+DigiWire 2.4.0 treats the board and connector together in wire-leg names such as `SENS J1`. Master diagrams now keep endpoints on the named PCB and use clear routing lanes with straight connector exits.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -33,7 +33,9 @@ Select **Master block** in the Drawing mode control. Paste or add as many board-
 
 `ARRANGEMENT` controls the position of the whole PCB block and accepts `MIDDLE`, `TOP`, `LEFT`, `RIGHT`, and `BOTTEM`. `ORIENTATION` is also accepted, and the older misspelled `ORANGMENT` remains supported for existing sheets. If the column is absent, DigiWire keeps using its automatic connection-topology layout.
 
-Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches names such as `BATT J49` to PCB `BATT`, connector `J49`. DNP/unused rows do not count as conductors. Missing or ambiguous connector assignments remain visible as red unmatched endpoints and warning badges.
+Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches the board first and its connector second: `BATTERY J49` maps to `J49` on `BATTERY BOARD`, while `SENS J1` can never fall through to an identically named connector on `HB`. If the named PCB exists but the connector is missing from its placement row, DigiWire adds a clearly marked inferred connector on that PCB and displays a warning so the placement sheet can be corrected. DNP/unused rows do not count as conductors. Missing board assignments and genuinely ambiguous connector-only names remain visible as red unmatched endpoints and warning badges.
+
+Master cable routes leave every connector on a straight stub before turning into a spaced routing lane. Opaque bordered labels and thinner cable paths keep connector names and nearby wires readable.
 
 ## Length Units
 

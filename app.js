@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.4.0";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -8566,6 +8566,12 @@ function diagnosticChipLabel(item) {
       return "RJ45 housing part number needs verification";
     case "T568B_TWISTED_PAIR_MISMATCH":
       return "T568B twisted-pair mapping needs verification";
+    case "INFERRED_MASTER_CONNECTOR":
+      return "Connector inferred from wire leg name";
+    case "UNMATCHED_MASTER_CONNECTOR":
+      return "Wire endpoint is not assigned to a PCB";
+    case "AMBIGUOUS_MASTER_CONNECTOR":
+      return "Wire endpoint matches multiple PCB connectors";
     default:
       return shortLabel(item?.message || item?.code || "Import warning", 72);
   }
