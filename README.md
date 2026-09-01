@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.1**
+Current release: **v2.5.2**
 
-DigiWire 2.5.1 adds centered PCB connector placement to the corner-aware, shared-CPC master-routing system. Master diagrams keep endpoints on the named PCB, support multi-connector branches, use clear routing lanes, and label each route with only its cable name.
+DigiWire 2.5.2 adds a distinct Powerpole connector profile to the centered, corner-aware, shared-CPC master-routing system. Master diagrams keep endpoints on the named PCB, support multi-connector branches, use clear routing lanes, and label each route with only its cable name.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -26,7 +26,7 @@ Select **Master block** in the Drawing mode control. Paste or add as many board-
 
 | PCB NAME | ARRANGEMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTOM | CORNER LEFT AND TOP | CORNER TOP AND RIGHT | CORNER RIGHT AND BOTTOM | CORNER BOTTEM AND LEFT | CENTER |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| BATTERY | MIDDLE | J48, J38 | J46, J28 | | J50, J49 | | CPC3 | CPC2 | CPC1 | |
+| BATTERY | MIDDLE | J48, J38 | J46, J28 | | J50, J49 | | CPC3 | CPC2 | CPC1 | POWER POLE |
 | ESC | BOTTEM | J2, J14 | J8 | J13, J19 | J12, J11 | | | | | ESC SH, ESC SV, ESC PV, ESC PH |
 
 `BOTTEM` is accepted exactly as shown in the production template, along with `BOTTOM` and `BOTTOM SIDE`. Separate multiple connector names with semicolons, vertical bars, or line breaks. A PCB name can appear once above several placement rows because DigiWire carries it forward.
@@ -35,7 +35,7 @@ Select **Master block** in the Drawing mode control. Paste or add as many board-
 
 The four corner columns position connectors directly on the corresponding PCB corner. Connector names `CPC1`, `CPC2`, `CPC3`, and other `CPC` plus number names render as distinct 16-position circular connectors. The same CPC may be referenced by several cable sheets, or by one cable with several right-leg numbers, to create a shared branch to multiple destination connectors without duplicating the CPC.
 
-`CENTER` and `CENTRE` place connectors inside the PCB body. Four center connectors use a spacious 2-by-2 grid; larger groups expand into additional centered rows. Board-prefixed names such as `ESC SH` remain intact when a harness endpoint uses that same combined name.
+`CENTER` and `CENTRE` place connectors inside the PCB body. Four center connectors use a spacious 2-by-2 grid; larger groups expand into additional centered rows. `POWER POLE` and `POWERPOLE` render as a distinct red-and-black connector profile. Board-prefixed names such as `BATTERY POWER POLE` and `ESC SH` remain intact when a harness endpoint uses that same combined name.
 
 Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches the board first and its connector second: `BATTERY J49` maps to `J49` on `BATTERY BOARD`, while `SENS J1` can never fall through to an identically named connector on `HB`. If the named PCB exists but the connector is missing from its placement row, DigiWire uses the explicit wire-leg name to add that connector normally on the correct PCB. DNP/unused rows do not count as conductors. Missing board assignments and genuinely ambiguous connector-only names remain visible as red unmatched endpoints and warning badges.
 

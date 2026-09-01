@@ -42,6 +42,12 @@
   };
   const stableId = (prefix, value) => `${prefix}_${slug(value)}_${hash(value)}`;
   const isCpcConnector = (connector) => /^CPC\s*\d+$/i.test(text(connector?.name));
+  const isPowerPoleConnector = (connector) => /^POWERPOLE\d*$/.test(normalized(connector?.name).replace(/\s+/g, ""));
+  const connectorIdentity = (value) => {
+    const name = normalized(value);
+    const compact = name.replace(/\s+/g, "");
+    return /^POWERPOLE\d*$/.test(compact) ? compact : name;
+  };
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
     const key = normalized(value);
@@ -256,10 +262,10 @@
     if (boardMatch) {
       const connectorName = normalized(endpointName.replace(new RegExp(`^${boardMatch.alias}(?:\\s+|$)|(?:\\s+|^)${boardMatch.alias}$`, "i"), " "));
       const boardConnectors = connectors.filter((connector) => connector.boardKey === boardMatch.board.key);
-      const fullExact = boardConnectors.filter((connector) => normalized(connector.name) === endpointName);
+      const fullExact = boardConnectors.filter((connector) => connectorIdentity(connector.name) === connectorIdentity(endpointName));
       if (fullExact.length === 1) return { connector: fullExact[0], ambiguous: false, candidates: fullExact, boardMatched: true };
       if (fullExact.length > 1) return { connector: null, ambiguous: true, candidates: fullExact, boardMatched: true };
-      const exact = boardConnectors.filter((connector) => normalized(connector.name) === connectorName);
+      const exact = boardConnectors.filter((connector) => connectorIdentity(connector.name) === connectorIdentity(connectorName));
       if (exact.length === 1) return { connector: exact[0], ambiguous: false, candidates: exact, boardMatched: true };
       if (exact.length > 1) return { connector: null, ambiguous: true, candidates: exact, boardMatched: true };
       if (connectorName && /^J?[A-Z0-9][A-Z0-9._/-]*$/.test(connectorName.replace(/\s+/g, ""))) {
@@ -283,8 +289,10 @@
     }
     const candidates = connectors.map((connector) => {
       const connectorName = normalized(connector.name);
+      const endpointIdentity = connectorIdentity(endpointName);
+      const connectorExactIdentity = connectorIdentity(connectorName);
       let score = 0;
-      if (endpointName === connectorName) score = 100;
+      if (endpointIdentity === connectorExactIdentity) score = 100;
       if (connectorName.length >= 2 && (endpointName.endsWith(` ${connectorName}`) || endpointName.startsWith(`${connectorName} `))) score = Math.max(score, 75);
       if (endpointName.length >= 3 && connectorName.includes(endpointName)) score = Math.max(score, 60);
       return { connector, score };
@@ -337,15 +345,22 @@
         "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=18;");
       item.ports.forEach((port) => {
         const cpc = isCpcConnector(port.connector);
+        const powerPole = isPowerPoleConnector(port.connector);
         const sideColor = {
           left: "#dbeafe", top: "#fef3c7", right: "#dcfce7", bottom: "#f3e8ff",
           "corner-left-top": "#e0f2fe", "corner-top-right": "#e0f2fe",
           "corner-right-bottom": "#e0f2fe", "corner-bottom-left": "#e0f2fe", center: "#fce7f3"
         }[port.connector.side];
-        const label = cpc ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">16 POS</font>` : port.connector.name;
+        const label = cpc
+          ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">16 POS</font>`
+          : powerPole
+            ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">CONNECTOR</font>`
+            : port.connector.name;
         addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
           cpc
             ? `ellipse;aspect=fixed;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#0f4c5c;strokeWidth=3;fontSize=12;fontStyle=1;`
+            : powerPole
+              ? `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dc2626;gradientColor=#111827;gradientDirection=east;fontColor=#ffffff;strokeColor=#111827;strokeWidth=3;fontSize=11;fontStyle=1;`
             : `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
       });
     });
@@ -689,9 +704,10 @@
         const corner = side.startsWith("corner-");
         const center = side === "center";
         const cpc = isCpcConnector(connector);
+        const powerPole = isPowerPoleConnector(connector);
         const horizontal = side === "top" || side === "bottom";
-        const width = cpc ? 76 : center ? 104 : horizontal ? 106 : 116;
-        const height = cpc ? 76 : center ? 32 : 30;
+        const width = cpc ? 76 : powerPole ? 132 : center ? 104 : horizontal ? 106 : 116;
+        const height = cpc ? 76 : powerPole ? 48 : center ? 32 : 30;
         let x;
         let y;
         if (center) {

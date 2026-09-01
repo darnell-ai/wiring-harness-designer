@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.2 - 2026-09-01
+
+- Recognized `POWER POLE` and `POWERPOLE` placement names as a distinct red-and-black connector profile.
+- Supported both board-qualified `BATTERY POWER POLE` and unique connector-only endpoint matching.
+- Added center-placement, rendering, and endpoint-matching regression coverage for the Powerpole connector.
+
 ## v2.5.1 - 2026-09-01
 
 - Added `CENTER`, `CENTRE`, `CENTER POSITION`, and `CENTRE POSITION` PCB connector-placement headers.
