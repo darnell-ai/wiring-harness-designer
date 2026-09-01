@@ -25,6 +25,7 @@
   const MASTER_BOARD_GAP = 320;
   const MASTER_CENTER_X = 1600;
   const MASTER_TOP_Y = 140;
+  const ROUTE_BOARD_CLEARANCE = 54;
 
   const text = (value) => String(value ?? "").trim();
   const normalized = (value) => text(value).toUpperCase().replace(/[^A-Z0-9]+/g, " ").trim();
@@ -385,7 +386,7 @@
         addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
-          cableEdgeStyle(color), routeWaypoints(route, { x: item.junction.x + 68, y: item.junction.y + 27 }, index)));
+          cableEdgeStyle(color), routeWaypoints(route, { x: item.junction.x + 68, y: item.junction.y + 27 }, index, layout.boards)));
       } else if (item.endpointCells.length === 2) {
         addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color), item.waypoints);
       } else if (item.endpointCells.length === 1) {
@@ -439,6 +440,14 @@
     if (direction.includes("right")) point.x += distance;
     if (direction.includes("top")) point.y -= distance;
     if (direction.includes("bottom")) point.y += distance;
+    if (port.boardRect) {
+      const horizontalEscape = Math.max(ROUTE_BOARD_CLEARANCE, port.width / 2 + 36);
+      const verticalEscape = Math.max(ROUTE_BOARD_CLEARANCE, port.height / 2 + 36);
+      if (direction.includes("left")) point.x = port.boardRect.x - horizontalEscape;
+      if (direction.includes("right")) point.x = port.boardRect.x + port.boardRect.width + horizontalEscape;
+      if (direction.includes("top")) point.y = port.boardRect.y - verticalEscape;
+      if (direction.includes("bottom")) point.y = port.boardRect.y + port.boardRect.height + verticalEscape;
+    }
     return point;
   }
 
@@ -446,7 +455,115 @@
     return points.filter((point, index) => !index || point.x !== points[index - 1].x || point.y !== points[index - 1].y);
   }
 
-  function cableWaypoints(first, second, laneIndex = 0) {
+  function expandedBoardRect(board, clearance) {
+    return {
+      left: board.x - clearance,
+      top: board.y - clearance,
+      right: board.x + board.width + clearance,
+      bottom: board.y + board.height + clearance
+    };
+  }
+
+  function pointInsideRect(point, rect) {
+    return point.x > rect.left && point.x < rect.right && point.y > rect.top && point.y < rect.bottom;
+  }
+
+  function segmentIntersectsRect(first, second, rect) {
+    if (first.x === second.x) {
+      return first.x > rect.left && first.x < rect.right &&
+        Math.max(Math.min(first.y, second.y), rect.top) < Math.min(Math.max(first.y, second.y), rect.bottom);
+    }
+    if (first.y === second.y) {
+      return first.y > rect.top && first.y < rect.bottom &&
+        Math.max(Math.min(first.x, second.x), rect.left) < Math.min(Math.max(first.x, second.x), rect.right);
+    }
+    return true;
+  }
+
+  function pathIntersectsBoards(points, boards, clearance = ROUTE_BOARD_CLEARANCE) {
+    const rects = boards.map((board) => expandedBoardRect(board, clearance));
+    return points.slice(1).some((point, index) => rects.some((rect) => segmentIntersectsRect(points[index], point, rect)));
+  }
+
+  function obstacleAwareWaypoints(start, end, boards, laneIndex = 0) {
+    const clearance = ROUTE_BOARD_CLEARANCE + (laneIndex % 4) * 14;
+    const rects = boards.map((board) => expandedBoardRect(board, clearance));
+    const xs = Array.from(new Set([start.x, end.x, ...rects.flatMap((rect) => [rect.left, rect.right])])).sort((a, b) => a - b);
+    const ys = Array.from(new Set([start.y, end.y, ...rects.flatMap((rect) => [rect.top, rect.bottom])])).sort((a, b) => a - b);
+    const nodes = [];
+    const nodeByCoordinate = new Map();
+    xs.forEach((x) => ys.forEach((y) => {
+      const point = { x, y };
+      if (rects.some((rect) => pointInsideRect(point, rect))) return;
+      const index = nodes.length;
+      nodes.push(point);
+      nodeByCoordinate.set(`${x}|${y}`, index);
+    }));
+    const startIndex = nodeByCoordinate.get(`${start.x}|${start.y}`);
+    const endIndex = nodeByCoordinate.get(`${end.x}|${end.y}`);
+    if (startIndex === undefined || endIndex === undefined) return [start, end];
+
+    const neighbors = nodes.map(() => []);
+    const connectLine = (indexes, direction) => {
+      indexes.sort((left, right) => direction === "h" ? nodes[left].x - nodes[right].x : nodes[left].y - nodes[right].y);
+      indexes.slice(1).forEach((index, offset) => {
+        const previous = indexes[offset];
+        if (rects.some((rect) => segmentIntersectsRect(nodes[previous], nodes[index], rect))) return;
+        const distance = Math.abs(nodes[previous].x - nodes[index].x) + Math.abs(nodes[previous].y - nodes[index].y);
+        neighbors[previous].push({ index, direction, distance });
+        neighbors[index].push({ index: previous, direction, distance });
+      });
+    };
+    ys.forEach((y) => connectLine(nodes.map((point, index) => point.y === y ? index : -1).filter((index) => index >= 0), "h"));
+    xs.forEach((x) => connectLine(nodes.map((point, index) => point.x === x ? index : -1).filter((index) => index >= 0), "v"));
+
+    const states = new Map([[`${startIndex}|n`, { node: startIndex, direction: "n", cost: 0, previous: null }]]);
+    const pending = new Set(states.keys());
+    let winner = null;
+    while (pending.size) {
+      let currentKey = null;
+      pending.forEach((key) => {
+        if (currentKey === null || states.get(key).cost < states.get(currentKey).cost) currentKey = key;
+      });
+      pending.delete(currentKey);
+      const current = states.get(currentKey);
+      if (current.node === endIndex) {
+        winner = currentKey;
+        break;
+      }
+      neighbors[current.node].forEach((edge) => {
+        const bendCost = current.direction !== "n" && current.direction !== edge.direction ? 38 : 0;
+        const nextKey = `${edge.index}|${edge.direction}`;
+        const nextCost = current.cost + edge.distance + bendCost;
+        if (!states.has(nextKey) || nextCost < states.get(nextKey).cost) {
+          states.set(nextKey, { node: edge.index, direction: edge.direction, cost: nextCost, previous: currentKey });
+          pending.add(nextKey);
+        }
+      });
+    }
+    if (!winner) return [start, end];
+    const routed = [];
+    while (winner) {
+      const state = states.get(winner);
+      routed.unshift(nodes[state.node]);
+      winner = state.previous;
+    }
+    return compactWaypoints(routed.filter((point, index, points) => {
+      if (!index || index === points.length - 1) return true;
+      const previous = points[index - 1];
+      const next = points[index + 1];
+      return !((previous.x === point.x && point.x === next.x) || (previous.y === point.y && point.y === next.y));
+    }));
+  }
+
+  function keepRouteOutsideBoards(points, boards, laneIndex = 0) {
+    const compact = compactWaypoints(points);
+    return pathIntersectsBoards(compact, boards)
+      ? obstacleAwareWaypoints(compact[0], compact[compact.length - 1], boards, laneIndex)
+      : compact;
+  }
+
+  function cableWaypoints(first, second, laneIndex = 0, boards = []) {
     const firstStub = portStub(first.port);
     const secondStub = portStub(second.port);
     const lane = (laneIndex % 8) * 42;
@@ -460,12 +577,12 @@
       } else {
         channelY = (firstStub.y + secondStub.y) / 2 + (laneIndex % 2 ? lane : -lane);
       }
-      return compactWaypoints([
+      return keepRouteOutsideBoards([
         firstStub,
         { x: firstStub.x, y: channelY },
         { x: secondStub.x, y: channelY },
         secondStub
-      ]);
+      ], boards, laneIndex);
     }
     let channelX;
     if ([portDirection(first.port), portDirection(second.port)].some((side) => side.includes("right"))) {
@@ -475,23 +592,23 @@
     } else {
       channelX = (firstStub.x + secondStub.x) / 2 + (laneIndex % 2 ? lane : -lane);
     }
-    return compactWaypoints([
+    return keepRouteOutsideBoards([
       firstStub,
       { x: channelX, y: firstStub.y },
       { x: channelX, y: secondStub.y },
       secondStub
-    ]);
+    ], boards, laneIndex);
   }
 
-  function routeWaypoints(route, target, laneIndex = 0) {
+  function routeWaypoints(route, target, laneIndex = 0, boards = []) {
     const stub = portStub(route.port);
     const lane = (laneIndex % 8) * 36;
     if (Math.abs(stub.x - target.x) >= Math.abs(stub.y - target.y)) {
       const channelX = (stub.x + target.x) / 2 + lane;
-      return compactWaypoints([stub, { x: channelX, y: stub.y }, { x: channelX, y: target.y }]);
+      return keepRouteOutsideBoards([stub, { x: channelX, y: stub.y }, { x: channelX, y: target.y }, target], boards, laneIndex);
     }
     const channelY = (stub.y + target.y) / 2 + lane;
-    return compactWaypoints([stub, { x: stub.x, y: channelY }, { x: target.x, y: channelY }]);
+    return keepRouteOutsideBoards([stub, { x: stub.x, y: channelY }, { x: target.x, y: channelY }, target], boards, laneIndex);
   }
 
   function oppositeSide(side) {
@@ -609,9 +726,9 @@
         waypoints: endpointRoutes.length === 2
           ? endpointRoutes.some((route) => route.floating)
             ? [portStub(endpointRoutes.find((route) => !route.floating)?.port || endpointRoutes[0].port, 70)]
-            : cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex)
+            : cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex, boards)
           : endpointRoutes.length === 1
-            ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex)
+            ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex, boards)
             : [],
         junction,
         openX: averageX + 180,
@@ -791,6 +908,7 @@
         }
         output.push({
           connector,
+          boardRect: { x: item.x, y: item.y, width: item.width, height: item.height },
           exitSide: center
             ? ({ top: "bottom", bottom: "top", left: "right", right: "left" }[item.board.arrangement] || "bottom")
             : side,

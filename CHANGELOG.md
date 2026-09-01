@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.7 - 2026-09-01
+
+- Treated every PCB body as a solid obstacle for Master block cable routing.
+- Added orthogonal pathfinding that moves colliding cable segments around board boundaries with clearance.
+- Kept connector approach segments straight and outside-facing, including connectors located in board centers and corners.
+- Added regression coverage for the same-side connector case that previously crossed through the LB board.
+
 ## v2.5.6 - 2026-09-01
 
 - Added a DigiWire-level **Undo table** control for pasted and uploaded sheets.

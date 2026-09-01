@@ -238,4 +238,34 @@ const w300Edge = compassXml.match(/<mxCell id="cable_W300_[^"]+"[\s\S]*?<Array a
 assert.ok(w300Edge, "W300 must use explicit routing waypoints");
 assert.ok((w300Edge[1].match(/<mxPoint/g) || []).length >= 4, "W300 must leave each connector on a straight stub before turning");
 
+const collisionPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "PCB NAME\tARRANGEMENT\tLEFT SIDE",
+  "BATTERY\tMIDDLE\tJ48",
+  "LB\tLEFT\tJ1"
+].join("\n")));
+const collisionHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W302\t1\tBATTERY J48\tSIG\t1\t1\tLB J1\tSIG\t1"
+].join("\n")));
+const collisionProject = Master.createProject();
+Master.addSheet(collisionProject, collisionPlacement, "collision boards.tsv");
+Master.addSheet(collisionProject, collisionHarness, "W302.tsv");
+const collisionXml = Master.buildDrawioXml(collisionProject);
+const collisionEdge = collisionXml.match(/<mxCell id="cable_W302_[^"]+"[\s\S]*?<Array as="points">([\s\S]*?)<\/Array>/);
+assert.ok(collisionEdge, "the same-side W302 route must use explicit obstacle-aware waypoints");
+const collisionPoints = Array.from(collisionEdge[1].matchAll(/<mxPoint x="([^"]+)" y="([^"]+)"/g), (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+assert.ok(collisionPoints.length >= 4, "W302 must turn around the LB board instead of crossing it");
+const collisionGeometry = (name) => {
+  const match = collisionXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"`));
+  assert.ok(match, `${name} collision-test board geometry must exist`);
+  return { left: Number(match[1]), top: Number(match[2]), right: Number(match[1]) + Number(match[3]), bottom: Number(match[2]) + Number(match[4]) };
+};
+const collisionBoards = [collisionGeometry("BATTERY"), collisionGeometry("LB")];
+const crossesBoard = (first, second, rect) => first.x === second.x
+  ? first.x > rect.left && first.x < rect.right && Math.max(Math.min(first.y, second.y), rect.top) < Math.min(Math.max(first.y, second.y), rect.bottom)
+  : first.y === second.y && first.y > rect.top && first.y < rect.bottom && Math.max(Math.min(first.x, second.x), rect.left) < Math.min(Math.max(first.x, second.x), rect.right);
+collisionPoints.slice(1).forEach((point, index) => {
+  assert.ok(collisionBoards.every((rect) => !crossesBoard(collisionPoints[index], point, rect)), "no W302 waypoint segment may pass through a PCB body");
+});
+
 console.log("Master block regression passed.");
