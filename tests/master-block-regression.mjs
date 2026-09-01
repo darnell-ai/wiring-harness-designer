@@ -268,4 +268,35 @@ collisionPoints.slice(1).forEach((point, index) => {
   assert.ok(collisionBoards.every((rect) => !crossesBoard(collisionPoints[index], point, rect)), "no W302 waypoint segment may pass through a PCB body");
 });
 
+const optimizationPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "PCB NAME\tARRANGEMENT\tLEFT SIDE\tBOTTOM",
+  "BATTERY\tMIDDLE\t\tJ60",
+  "ESC\tBOTTEM\tJ2\t"
+].join("\n")));
+const optimizationHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W303\t1\tBATTERY J60\tSIG\t1\t1\tESC J2\tSIG\t1"
+].join("\n")));
+const optimizationProject = Master.createProject();
+Master.addSheet(optimizationProject, optimizationPlacement, "optimization boards.tsv");
+Master.addSheet(optimizationProject, optimizationHarness, "W303.tsv");
+const routePoints = (drawingXml, cableName) => {
+  const edge = drawingXml.match(new RegExp(`<mxCell id="cable_${cableName}_[^"]+"[\\s\\S]*?<Array as="points">([\\s\\S]*?)<\\/Array>`));
+  assert.ok(edge, `${cableName} must use explicit waypoints`);
+  return Array.from(edge[1].matchAll(/<mxPoint x="([^"]+)" y="([^"]+)"/g), (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+};
+const routeLength = (points) => points.slice(1).reduce((total, point, index) => total + Math.abs(point.x - points[index].x) + Math.abs(point.y - points[index].y), 0);
+const standardW303 = routePoints(Master.buildDrawioXml(optimizationProject), "W303");
+const optimizedW303Xml = Master.buildDrawioXml(optimizationProject, { optimizeRoutes: true });
+const optimizedW303 = routePoints(optimizedW303Xml, "W303");
+assert.ok(routeLength(optimizedW303) < routeLength(standardW303), "Optimize routes must shorten the W303-style BATTERY-to-ESC path");
+const optimizationBoardRects = ["BATTERY", "ESC"].map((name) => {
+  const match = optimizedW303Xml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"`));
+  assert.ok(match, `${name} optimization-test board geometry must exist`);
+  return { left: Number(match[1]), top: Number(match[2]), right: Number(match[1]) + Number(match[3]), bottom: Number(match[2]) + Number(match[4]) };
+});
+optimizedW303.slice(1).forEach((point, index) => {
+  assert.ok(optimizationBoardRects.every((rect) => !crossesBoard(optimizedW303[index], point, rect)), "optimized W303 must remain outside every PCB body");
+});
+
 console.log("Master block regression passed.");

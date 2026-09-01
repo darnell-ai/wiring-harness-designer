@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.7";
+const APP_VERSION = "2.5.8";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -308,6 +308,7 @@ const dom = {
   tablePasteLabel: document.querySelector("#tablePasteLabel"),
   configureButton: document.querySelector("#configureButton"),
   undoTableButton: document.querySelector("#undoTableButton"),
+  optimizeRoutesButton: document.querySelector("#optimizeRoutesButton"),
   designerPanel: document.querySelector("#designerPanel"),
   closeDesignerButton: document.querySelector("#closeDesignerButton"),
   layoutModeSelect: document.querySelector("#layoutModeSelect"),
@@ -370,6 +371,7 @@ let xlsxLoaderPromise = null;
 let pastedTableLoadTimer = null;
 let drawingMode = "harness";
 let masterProject = MasterDiagram.createProject();
+let masterRoutesOptimized = false;
 const masterUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 const harnessUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 
@@ -410,6 +412,7 @@ function init() {
   }));
   dom.configureButton.addEventListener("click", toggleDesignerPanel);
   dom.undoTableButton.addEventListener("click", undoLastTableImport);
+  dom.optimizeRoutesButton.addEventListener("click", optimizeMasterRoutes);
   dom.closeDesignerButton.addEventListener("click", closeDesignerPanel);
   dom.applyDesignerButton.addEventListener("click", applyDesignerConfiguration);
   dom.resetDesignerButton.addEventListener("click", resetDesignerConfiguration);
@@ -481,6 +484,7 @@ function setDrawingMode(mode) {
   const master = isMasterMode();
   dom.pasteButton.hidden = master;
   dom.configureButton.hidden = master;
+  dom.optimizeRoutesButton.hidden = !master;
   dom.masterProjectBadge.hidden = !master;
   dom.tablePasteLabel.textContent = master
     ? "Paste a board placement table or harness table (each paste is added to this project)"
@@ -718,8 +722,9 @@ function renderMasterProject() {
     ? masterProject.imports.slice(-12).reverse().map((item) => `<div class="finding"><strong>${escapeHtml(shortLabel(item.sourceName, 42))}</strong><span>${item.boardCount} boards | ${item.harnessCount} cables</span></div>`).join("")
     : `<span class="quiet">Paste or add the first board placement sheet.</span>`;
   renderImportDiagnostics(graph.diagnostics || []);
+  dom.optimizeRoutesButton.disabled = summary.harnessCount === 0;
   queueDrawioDiagram(
-    MasterDiagram.buildDrawioXml(masterProject),
+    MasterDiagram.buildDrawioXml(masterProject, { optimizeRoutes: masterRoutesOptimized }),
     "digiwire-master-routing.drawio",
     "digiwire-master-routing.pdf"
   );
@@ -8624,6 +8629,7 @@ function setBusy(isBusy) {
   dom.tablePasteButton.disabled = isBusy;
   dom.addSheetButton.disabled = isBusy;
   dom.undoTableButton.disabled = isBusy || currentUndoHistory().size === 0;
+  dom.optimizeRoutesButton.disabled = isBusy || !isMasterMode() || MasterDiagram.projectSummary(masterProject).harnessCount === 0;
   dom.resetButton.disabled = isBusy;
   dom.drawingModeInputs.forEach((input) => { input.disabled = isBusy; });
 }
@@ -8663,6 +8669,7 @@ function diagnosticChipLabel(item) {
 function resetApp() {
   if (isMasterMode()) {
     masterProject = MasterDiagram.createProject();
+    masterRoutesOptimized = false;
     masterUndoHistory.clear();
     dom.pasteTablePanel.hidden = true;
     dom.tablePasteInput.value = "";
@@ -8731,6 +8738,18 @@ function undoLastTableImport() {
   }
   updateUndoTableButton();
   setStatus(`Undid ${removedSource}.`);
+}
+
+function optimizeMasterRoutes() {
+  if (!isMasterMode()) return;
+  const summary = MasterDiagram.projectSummary(masterProject);
+  if (!summary.harnessCount) {
+    setStatus("Add at least one harness table before optimizing routes.");
+    return;
+  }
+  masterRoutesOptimized = true;
+  renderMasterProject();
+  setStatus(`Optimized ${summary.harnessCount} cable route${summary.harnessCount === 1 ? "" : "s"} for shorter paths, fewer bends, and fewer wire crossings.`);
 }
 
 function initializeDrawioEditor() {

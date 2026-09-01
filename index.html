@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v2.5.7</title>
-    <link rel="stylesheet" href="styles.css?v=2.5.7">
+    <title>DIGIWIRE v2.5.8</title>
+    <link rel="stylesheet" href="styles.css?v=2.5.8">
   </head>
   <body>
     <main class="app-shell">
@@ -52,6 +52,10 @@
               <button id="undoTableButton" type="button" title="Undo the last pasted or uploaded table" disabled>
                 <span class="icon">UND</span>
                 <span>Undo table</span>
+              </button>
+              <button id="optimizeRoutesButton" type="button" title="Rebuild Master block cables using shorter paths with fewer crossings" hidden disabled>
+                <span class="icon">OPT</span>
+                <span>Optimize routes</span>
               </button>
               <button id="resetButton" type="button" title="Clear the current harness and start a new one">
                 <span class="icon">CLR</span>
@@ -151,8 +155,8 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="harness-core.js?v=2.5.7" defer></script>
-    <script src="master-diagram.js?v=2.5.7" defer></script>
-    <script src="app.js?v=2.5.7" defer></script>
+    <script src="harness-core.js?v=2.5.8" defer></script>
+    <script src="master-diagram.js?v=2.5.8" defer></script>
+    <script src="app.js?v=2.5.8" defer></script>
   </body>
 </html>

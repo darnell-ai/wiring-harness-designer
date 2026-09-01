@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.5.8 - 2026-09-01
+
+- Added an **Optimize routes** button to Master block mode.
+- Compared multiple legal route candidates for every cable and selected the lowest-scoring project path.
+- Prioritized shorter cable paths, fewer bends, fewer wire crossings, and less shared-segment overlap.
+- Preserved mandatory PCB obstacle clearance and straight connector approach stubs during optimization.
+- Added regression coverage proving the W303-style Battery-to-ESC route becomes shorter after optimization.
+
 ## v2.5.7 - 2026-09-01
 
 - Treated every PCB body as a solid obstacle for Master block cable routing.

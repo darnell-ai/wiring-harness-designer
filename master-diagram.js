@@ -324,9 +324,9 @@
     };
   }
 
-  function buildDrawioXml(project) {
+  function buildDrawioXml(project, options = {}) {
     const graph = resolveProject(project);
-    const layout = layoutGraph(graph);
+    const layout = layoutGraph(graph, options);
     const cells = [
       `<mxCell id="0" />`,
       `<mxCell id="1" parent="0" />`
@@ -386,7 +386,7 @@
         addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
-          cableEdgeStyle(color), routeWaypoints(route, { x: item.junction.x + 68, y: item.junction.y + 27 }, index, layout.boards)));
+          cableEdgeStyle(color), item.branchWaypoints[index]));
       } else if (item.endpointCells.length === 2) {
         addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color), item.waypoints);
       } else if (item.endpointCells.length === 1) {
@@ -563,6 +563,79 @@
       : compact;
   }
 
+  function routeSegments(points) {
+    return points.slice(1).map((point, index) => ({ first: points[index], second: point }));
+  }
+
+  function orderedRange(first, second) {
+    return [Math.min(first, second), Math.max(first, second)];
+  }
+
+  function segmentRelationship(left, right) {
+    const leftHorizontal = left.first.y === left.second.y;
+    const rightHorizontal = right.first.y === right.second.y;
+    if (leftHorizontal !== rightHorizontal) {
+      const horizontal = leftHorizontal ? left : right;
+      const vertical = leftHorizontal ? right : left;
+      const [horizontalStart, horizontalEnd] = orderedRange(horizontal.first.x, horizontal.second.x);
+      const [verticalStart, verticalEnd] = orderedRange(vertical.first.y, vertical.second.y);
+      const crosses = vertical.first.x > horizontalStart && vertical.first.x < horizontalEnd &&
+        horizontal.first.y > verticalStart && horizontal.first.y < verticalEnd;
+      return { crossing: crosses, overlap: 0 };
+    }
+    if (leftHorizontal) {
+      if (left.first.y !== right.first.y) return { crossing: false, overlap: 0 };
+      const [leftStart, leftEnd] = orderedRange(left.first.x, left.second.x);
+      const [rightStart, rightEnd] = orderedRange(right.first.x, right.second.x);
+      return { crossing: false, overlap: Math.max(0, Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)) };
+    }
+    if (left.first.x !== right.first.x) return { crossing: false, overlap: 0 };
+    const [leftStart, leftEnd] = orderedRange(left.first.y, left.second.y);
+    const [rightStart, rightEnd] = orderedRange(right.first.y, right.second.y);
+    return { crossing: false, overlap: Math.max(0, Math.min(leftEnd, rightEnd) - Math.max(leftStart, rightStart)) };
+  }
+
+  function optimizedRouteScore(points, routedPaths) {
+    const segments = routeSegments(points);
+    const length = segments.reduce((total, segment) => total + Math.abs(segment.first.x - segment.second.x) + Math.abs(segment.first.y - segment.second.y), 0);
+    const bends = Math.max(0, points.length - 2);
+    let crossings = 0;
+    let overlap = 0;
+    routedPaths.flatMap(routeSegments).forEach((existing) => segments.forEach((candidate) => {
+      const relationship = segmentRelationship(candidate, existing);
+      if (relationship.crossing) crossings += 1;
+      overlap += relationship.overlap;
+    }));
+    return length + bends * 22 + crossings * 260 + overlap * 3;
+  }
+
+  function chooseOptimizedRoute(candidates, routedPaths) {
+    const unique = new Map();
+    candidates.forEach((points) => unique.set(points.map((point) => `${Math.round(point.x)},${Math.round(point.y)}`).join(";"), points));
+    return Array.from(unique.values()).sort((left, right) => optimizedRouteScore(left, routedPaths) - optimizedRouteScore(right, routedPaths))[0];
+  }
+
+  function optimizedCableWaypoints(first, second, boards, routedPaths) {
+    const start = portStub(first.port);
+    const end = portStub(second.port);
+    const candidates = [
+      keepRouteOutsideBoards([start, { x: end.x, y: start.y }, end], boards),
+      keepRouteOutsideBoards([start, { x: start.x, y: end.y }, end], boards)
+    ];
+    for (let laneIndex = 0; laneIndex < 8; laneIndex += 1) candidates.push(cableWaypoints(first, second, laneIndex, boards));
+    return chooseOptimizedRoute(candidates, routedPaths);
+  }
+
+  function optimizedEndpointWaypoints(route, target, boards, routedPaths) {
+    const start = portStub(route.port);
+    const candidates = [
+      keepRouteOutsideBoards([start, { x: target.x, y: start.y }, target], boards),
+      keepRouteOutsideBoards([start, { x: start.x, y: target.y }, target], boards)
+    ];
+    for (let laneIndex = 0; laneIndex < 8; laneIndex += 1) candidates.push(routeWaypoints(route, target, laneIndex, boards));
+    return chooseOptimizedRoute(candidates, routedPaths);
+  }
+
   function cableWaypoints(first, second, laneIndex = 0, boards = []) {
     const firstStub = portStub(first.port);
     const secondStub = portStub(second.port);
@@ -656,7 +729,7 @@
     return { cellId: `${cellId}_junction`, x: Math.round(point.x - 68), y: Math.round(point.y - 27) };
   }
 
-  function layoutGraph(graph) {
+  function layoutGraph(graph, options = {}) {
     const boards = graph.boards.some((board) => board.arrangement)
       ? layoutBoardsByCompass(graph.boards)
       : layoutBoardsByTopology(graph);
@@ -669,6 +742,7 @@
     const floatingCaps = [];
     const externalByKey = new Map();
     let externalY = 160;
+    const routedPaths = [];
     const harnesses = graph.harnesses.map((harness, harnessIndex) => {
       const floatingEndpoints = [];
       const endpointRoutes = harness.endpoints.map((endpoint) => {
@@ -718,18 +792,33 @@
       const averageY = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.y, 0) / connectedPoints.length : externalY;
       const cellId = stableId("cable", harness.key);
       const junction = endpointCells.length > 2 ? branchJunction(endpointRoutes, cellId, averageX, averageY) : null;
+      let waypoints = endpointRoutes.length === 2
+        ? endpointRoutes.some((route) => route.floating)
+          ? [portStub(endpointRoutes.find((route) => !route.floating)?.port || endpointRoutes[0].port, 70)]
+          : options.optimizeRoutes
+            ? optimizedCableWaypoints(endpointRoutes[0], endpointRoutes[1], boards, routedPaths)
+            : cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex, boards)
+        : endpointRoutes.length === 1
+          ? options.optimizeRoutes
+            ? optimizedEndpointWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, boards, routedPaths)
+            : routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex, boards)
+          : [];
+      if (waypoints.length > 1) routedPaths.push(waypoints);
+      const junctionTarget = junction ? { x: junction.x + 68, y: junction.y + 27 } : null;
+      const branchWaypoints = junction ? endpointRoutes.map((route, index) => {
+        const points = options.optimizeRoutes
+          ? optimizedEndpointWaypoints(route, junctionTarget, boards, routedPaths)
+          : routeWaypoints(route, junctionTarget, index, boards);
+        if (points.length > 1) routedPaths.push(points);
+        return points;
+      }) : [];
       return {
         harness,
         cellId,
         endpointCells,
         endpointRoutes,
-        waypoints: endpointRoutes.length === 2
-          ? endpointRoutes.some((route) => route.floating)
-            ? [portStub(endpointRoutes.find((route) => !route.floating)?.port || endpointRoutes[0].port, 70)]
-            : cableWaypoints(endpointRoutes[0], endpointRoutes[1], harnessIndex, boards)
-          : endpointRoutes.length === 1
-            ? routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex, boards)
-            : [],
+        waypoints,
+        branchWaypoints,
         junction,
         openX: averageX + 180,
         openY: averageY - 20

@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.7**
+Current release: **v2.5.8**
 
-DigiWire 2.5.7 routes Master block cables around PCB bodies. Board rectangles are treated as solid routing obstacles, while connector exit stubs remain straight and approach each connector from its outside edge.
+DigiWire 2.5.8 adds an **Optimize routes** button to Master block mode. It rebuilds every cable using scored path candidates that favor shorter distance, fewer bends, fewer crossings, and less shared-line overlap while continuing to route around PCB bodies.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -46,6 +46,8 @@ Harness sheets continue to use the normal DigiWire columns. Master mode reduces 
 Use `FLOATING` as a left or right leg name when that end intentionally does not terminate at a connector. DigiWire draws a short free wire tail with an insulated `CAP`, and does not create an unmatched-connector warning for that endpoint.
 
 Master cable routes leave every connector on a straight stub before turning into a spaced routing lane. The obstacle-aware router checks every orthogonal segment and moves any colliding route around the PCB boundary with visible clearance. Opaque bordered labels and thinner cable paths keep connector names and nearby wires readable.
+
+After adding the desired board and harness sheets, click **Optimize routes** to run a project-wide cleanup pass. DigiWire compares tight Manhattan paths and spaced routing lanes for each cable, rejects any path that enters a PCB, and scores the remaining options by wire length, bends, crossings, and overlapping segments. Future table imports remain optimized automatically until the Master project is cleared.
 
 ## Length Units
 
