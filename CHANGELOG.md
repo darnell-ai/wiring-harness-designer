@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.3.1 - 2026-09-01
+
+- Made `ARRANGEMENT` the official displayed board-placement column name in the UI, example template, documentation, and regression fixture.
+- Retained `ORANGMENT` as a backward-compatible import alias for existing sheets.
+
 ## v2.3.0 - 2026-09-01
 
 - Added the board-level `ORANGMENT` column for compass placement in master diagrams.

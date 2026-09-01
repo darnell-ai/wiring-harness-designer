@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.3.0";
+const APP_VERSION = "2.3.1";
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
   throw new Error("DIGIWIRE harness-core.js must load before app.js.");
@@ -442,7 +442,7 @@ function setDrawingMode(mode) {
     ? "Paste a board placement table or harness table (each paste is added to this project)"
     : "Paste Excel / Sheets rows here";
   dom.tablePasteInput.placeholder = master
-    ? "PCB NAME\tORANGMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTEM ... or paste a standard harness table"
+    ? "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTEM ... or paste a standard harness table"
     : "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\t...\tTwisted Pair ID\tRight Pin P#\tRight Wire Name";
   dom.designerPanel.hidden = true;
   dom.pasteTablePanel.hidden = true;

@@ -67,7 +67,7 @@ Master.addSheet(project, unmatched, "W999.tsv");
 assert.ok(Master.resolveProject(project).diagnostics.some((item) => item.code === "UNMATCHED_MASTER_CONNECTOR"));
 
 const fullPlacementText = [
-  "PCB NAME\tORANGMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM",
+  "PCB NAME\tARRANGEMENT\tLEFT SIDE\tTOP SIDE\tRIGHT SIDE\tBOTTOM",
   "BATTERY BOARD\tMIDDLE\tJ48, J38,\tJ46, J28,\t\tJ50, J49,",
   "HB\tTOP\tJ1, J11, J9, J12, J2\t\tJ15, J14, J3\tJ7,J10, J13",
   "LB\tLEFT\tJ10, J11, J6, J7\tJ8,\tJ2, J12, J3, J9, J4\t",
@@ -76,6 +76,8 @@ const fullPlacementText = [
 ].join("\n");
 const fullPlacement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText));
 const fullBoards = Master.extractBoards(fullPlacement.objects);
+const legacyArrangement = parser.normalizeSheetMatrix(parser.parseDelimitedText(fullPlacementText.replace("ARRANGEMENT", "ORANGMENT")));
+assert.equal(Master.extractBoards(legacyArrangement.objects).find((board) => board.name === "HB").arrangement, "top", "legacy ORANGMENT headers must remain compatible");
 assert.equal(fullBoards.length, 5);
 assert.equal(fullBoards.reduce((total, board) => total + board.connectors.length, 0), 44, "comma-separated connector cells must create individual ports");
 assert.deepEqual(

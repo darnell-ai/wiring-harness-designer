@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.3.0**
+Current release: **v2.3.1**
 
-DigiWire 2.3.0 adds compass placement to cumulative Master Block Diagrams so board location can guide the overall cable-routing scheme. The original detailed Harness Drawing mode remains available beside it.
+DigiWire 2.3.1 uses the correctly spelled `ARRANGEMENT` heading for compass placement in cumulative Master Block Diagrams. The original detailed Harness Drawing mode remains available beside it.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -24,14 +24,14 @@ The daily workflow is intentionally simple: copy the harness rows, click Paste t
 
 Select **Master block** in the Drawing mode control. Paste or add as many board-placement and harness sheets as needed; new imports accumulate instead of replacing the drawing. Excel workbooks may contain multiple sheets, and multiple Excel/CSV/TSV files can be selected together.
 
-| PCB NAME | ORANGMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTEM |
+| PCB NAME | ARRANGEMENT | LEFT SIDE | TOP SIDE | RIGHT SIDE | BOTTEM |
 | --- | --- | --- | --- | --- | --- |
 | BATTERY BOARD | MIDDLE | J48, J38 | J46, J28 | | J50, J49 |
 | HB | TOP | J1, J11 | | J15, J14 | J7, J10 |
 
 `BOTTEM` is accepted exactly as shown in the production template, along with `BOTTOM` and `BOTTOM SIDE`. Separate multiple connector names with semicolons, vertical bars, or line breaks. A PCB name can appear once above several placement rows because DigiWire carries it forward.
 
-`ORANGMENT` controls the position of the whole PCB block and accepts `MIDDLE`, `TOP`, `LEFT`, `RIGHT`, and `BOTTEM`. Corrected headers `ARRANGEMENT` and `ORIENTATION` are also accepted. If the column is absent, DigiWire keeps using its automatic connection-topology layout.
+`ARRANGEMENT` controls the position of the whole PCB block and accepts `MIDDLE`, `TOP`, `LEFT`, `RIGHT`, and `BOTTEM`. `ORIENTATION` is also accepted, and the older misspelled `ORANGMENT` remains supported for existing sheets. If the column is absent, DigiWire keeps using its automatic connection-topology layout.
 
 Harness sheets continue to use the normal DigiWire columns. Master mode reduces each cable to its endpoint names and conductor count, then matches names such as `BATT J49` to PCB `BATT`, connector `J49`. DNP/unused rows do not count as conductors. Missing or ambiguous connector assignments remain visible as red unmatched endpoints and warning badges.
 
