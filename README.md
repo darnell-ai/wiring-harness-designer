@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.11**
+Current release: **v2.5.12**
 
-DigiWire 2.5.11 treats spaced and punctuated CPC names such as `CPC 3` and `CPC-3` as the same connector as `CPC3`, preventing valid cable endpoints from being routed to unmatched external boxes.
+DigiWire 2.5.12 normalizes CPC names throughout Master Block mode. `CPC3`, `CPC 3`, and `CPC-3` now share one board connector, retain the circular 16-position CPC artwork, and never create duplicate or unmatched external endpoints.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
