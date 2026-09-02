@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.13";
+const APP_VERSION = "2.5.14";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -372,6 +372,7 @@ let pastedTableLoadTimer = null;
 let drawingMode = "harness";
 let masterProject = MasterDiagram.createProject();
 let masterRoutesOptimized = false;
+let masterGeometryOverrides = {};
 const masterUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 const harnessUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 
@@ -702,6 +703,7 @@ function applyMasterSheet(sheet, sourceName) {
   masterUndoHistory.push(previousProject);
   masterProject = result.project;
   masterRoutesOptimized = false;
+  masterGeometryOverrides = {};
   renderMasterProject();
   updateUndoTableButton();
   return result;
@@ -725,7 +727,10 @@ function renderMasterProject() {
   renderImportDiagnostics(graph.diagnostics || []);
   dom.optimizeRoutesButton.disabled = summary.harnessCount === 0;
   queueDrawioDiagram(
-    MasterDiagram.buildDrawioXml(masterProject, { optimizeRoutes: masterRoutesOptimized }),
+    MasterDiagram.buildDrawioXml(masterProject, {
+      optimizeRoutes: masterRoutesOptimized,
+      geometryOverrides: masterGeometryOverrides
+    }),
     "digiwire-master-routing.drawio",
     "digiwire-master-routing.pdf"
   );
@@ -8671,6 +8676,7 @@ function resetApp() {
   if (isMasterMode()) {
     masterProject = MasterDiagram.createProject();
     masterRoutesOptimized = false;
+    masterGeometryOverrides = {};
     masterUndoHistory.clear();
     dom.pasteTablePanel.hidden = true;
     dom.tablePasteInput.value = "";
@@ -8712,6 +8718,7 @@ function undoLastTableImport() {
     const removedImport = masterProject.imports[masterProject.imports.length - 1];
     masterProject = previousProject;
     masterRoutesOptimized = false;
+    masterGeometryOverrides = {};
     dom.pasteTablePanel.hidden = true;
     renderMasterProject();
     updateUndoTableButton();
@@ -8749,9 +8756,11 @@ function optimizeMasterRoutes() {
     setStatus("Add at least one harness table before optimizing routes.");
     return;
   }
+  masterGeometryOverrides = MasterDiagram.extractGeometryOverrides(drawioSession?.xml || "");
   masterRoutesOptimized = true;
   renderMasterProject();
-  setStatus(`Optimized ${summary.harnessCount} cable route${summary.harnessCount === 1 ? "" : "s"} for shorter paths, fewer bends, and fewer wire crossings.`);
+  const movedCount = Object.keys(masterGeometryOverrides).filter((id) => id.startsWith("board_")).length;
+  setStatus(`Optimized ${summary.harnessCount} cable route${summary.harnessCount === 1 ? "" : "s"} around the current positions of ${movedCount || summary.boardCount} PCB${(movedCount || summary.boardCount) === 1 ? "" : "s"}.`);
 }
 
 function initializeDrawioEditor() {
@@ -8788,7 +8797,7 @@ function postDrawioLoad() {
   }
   drawioSession.frame.postMessage(JSON.stringify({
     action: "load",
-    autosave: 0,
+    autosave: 1,
     title: drawioSession.title,
     xml: drawioSession.xml
   }), drawioSession.origin);
@@ -8830,6 +8839,10 @@ function handleDrawioMessage(event) {
   if (message.event === "save") {
     drawioSession.xml = message.xml || drawioSession.xml;
     requestDrawioPdfExport();
+    return;
+  }
+  if (message.event === "autosave") {
+    drawioSession.xml = message.xml || drawioSession.xml;
     return;
   }
   if (message.event === "export") {
