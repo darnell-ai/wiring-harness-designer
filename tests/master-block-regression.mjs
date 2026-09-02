@@ -216,6 +216,23 @@ const compassXml = Master.buildDrawioXml(compassProject);
 assert.match(compassXml, /fontSize=36;fontStyle=1;labelBackgroundColor=#ffffff/, "master wire labels must render at three times their former 12 px size");
 assert.match(compassXml, /value="J49"[^>]+fontSize=(?:1[89]|2[0-8]);/, "connector labels must expand to the largest fitted size without escaping their connector shape");
 const optimizedCompassXml = Master.buildDrawioXml(compassProject, { optimizeRoutes: true });
+const escCell = compassXml.match(/<mxCell id="([^"]+)" value="ESC"[^>]*>[\s\S]*?<mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"/);
+assert.ok(escCell, "ESC board cell must be available for manual placement testing");
+const movedEscX = Number(escCell[2]) + 173;
+const movedEscY = Number(escCell[3]) - 91;
+const editedCompassXml = compassXml.replace(
+  new RegExp(`(<mxCell id="${escCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry )x="[^"]+" y="[^"]+"`),
+  `$1x="${movedEscX}" y="${movedEscY}"`
+);
+const geometryOverrides = Master.extractGeometryOverrides(editedCompassXml);
+assert.equal(geometryOverrides[escCell[1]].x, movedEscX, "edited Draw.io PCB X position must be captured");
+assert.equal(geometryOverrides[escCell[1]].y, movedEscY, "edited Draw.io PCB Y position must be captured");
+const optimizedMovedCompassXml = Master.buildDrawioXml(compassProject, { optimizeRoutes: true, geometryOverrides });
+assert.match(
+  optimizedMovedCompassXml,
+  new RegExp(`id="${escCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry x="${movedEscX}" y="${movedEscY}"`),
+  "Optimize Routes must preserve the manually moved PCB position"
+);
 const geometry = (name) => {
   const match = compassXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"`));
   assert.ok(match, `${name} board geometry must exist`);
