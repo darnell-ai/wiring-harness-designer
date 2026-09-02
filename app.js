@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.10";
+const APP_VERSION = "2.5.11";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
