@@ -54,6 +54,13 @@
     const compact = compactConnectorName(value);
     return /^(?:POWERPOLE\d*|CPC\d+)$/.test(compact) ? compact : name;
   };
+  const fittedConnectorFontSize = (value, width, height, lineCount = 1, maximum = 30) => {
+    const lines = String(value || "").split(/\r?\n|<br\s*\/?>/i);
+    const longestLine = Math.max(1, ...lines.map((line) => line.replace(/<[^>]*>/g, "").length));
+    const widthLimit = Math.floor((width - 14) / (longestLine * 0.58));
+    const heightLimit = Math.floor((height - 8) / (Math.max(lineCount, lines.length) * 1.15));
+    return Math.max(11, Math.min(maximum, widthLimit, heightLimit));
+  };
   const isFloatingEndpointName = (value) => normalized(value) === "FLOATING";
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
@@ -343,7 +350,7 @@
     };
 
     addVertex("master_title", "DIGIWIRE MASTER WIRE ROUTING", 40, 24, Math.max(780, layout.pageWidth - 80), 42,
-      "text;html=1;strokeColor=none;fillColor=none;fontSize=28;fontStyle=1;fontColor=#111827;align=left;");
+      "text;html=1;strokeColor=none;fillColor=none;fontSize=42;fontStyle=1;fontColor=#111827;align=left;");
     const summary = projectSummary(project);
     addVertex("master_summary", `${summary.boardCount} PCB BOARDS | ${summary.connectorCount} CONNECTORS | ${summary.harnessCount} CABLES | ${summary.wireCount} CONDUCTORS`, 40, 66, Math.max(780, layout.pageWidth - 80), 26,
       "text;html=1;strokeColor=none;fillColor=none;fontSize=12;fontStyle=1;fontColor=#4b5563;align=left;");
@@ -351,7 +358,7 @@
     layout.boards.forEach((item) => {
       const board = item.board;
       addVertex(item.cellId, `${board.name}${board.part ? ` | ${board.part}` : ""}`, item.x, item.y, item.width, item.height,
-        "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=18;fontStyle=1;verticalAlign=top;spacingTop=18;");
+        "rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#f8fafc;strokeColor=#1f4f3a;strokeWidth=3;fontSize=36;fontStyle=1;verticalAlign=top;spacingTop=18;");
       item.ports.forEach((port) => {
         const cpc = isCpcConnector(port.connector);
         const powerPole = isPowerPoleConnector(port.connector);
@@ -360,17 +367,25 @@
           "corner-left-top": "#e0f2fe", "corner-top-right": "#e0f2fe",
           "corner-right-bottom": "#e0f2fe", "corner-bottom-left": "#e0f2fe", center: "#fce7f3"
         }[port.connector.side];
+        const connectorFontSize = fittedConnectorFontSize(
+          port.connector.name,
+          port.width,
+          port.height,
+          cpc || powerPole ? 2 : 1,
+          cpc ? 30 : powerPole ? 24 : 28
+        );
+        const detailFontSize = Math.max(10, Math.floor(connectorFontSize * 0.52));
         const label = cpc
-          ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">16 POS</font>`
+          ? `<b>${port.connector.name}</b><br><font style=\"font-size:${detailFontSize}px\">16 POS</font>`
           : powerPole
-            ? `<b>${port.connector.name}</b><br><font style=\"font-size:9px\">CONNECTOR</font>`
+            ? `<b>${port.connector.name}</b><br><font style=\"font-size:${detailFontSize}px\">CONNECTOR</font>`
             : port.connector.name;
         addVertex(port.cellId, label, port.x, port.y, port.width, port.height,
           cpc
-            ? `ellipse;aspect=fixed;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#0f4c5c;strokeWidth=3;fontSize=12;fontStyle=1;`
+            ? `ellipse;aspect=fixed;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#0f4c5c;strokeWidth=3;fontSize=${connectorFontSize};fontStyle=1;`
             : powerPole
-              ? `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dc2626;gradientColor=#111827;gradientDirection=east;fontColor=#ffffff;strokeColor=#111827;strokeWidth=3;fontSize=11;fontStyle=1;`
-            : `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=11;fontStyle=1;`);
+              ? `rounded=1;arcSize=8;whiteSpace=wrap;html=1;fillColor=#dc2626;gradientColor=#111827;gradientDirection=east;fontColor=#ffffff;strokeColor=#111827;strokeWidth=3;fontSize=${connectorFontSize};fontStyle=1;`
+            : `rounded=1;arcSize=12;whiteSpace=wrap;html=1;fillColor=${sideColor};strokeColor=#374151;strokeWidth=2;fontSize=${connectorFontSize};fontStyle=1;`);
       });
     });
 
@@ -385,7 +400,7 @@
       const label = harnessLabel(item.harness);
       if (item.junction) {
         addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
-          `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=11;fontStyle=1;`);
+          `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=30;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
           cableEdgeStyle(color, route.port), item.branchWaypoints[index]));
       } else if (item.endpointCells.length === 2) {
@@ -427,7 +442,7 @@
   }
 
   function cableEdgeStyle(color, sourcePort, targetPort) {
-    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=12;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=6;${terminalConstraint(sourcePort, "exit")}${terminalConstraint(targetPort, "entry")}`;
+    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=36;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=10;${terminalConstraint(sourcePort, "exit")}${terminalConstraint(targetPort, "entry")}`;
   }
 
   function harnessLabel(harness) {
