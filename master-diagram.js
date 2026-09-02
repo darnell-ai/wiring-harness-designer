@@ -46,11 +46,12 @@
     return (output >>> 0).toString(36);
   };
   const stableId = (prefix, value) => `${prefix}_${slug(value)}_${hash(value)}`;
-  const isCpcConnector = (connector) => /^CPC\s*\d+$/i.test(text(connector?.name));
-  const isPowerPoleConnector = (connector) => /^POWERPOLE\d*$/.test(normalized(connector?.name).replace(/\s+/g, ""));
+  const compactConnectorName = (value) => normalized(value).replace(/\s+/g, "");
+  const isCpcConnector = (connector) => /^CPC\d+$/.test(compactConnectorName(connector?.name));
+  const isPowerPoleConnector = (connector) => /^POWERPOLE\d*$/.test(compactConnectorName(connector?.name));
   const connectorIdentity = (value) => {
     const name = normalized(value);
-    const compact = name.replace(/\s+/g, "");
+    const compact = compactConnectorName(value);
     return /^(?:POWERPOLE\d*|CPC\d+)$/.test(compact) ? compact : name;
   };
   const isFloatingEndpointName = (value) => normalized(value) === "FLOATING";
@@ -121,7 +122,7 @@
       }
       SIDES.forEach(([side, field]) => {
         splitConnectorNames(row[field]).forEach((name) => {
-          const connectorKey = `${side}:${normalized(name)}`;
+          const connectorKey = `${side}:${connectorIdentity(name)}`;
           if (!board.connectors.some((connector) => connector.key === connectorKey)) {
             board.connectors.push({ key: connectorKey, name, side });
           }
