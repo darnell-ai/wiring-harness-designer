@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.14 - 2026-09-02
+
+- Enabled Draw.io autosave tracking for Master Block edits.
+- Preserved manually moved PCB and connector geometry when Optimize Routes rebuilds cable paths.
+- Made the route optimizer use the current edited PCB rectangles as routing obstacles and current connector positions as cable anchors.
+
 ## v2.5.13 - 2026-09-02
 
 - Increased Master Block wire labels from 12 px to 36 px.
