@@ -220,19 +220,40 @@ const escCell = compassXml.match(/<mxCell id="([^"]+)" value="ESC"[^>]*>[\s\S]*?
 assert.ok(escCell, "ESC board cell must be available for manual placement testing");
 const movedEscX = Number(escCell[2]) + 173;
 const movedEscY = Number(escCell[3]) - 91;
-const editedCompassXml = compassXml.replace(
+let editedCompassXml = compassXml.replace(
   new RegExp(`(<mxCell id="${escCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry )x="[^"]+" y="[^"]+"`),
   `$1x="${movedEscX}" y="${movedEscY}"`
+);
+const w306JunctionCell = compassXml.match(/<mxCell id="(cable_W306_[^"]+_junction)" value="W306"[^>]*>[\s\S]*?<mxGeometry x="([^"]+)" y="([^"]+)"/);
+assert.ok(w306JunctionCell, "W306 cable hub must be available for manual placement testing");
+const movedW306JunctionX = Number(w306JunctionCell[2]) + 61;
+const movedW306JunctionY = Number(w306JunctionCell[3]) + 37;
+editedCompassXml = editedCompassXml.replace(
+  new RegExp(`(<mxCell id="${w306JunctionCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry )x="[^"]+" y="[^"]+"`),
+  `$1x="${movedW306JunctionX}" y="${movedW306JunctionY}"`
 );
 const geometryOverrides = Master.extractGeometryOverrides(editedCompassXml);
 assert.equal(geometryOverrides[escCell[1]].x, movedEscX, "edited Draw.io PCB X position must be captured");
 assert.equal(geometryOverrides[escCell[1]].y, movedEscY, "edited Draw.io PCB Y position must be captured");
+assert.equal(geometryOverrides[w306JunctionCell[1]].x, movedW306JunctionX, "edited cable-hub X position must be captured");
+assert.equal(geometryOverrides[w306JunctionCell[1]].y, movedW306JunctionY, "edited cable-hub Y position must be captured");
 const optimizedMovedCompassXml = Master.buildDrawioXml(compassProject, { optimizeRoutes: true, geometryOverrides });
 assert.match(
   optimizedMovedCompassXml,
   new RegExp(`id="${escCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry x="${movedEscX}" y="${movedEscY}"`),
   "Optimize Routes must preserve the manually moved PCB position"
 );
+assert.match(
+  optimizedMovedCompassXml,
+  new RegExp(`id="${w306JunctionCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry x="${movedW306JunctionX}" y="${movedW306JunctionY}"`),
+  "Optimize Routes must preserve the manually positioned cable hub"
+);
+const w306SwitchExitFractions = Array.from(
+  optimizedCompassXml.matchAll(/<mxCell id="cable_W306_[^"]+_branch_[23]"[^>]*style="[^"]*exitX=([^;]+);exitY=1;/g),
+  (match) => Number(match[1])
+);
+assert.equal(w306SwitchExitFractions.length, 2, "both W306 switch branches must render");
+assert.equal(new Set(w306SwitchExitFractions).size, 2, "repeated connector branches must leave on separate parallel tracks");
 const sessionPayload = {
   format: "DIGIWIRE_MASTER_SESSION",
   formatVersion: 1,

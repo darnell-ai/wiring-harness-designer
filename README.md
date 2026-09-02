@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.12**
+Current release: **v2.5.16**
 
-DigiWire 2.5.13 makes Master Block drawings readable at overview scale. Wire labels are three times larger, board names are enlarged, and every connector label automatically uses the largest font that remains confined to its connector shape.
+DigiWire 2.5.16 makes Optimize Routes follow the manually arranged routing strategy in the current session. Moved cable hubs remain fixed, repeated branches leave shared connectors on separate lanes, and the optimizer rebuilds clean parallel corridors around the preserved PCB layout.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 

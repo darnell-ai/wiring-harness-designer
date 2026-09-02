@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.16 - 2026-09-02
+
+- Preserved manually positioned cable-junction labels as routing hubs during optimization.
+- Split repeated branches on the same connector across separate attachment fractions and parallel start tracks.
+- Made optimized routes follow the current session's upper, lower, and fan-out corridor choices while keeping the existing PCB and connector layout.
+- Added regression coverage for moved cable hubs and distinct repeated-connector exit lanes.
+
 ## v2.5.15 - 2026-09-02
 
 - Added a live Master Session Code box with Copy Code and Load Code actions.

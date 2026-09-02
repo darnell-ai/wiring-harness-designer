@@ -71,7 +71,8 @@
       const idMatch = cellMatch[1].match(/\bid="([^"]+)"/i);
       const geometryMatch = cellMatch[2].match(/<mxGeometry\b([^>]*)\/?\s*>/i);
       if (!/\bvertex="1"/i.test(cellMatch[1]) || !idMatch || !geometryMatch ||
-          !/\bas="geometry"/i.test(geometryMatch[1]) || !/^(?:board|port)_/i.test(idMatch[1])) continue;
+          !/\bas="geometry"/i.test(geometryMatch[1]) ||
+          !/^(?:board_|port_|cable_.*_junction$)/i.test(idMatch[1])) continue;
       const attributes = geometryMatch[1];
       const number = (name) => {
         const match = attributes.match(new RegExp(`\\b${name}="(-?(?:\\d+\\.?\\d*|\\.\\d+))"`, "i"));
@@ -438,17 +439,17 @@
       const color = cableColor(item.harness.name);
       const label = harnessLabel(item.harness);
       if (item.junction) {
-        addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, 136, 54,
+        addVertex(item.junction.cellId, item.harness.name, item.junction.x, item.junction.y, item.junction.width, item.junction.height,
           `rounded=1;arcSize=16;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=${color};strokeWidth=3;fontSize=30;fontStyle=1;`);
         item.endpointRoutes.forEach((route, index) => addEdge(`${item.cellId}_branch_${index + 1}`, index === 0 ? label : "", route.cellId, item.junction.cellId,
-          cableEdgeStyle(color, route.port), item.branchWaypoints[index]));
+          cableEdgeStyle(color, route.port, null, route.edgeFraction), item.branchWaypoints[index]));
       } else if (item.endpointCells.length === 2) {
-        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color, item.endpointRoutes[0].port, item.endpointRoutes[1].port), item.waypoints);
+        addEdge(item.cellId, label, item.endpointCells[0], item.endpointCells[1], cableEdgeStyle(color, item.endpointRoutes[0].port, item.endpointRoutes[1].port, item.endpointRoutes[0].edgeFraction, item.endpointRoutes[1].edgeFraction), item.waypoints);
       } else if (item.endpointCells.length === 1) {
         const endpointCell = item.endpointCells[0];
         addVertex(`${item.cellId}_open`, "OPEN END", item.openX, item.openY, 110, 40,
           "rounded=1;whiteSpace=wrap;html=1;fillColor=#f9fafb;strokeColor=#6b7280;strokeWidth=2;dashed=1;fontSize=10;fontStyle=1;");
-        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color, item.endpointRoutes[0].port), item.waypoints);
+        addEdge(item.cellId, label, endpointCell, `${item.cellId}_open`, cableEdgeStyle(color, item.endpointRoutes[0].port, null, item.endpointRoutes[0].edgeFraction), item.waypoints);
       }
     });
 
@@ -468,20 +469,21 @@
 </mxfile>`;
   }
 
-  function terminalConstraint(port, prefix) {
+  function terminalConstraint(port, prefix, fraction = 0.5) {
     if (!port) return "";
     const direction = portDirection(port);
+    const lane = Math.max(0.12, Math.min(0.88, Number(fraction) || 0.5));
     const point = {
-      left: { x: 0, y: 0.5 },
-      right: { x: 1, y: 0.5 },
-      top: { x: 0.5, y: 0 },
-      bottom: { x: 0.5, y: 1 }
+      left: { x: 0, y: lane },
+      right: { x: 1, y: lane },
+      top: { x: lane, y: 0 },
+      bottom: { x: lane, y: 1 }
     }[direction];
     return point ? `${prefix}X=${point.x};${prefix}Y=${point.y};${prefix}Dx=0;${prefix}Dy=0;` : "";
   }
 
-  function cableEdgeStyle(color, sourcePort, targetPort) {
-    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=36;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=10;${terminalConstraint(sourcePort, "exit")}${terminalConstraint(targetPort, "entry")}`;
+  function cableEdgeStyle(color, sourcePort, targetPort, sourceFraction = 0.5, targetFraction = 0.5) {
+    return `edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=18;html=1;strokeColor=${color};strokeWidth=4;startArrow=none;endArrow=none;jumpStyle=arc;jumpSize=12;fontSize=36;fontStyle=1;labelBackgroundColor=#ffffff;labelBorderColor=#d1d5db;spacing=10;${terminalConstraint(sourcePort, "exit", sourceFraction)}${terminalConstraint(targetPort, "entry", targetFraction)}`;
   }
 
   function harnessLabel(harness) {
@@ -504,9 +506,12 @@
     return ["left", "right", "top", "bottom"].find((side) => direction.includes(side)) || "left";
   }
 
-  function portStub(port, distance = 130) {
+  function portStub(port, distance = 130, fraction = 0.5) {
     const point = portCenter(port);
     const direction = portDirection(port);
+    const lane = Math.max(0.12, Math.min(0.88, Number(fraction) || 0.5));
+    if (direction === "left" || direction === "right") point.y = port.y + port.height * lane;
+    if (direction === "top" || direction === "bottom") point.x = port.x + port.width * lane;
     if (direction === "left") point.x -= distance;
     if (direction === "right") point.x += distance;
     if (direction === "top") point.y -= distance;
@@ -689,8 +694,8 @@
   }
 
   function optimizedCableWaypoints(first, second, boards, routedPaths) {
-    const start = portStub(first.port);
-    const end = portStub(second.port);
+    const start = portStub(first.port, 130, first.edgeFraction);
+    const end = portStub(second.port, 130, second.edgeFraction);
     const candidates = [
       keepRouteOutsideBoards([start, { x: end.x, y: start.y }, end], boards),
       keepRouteOutsideBoards([start, { x: start.x, y: end.y }, end], boards)
@@ -700,7 +705,7 @@
   }
 
   function optimizedEndpointWaypoints(route, target, boards, routedPaths) {
-    const start = portStub(route.port);
+    const start = portStub(route.port, 130, route.edgeFraction);
     const candidates = [
       keepRouteOutsideBoards([start, { x: target.x, y: start.y }, target], boards),
       keepRouteOutsideBoards([start, { x: start.x, y: target.y }, target], boards)
@@ -710,8 +715,8 @@
   }
 
   function cableWaypoints(first, second, laneIndex = 0, boards = []) {
-    const firstStub = portStub(first.port);
-    const secondStub = portStub(second.port);
+    const firstStub = portStub(first.port, 130, first.edgeFraction);
+    const secondStub = portStub(second.port, 130, second.edgeFraction);
     const lane = (laneIndex % 8) * 42;
     const horizontal = Math.abs(firstStub.x - secondStub.x) >= Math.abs(firstStub.y - secondStub.y);
     if (horizontal) {
@@ -747,7 +752,7 @@
   }
 
   function routeWaypoints(route, target, laneIndex = 0, boards = []) {
-    const stub = portStub(route.port);
+    const stub = portStub(route.port, 130, route.edgeFraction);
     const lane = (laneIndex % 8) * 36;
     if (Math.abs(stub.x - target.x) >= Math.abs(stub.y - target.y)) {
       const channelX = (stub.x + target.x) / 2 + lane;
@@ -798,8 +803,19 @@
       const cpcDifference = Number(isCpcConnector(right.port.connector)) - Number(isCpcConnector(left.port.connector));
       return cpcDifference || (right.endpoint.rowCount || 0) - (left.endpoint.rowCount || 0);
     })[0];
-    const point = hub ? portStub(hub.port, 185) : { x: fallbackX, y: fallbackY };
-    return { cellId: `${cellId}_junction`, x: Math.round(point.x - 68), y: Math.round(point.y - 27) };
+    const point = hub ? portStub(hub.port, 185, hub.edgeFraction) : { x: fallbackX, y: fallbackY };
+    return { cellId: `${cellId}_junction`, x: Math.round(point.x - 68), y: Math.round(point.y - 27), width: 136, height: 54 };
+  }
+
+  function assignEndpointRouteFractions(routes) {
+    const groups = new Map();
+    routes.forEach((route) => {
+      if (!groups.has(route.cellId)) groups.set(route.cellId, []);
+      groups.get(route.cellId).push(route);
+    });
+    groups.forEach((siblings) => siblings.forEach((route, index) => {
+      route.edgeFraction = siblings.length === 1 ? 0.5 : (index + 1) / (siblings.length + 1);
+    }));
   }
 
   function layoutGraph(graph, options = {}) {
@@ -878,12 +894,20 @@
         floatingCaps.push(floating.cap);
         endpointRoutes.push(floating.route);
       });
+      assignEndpointRouteFractions(endpointRoutes);
       const endpointCells = endpointRoutes.map((route) => route.cellId);
       const connectedPoints = endpointRoutes.map((route) => portCenter(route.port));
       const averageX = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.x, 0) / connectedPoints.length : externalStartX - 180;
       const averageY = connectedPoints.length ? connectedPoints.reduce((sum, point) => sum + point.y, 0) / connectedPoints.length : externalY;
       const cellId = stableId("cable", harness.key);
       const junction = endpointCells.length > 2 ? branchJunction(endpointRoutes, cellId, averageX, averageY) : null;
+      const junctionGeometry = junction ? geometryOverrides[junction.cellId] : null;
+      if (junctionGeometry) {
+        junction.x = junctionGeometry.x;
+        junction.y = junctionGeometry.y;
+        if (Number.isFinite(junctionGeometry.width) && junctionGeometry.width > 0) junction.width = junctionGeometry.width;
+        if (Number.isFinite(junctionGeometry.height) && junctionGeometry.height > 0) junction.height = junctionGeometry.height;
+      }
       let waypoints = endpointRoutes.length === 2
         ? endpointRoutes.some((route) => route.floating)
           ? [portStub(endpointRoutes.find((route) => !route.floating)?.port || endpointRoutes[0].port, 70)]
@@ -896,7 +920,7 @@
             : routeWaypoints(endpointRoutes[0], { x: averageX + 235, y: averageY }, harnessIndex, boards)
           : [];
       if (waypoints.length > 1) routedPaths.push(waypoints);
-      const junctionTarget = junction ? { x: junction.x + 68, y: junction.y + 27 } : null;
+      const junctionTarget = junction ? { x: junction.x + junction.width / 2, y: junction.y + junction.height / 2 } : null;
       const branchWaypoints = junction ? endpointRoutes.map((route, index) => {
         const points = options.optimizeRoutes
           ? optimizedEndpointWaypoints(route, junctionTarget, boards, routedPaths)
