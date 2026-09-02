@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.14";
+const APP_VERSION = "2.5.15";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -305,6 +305,10 @@ const dom = {
   addSheetButton: document.querySelector("#addSheetButton"),
   sheetFileInput: document.querySelector("#sheetFileInput"),
   masterProjectBadge: document.querySelector("#masterProjectBadge"),
+  masterSessionPanel: document.querySelector("#masterSessionPanel"),
+  masterSessionCode: document.querySelector("#masterSessionCode"),
+  copyMasterSessionButton: document.querySelector("#copyMasterSessionButton"),
+  loadMasterSessionButton: document.querySelector("#loadMasterSessionButton"),
   tablePasteLabel: document.querySelector("#tablePasteLabel"),
   configureButton: document.querySelector("#configureButton"),
   undoTableButton: document.querySelector("#undoTableButton"),
@@ -373,6 +377,7 @@ let drawingMode = "harness";
 let masterProject = MasterDiagram.createProject();
 let masterRoutesOptimized = false;
 let masterGeometryOverrides = {};
+let masterSessionCodeTimer = null;
 const masterUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 const harnessUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 
@@ -414,6 +419,11 @@ function init() {
   dom.configureButton.addEventListener("click", toggleDesignerPanel);
   dom.undoTableButton.addEventListener("click", undoLastTableImport);
   dom.optimizeRoutesButton.addEventListener("click", optimizeMasterRoutes);
+  dom.copyMasterSessionButton.addEventListener("click", () => void copyMasterSessionCode());
+  dom.loadMasterSessionButton.addEventListener("click", restoreMasterSessionCode);
+  dom.masterSessionCode.addEventListener("paste", () => {
+    setTimeout(restoreMasterSessionCode, 0);
+  });
   dom.closeDesignerButton.addEventListener("click", closeDesignerPanel);
   dom.applyDesignerButton.addEventListener("click", applyDesignerConfiguration);
   dom.resetDesignerButton.addEventListener("click", resetDesignerConfiguration);
@@ -472,6 +482,77 @@ function cloneMasterProject(project) {
   return JSON.parse(JSON.stringify(project || MasterDiagram.createProject()));
 }
 
+function buildMasterSessionCode() {
+  const xml = drawioSession?.xml || MasterDiagram.buildDrawioXml(masterProject, {
+    optimizeRoutes: masterRoutesOptimized,
+    geometryOverrides: masterGeometryOverrides
+  });
+  const liveGeometry = MasterDiagram.extractGeometryOverrides(xml);
+  if (Object.keys(liveGeometry).length) masterGeometryOverrides = liveGeometry;
+  return MasterDiagram.encodeSessionCode({
+    format: "DIGIWIRE_MASTER_SESSION",
+    formatVersion: 1,
+    appVersion: APP_VERSION,
+    project: masterProject,
+    routesOptimized: masterRoutesOptimized,
+    geometryOverrides: masterGeometryOverrides,
+    drawioXml: xml
+  });
+}
+
+function updateMasterSessionCode() {
+  if (!dom.masterSessionCode || !isMasterMode()) return;
+  const code = buildMasterSessionCode();
+  if (dom.masterSessionCode.value !== code) dom.masterSessionCode.value = code;
+}
+
+function scheduleMasterSessionCodeUpdate() {
+  clearTimeout(masterSessionCodeTimer);
+  masterSessionCodeTimer = setTimeout(updateMasterSessionCode, 100);
+}
+
+async function copyMasterSessionCode() {
+  updateMasterSessionCode();
+  const code = dom.masterSessionCode.value;
+  try {
+    await navigator.clipboard.writeText(code);
+  } catch {
+    dom.masterSessionCode.focus();
+    dom.masterSessionCode.select();
+    document.execCommand("copy");
+  }
+  setStatus("Copied the complete Master Session Code. Save it anywhere and paste it back here later.");
+}
+
+function restoreMasterSessionCode() {
+  const code = dom.masterSessionCode.value.trim();
+  if (!code) {
+    setStatus("Paste a Master Session Code into the box first.");
+    return;
+  }
+  try {
+    const saved = MasterDiagram.decodeSessionCode(code);
+    if (saved?.format !== "DIGIWIRE_MASTER_SESSION" || !saved.project) throw new Error("The code does not contain a DIGIWIRE master project.");
+    masterProject = cloneMasterProject(saved.project);
+    masterRoutesOptimized = Boolean(saved.routesOptimized);
+    masterGeometryOverrides = saved.geometryOverrides && typeof saved.geometryOverrides === "object"
+      ? saved.geometryOverrides
+      : MasterDiagram.extractGeometryOverrides(saved.drawioXml || "");
+    masterUndoHistory.clear();
+    renderMasterProject();
+    if (saved.drawioXml) {
+      queueDrawioDiagram(saved.drawioXml, "digiwire-master-routing.drawio", "digiwire-master-routing.pdf");
+    }
+    updateUndoTableButton();
+    updateMasterSessionCode();
+    const summary = MasterDiagram.projectSummary(masterProject);
+    setStatus(`Restored the saved session exactly: ${summary.boardCount} PCB${summary.boardCount === 1 ? "" : "s"}, ${summary.connectorCount} connectors, and ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
+  } catch (error) {
+    console.error("Session code restore failed", error);
+    setStatus(error?.message || "That Master Session Code could not be restored.");
+  }
+}
+
 function currentUndoHistory() {
   return isMasterMode() ? masterUndoHistory : harnessUndoHistory;
 }
@@ -487,6 +568,7 @@ function setDrawingMode(mode) {
   dom.configureButton.hidden = master;
   dom.optimizeRoutesButton.hidden = !master;
   dom.masterProjectBadge.hidden = !master;
+  dom.masterSessionPanel.hidden = !master;
   dom.tablePasteLabel.textContent = master
     ? "Paste a board placement table or harness table (each paste is added to this project)"
     : "Paste Excel / Sheets rows here";
@@ -498,6 +580,7 @@ function setDrawingMode(mode) {
   updateUndoTableButton();
   if (master) {
     renderMasterProject();
+    updateMasterSessionCode();
     setStatus("Master Block mode is ready. Add board placement sheets and harness sheets; every import joins the same project.");
   } else if (appState.result) {
     renderDrawioDiagram(appState.result);
@@ -734,6 +817,7 @@ function renderMasterProject() {
     "digiwire-master-routing.drawio",
     "digiwire-master-routing.pdf"
   );
+  updateMasterSessionCode();
 }
 
 function applyHarnessSheet(sheet, sourceName) {
@@ -8843,6 +8927,7 @@ function handleDrawioMessage(event) {
   }
   if (message.event === "autosave") {
     drawioSession.xml = message.xml || drawioSession.xml;
+    if (isMasterMode()) scheduleMasterSessionCodeUpdate();
     return;
   }
   if (message.event === "export") {
