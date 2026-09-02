@@ -156,6 +156,11 @@ const cpcBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "POWER-POLE-UNQUALIFIED\t1\tPOWERPOLE\tPWR\t1\t1\tLB J2\tPWR\t1"
 ].join("\n")));
 Master.addSheet(compassProject, cpcBranchHarness, "CPC branches.tsv");
+const spacedCpcHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
+  "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
+  "W306\t1\tCPC 3\tSwitch G\t1\t1\tHB J1\tSwitch G\t2"
+].join("\n")));
+Master.addSheet(compassProject, spacedCpcHarness, "W306 spaced CPC.tsv");
 const cpcMultiBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
   "CPC1-MULTI\t1\tBATTERY CPC1\tSIG 1\t1\t1\tHB J7\tSIG 1\t1",
@@ -170,6 +175,11 @@ const cpc1Matches = branchGraph.harnesses
 assert.equal(cpc1Matches.length, 3);
 assert.ok(cpc1Matches.every((connector) => connector.key === cpc1Matches[0].key), "multiple cables must branch from the same CPC1 connector instead of duplicating it");
 assert.equal(cpc1Matches[0].boardName, "BATTERY BOARD");
+const spacedCpc = branchGraph.harnesses.find((harness) => harness.name === "W306");
+const spacedCpcEndpoint = spacedCpc.endpoints.find((endpoint) => endpoint.side === "left");
+assert.equal(spacedCpcEndpoint.match.connector?.name, "CPC3", "CPC 3 must resolve to the existing CPC3 board connector");
+assert.equal(spacedCpcEndpoint.match.connector?.boardName, "BATTERY BOARD");
+assert.ok(!branchGraph.diagnostics.some((item) => item.message.includes("W306") && item.message.includes("CPC 3")), "spacing in a CPC name must not create an unmatched external endpoint");
 const centerEsc = branchGraph.harnesses.find((harness) => harness.name === "CENTER-ESC");
 assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.name, "ESC SH", "ESC SH must match the full center connector name instead of stripping the ESC board prefix twice");
 assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.side, "center");
