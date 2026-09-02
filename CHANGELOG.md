@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.5.15 - 2026-09-02
+
+- Added a live Master Session Code box with Copy Code and Load Code actions.
+- Updated the code after every master table import and Draw.io autosave event.
+- Stored the cumulative master project, optimized state, geometry overrides, and exact Draw.io XML so positions, routes, colors, labels, and manual edits restore together.
+- Added URL-safe session-code round-trip regression coverage.
+
 ## v2.5.14 - 2026-09-02
 
 - Enabled Draw.io autosave tracking for Master Block edits.
