@@ -117,6 +117,12 @@ assert.deepEqual(
   { "BATTERY BOARD": "middle", HB: "top", LB: "left", SENS: "right", ESC: "bottom" }
 );
 const compassProject = Master.createProject();
+const cpcAliasBoard = Master.extractBoards([{
+  pcbName: "CPC ALIAS BOARD",
+  pcbTop: "CPC3, CPC 3, CPC-3"
+}])[0];
+assert.equal(cpcAliasBoard.connectors.length, 1, "CPC spacing and punctuation aliases must not duplicate a board connector");
+assert.equal(cpcAliasBoard.connectors[0].name, "CPC3");
 Master.addSheet(compassProject, fullPlacement, "compass boards.tsv");
 const missingSensJ1Harness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #\tLength inches",
@@ -158,7 +164,13 @@ const cpcBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
 Master.addSheet(compassProject, cpcBranchHarness, "CPC branches.tsv");
 const spacedCpcHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
   "Cable Name\tLeft Leg\tLeft Leg Name\tWire Name\tLeft Pin Pos #\tRight Leg\tRight Leg Name\tWire Name\tRight Pin Pos #",
-  "W306\t1\tCPC 3\tSwitch G\t1\t1\tHB J1\tSwitch G\t2"
+  "W306\t1\tCPC 3\tSwitch G\t1\t1\tHB switch\tSwitch G\t2",
+  "\t1\tCPC 3\tCam G\t5\t2\tHB switch\tCam G\t2",
+  "\t1\tCPC 3\tESC GND\t9\t3\tFLOATING\tESC GND\t",
+  "\t1\tCPC 3\tACT PWR\t10\t7\tESC J13\tACT PWR\t3",
+  "\t1\tCPC 3\tACT Tx\t11\t4\tLB J12\tACT Tx\t4",
+  "\t1\tCPC 3\tDVL PWR\t13\t5\tSENS J5\tDVL PWR\t7",
+  "\t1\tCPC 3\tENET PWR\t15\t6\tLB J2\tENET PWR\t1"
 ].join("\n")));
 Master.addSheet(compassProject, spacedCpcHarness, "W306 spaced CPC.tsv");
 const cpcMultiBranchHarness = parser.normalizeSheetMatrix(parser.parseDelimitedText([
@@ -180,6 +192,8 @@ const spacedCpcEndpoint = spacedCpc.endpoints.find((endpoint) => endpoint.side =
 assert.equal(spacedCpcEndpoint.match.connector?.name, "CPC3", "CPC 3 must resolve to the existing CPC3 board connector");
 assert.equal(spacedCpcEndpoint.match.connector?.boardName, "BATTERY BOARD");
 assert.ok(!branchGraph.diagnostics.some((item) => item.message.includes("W306") && item.message.includes("CPC 3")), "spacing in a CPC name must not create an unmatched external endpoint");
+assert.equal(spacedCpc.endpoints.find((endpoint) => endpoint.name === "FLOATING")?.match.floating, true, "the W306 floating ESC ground must remain intentionally unterminated");
+assert.ok(!branchGraph.diagnostics.some((item) => item.message.includes("W306")), "the submitted W306 endpoint pattern must resolve without unmatched connector warnings");
 const centerEsc = branchGraph.harnesses.find((harness) => harness.name === "CENTER-ESC");
 assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.name, "ESC SH", "ESC SH must match the full center connector name instead of stripping the ESC board prefix twice");
 assert.equal(centerEsc.endpoints.find((endpoint) => endpoint.side === "right").match.connector.side, "center");
