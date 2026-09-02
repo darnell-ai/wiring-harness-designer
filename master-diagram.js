@@ -51,7 +51,7 @@
   const connectorIdentity = (value) => {
     const name = normalized(value);
     const compact = name.replace(/\s+/g, "");
-    return /^POWERPOLE\d*$/.test(compact) ? compact : name;
+    return /^(?:POWERPOLE\d*|CPC\d+)$/.test(compact) ? compact : name;
   };
   const isFloatingEndpointName = (value) => normalized(value) === "FLOATING";
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
