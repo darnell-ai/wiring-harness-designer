@@ -233,6 +233,17 @@ assert.match(
   new RegExp(`id="${escCell[1]}"[^>]*>[\\s\\S]*?<mxGeometry x="${movedEscX}" y="${movedEscY}"`),
   "Optimize Routes must preserve the manually moved PCB position"
 );
+const sessionPayload = {
+  format: "DIGIWIRE_MASTER_SESSION",
+  formatVersion: 1,
+  project: compassProject,
+  geometryOverrides,
+  drawioXml: editedCompassXml,
+  note: "Exact colors + moved PCB ✓"
+};
+const sessionCode = Master.encodeSessionCode(sessionPayload);
+assert.match(sessionCode, /^DWMS1\.[A-Za-z0-9_-]+$/, "session code must be one copyable URL-safe string");
+assert.deepEqual(Master.decodeSessionCode(sessionCode), sessionPayload, "session code must restore project, geometry, XML, colors, and Unicode text exactly");
 const geometry = (name) => {
   const match = compassXml.match(new RegExp(`value="${name}"[^>]*><mxGeometry x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)"`));
   assert.ok(match, `${name} board geometry must exist`);
