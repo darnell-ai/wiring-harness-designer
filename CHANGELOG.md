@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.13 - 2026-09-02
+
+- Increased Master Block wire labels from 12 px to 36 px.
+- Added fitted connector typography that selects the largest label size that remains inside each connector shape.
+- Enlarged board names and cable-junction labels while preserving the established board and route layout.
+
 ## v2.5.12 - 2026-09-02
 
 - Normalized CPC names in connector matching, circular-connector recognition, and board-placement deduplication.
