@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.5.11 - 2026-09-02
+
+- Normalized spaces and punctuation in CPC connector identities so names such as `CPC3`, `CPC 3`, and `CPC-3` resolve to the same board connector.
+- Added W306 regression coverage to prevent spaced CPC names from creating unmatched external endpoints in Master Block mode.
+
 ## v2.5.10 - 2026-09-01
 
 - Arranged up to four vertically routed CENTER connectors in one evenly spaced row.
