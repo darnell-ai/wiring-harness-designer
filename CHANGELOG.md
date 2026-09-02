@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.12 - 2026-09-02
+
+- Normalized CPC names in connector matching, circular-connector recognition, and board-placement deduplication.
+- Expanded W306 regression coverage to its actual HB switch, floating lead, ESC, LB, and SENS endpoint pattern.
+- Added coverage proving `CPC3`, `CPC 3`, and `CPC-3` create one 16-position CPC connector.
+
 ## v2.5.11 - 2026-09-02
 
 - Normalized spaces and punctuation in CPC connector identities so names such as `CPC3`, `CPC 3`, and `CPC-3` resolve to the same board connector.
