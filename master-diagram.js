@@ -62,6 +62,26 @@
     return Math.max(11, Math.min(maximum, widthLimit, heightLimit));
   };
   const isFloatingEndpointName = (value) => normalized(value) === "FLOATING";
+
+  function extractGeometryOverrides(xml) {
+    const overrides = {};
+    const cellPattern = /<mxCell\b([^>]*)>([\s\S]*?)<\/mxCell>/gi;
+    let cellMatch;
+    while ((cellMatch = cellPattern.exec(String(xml || "")))) {
+      const idMatch = cellMatch[1].match(/\bid="([^"]+)"/i);
+      const geometryMatch = cellMatch[2].match(/<mxGeometry\b([^>]*)\/?\s*>/i);
+      if (!/\bvertex="1"/i.test(cellMatch[1]) || !idMatch || !geometryMatch ||
+          !/\bas="geometry"/i.test(geometryMatch[1]) || !/^(?:board|port)_/i.test(idMatch[1])) continue;
+      const attributes = geometryMatch[1];
+      const number = (name) => {
+        const match = attributes.match(new RegExp(`\\b${name}="(-?(?:\\d+\\.?\\d*|\\.\\d+))"`, "i"));
+        return match ? Number(match[1]) : NaN;
+      };
+      const geometry = { x: number("x"), y: number("y"), width: number("width"), height: number("height") };
+      if (Number.isFinite(geometry.x) && Number.isFinite(geometry.y)) overrides[idMatch[1]] = geometry;
+    }
+    return overrides;
+  }
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
     const key = normalized(value);
@@ -767,6 +787,25 @@
     const boards = graph.boards.some((board) => board.arrangement)
       ? layoutBoardsByCompass(graph.boards)
       : layoutBoardsByTopology(graph);
+    const geometryOverrides = options.geometryOverrides || {};
+    boards.forEach((item) => {
+      const boardGeometry = geometryOverrides[item.cellId];
+      if (boardGeometry) {
+        item.x = boardGeometry.x;
+        item.y = boardGeometry.y;
+        if (Number.isFinite(boardGeometry.width) && boardGeometry.width > 0) item.width = boardGeometry.width;
+        if (Number.isFinite(boardGeometry.height) && boardGeometry.height > 0) item.height = boardGeometry.height;
+      }
+      item.ports = layoutBoardPorts(item);
+      item.ports.forEach((port) => {
+        const portGeometry = geometryOverrides[port.cellId];
+        if (!portGeometry) return;
+        port.x = portGeometry.x;
+        port.y = portGeometry.y;
+        if (Number.isFinite(portGeometry.width) && portGeometry.width > 0) port.width = portGeometry.width;
+        if (Number.isFinite(portGeometry.height) && portGeometry.height > 0) port.height = portGeometry.height;
+      });
+    });
     let pageHeight = Math.max(800, ...boards.map((item) => item.y + item.height + 120));
     let currentX = Math.max(120, ...boards.map((item) => item.x + item.width + 220));
     const boardByKey = new Map(boards.map((item) => [item.board.key, item]));
@@ -1055,6 +1094,7 @@
     extractHarnesses,
     resolveProject,
     projectSummary,
+    extractGeometryOverrides,
     buildDrawioXml
   });
 });
