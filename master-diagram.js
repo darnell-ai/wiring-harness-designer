@@ -82,6 +82,25 @@
     }
     return overrides;
   }
+
+  function encodeSessionCode(value) {
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    let binary = "";
+    for (let index = 0; index < bytes.length; index += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
+    }
+    return `DWMS1.${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
+  }
+
+  function decodeSessionCode(code) {
+    const source = String(code || "").trim().replace(/\s+/g, "");
+    if (!source.startsWith("DWMS1.")) throw new Error("This is not a DIGIWIRE Master Session Code.");
+    const encoded = source.slice(6).replace(/-/g, "+").replace(/_/g, "/");
+    const padded = encoded + "=".repeat((4 - encoded.length % 4) % 4);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  }
   const firstFilled = (rows, key) => rows.map((row) => text(row[key])).find(Boolean) || "";
   const normalizeBoardArrangement = (value) => {
     const key = normalized(value);
@@ -1095,6 +1114,8 @@
     resolveProject,
     projectSummary,
     extractGeometryOverrides,
+    encodeSessionCode,
+    decodeSessionCode,
     buildDrawioXml
   });
 });
