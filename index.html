@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v2.5.14</title>
-    <link rel="stylesheet" href="styles.css?v=2.5.14">
+    <title>DIGIWIRE v2.5.15</title>
+    <link rel="stylesheet" href="styles.css?v=2.5.15">
   </head>
   <body>
     <main class="app-shell">
@@ -67,6 +67,18 @@
           </div>
 
           <input id="sheetFileInput" class="hidden-input" type="file" multiple accept=".xlsx,.xls,.csv,.tsv,text/csv,text/tab-separated-values">
+
+          <section id="masterSessionPanel" class="master-session-panel" hidden>
+            <div class="master-session-copy">
+              <label for="masterSessionCode">Master Session Code</label>
+              <span>Updates live after tables, moves, route changes, colors, and other Draw.io edits.</span>
+            </div>
+            <textarea id="masterSessionCode" rows="3" spellcheck="false" autocomplete="off" placeholder="Your restorable session code appears here. Paste a saved code here to restore it."></textarea>
+            <div class="master-session-actions">
+              <button id="copyMasterSessionButton" type="button"><span class="icon">CPY</span><span>Copy code</span></button>
+              <button id="loadMasterSessionButton" type="button"><span class="icon">LOD</span><span>Load code</span></button>
+            </div>
+          </section>
 
           <section id="pasteTablePanel" class="paste-table-panel pane-paste-panel" hidden>
             <label id="tablePasteLabel" for="tablePasteInput">Paste Excel / Sheets rows here</label>
@@ -155,8 +167,8 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="harness-core.js?v=2.5.14" defer></script>
-    <script src="master-diagram.js?v=2.5.14" defer></script>
-    <script src="app.js?v=2.5.14" defer></script>
+    <script src="harness-core.js?v=2.5.15" defer></script>
+    <script src="master-diagram.js?v=2.5.15" defer></script>
+    <script src="app.js?v=2.5.15" defer></script>
   </body>
 </html>
