@@ -53,6 +53,13 @@
       text.includes("SINGLE POSITION") ||
       text.includes("SINGLE-POSITION");
   };
+  const allowsMultipleConductorsPerPin = (rows, side) => {
+    const text = endpointText(rows, side);
+    return text.includes("POWERPOLE") ||
+      text.includes("POWER POLE") ||
+      text.includes("ANDERSON") ||
+      /\b(?:2243|2403)-13(?:27|30)/.test(text);
+  };
   const declaredPositionCount = (rows, side) => {
     const prefix = side === "left" ? "left" : "right";
     const counts = [];
@@ -94,6 +101,7 @@
       const activeRows = endpointRows.filter((row) => !isDnpRow(row));
       const usedPins = Array.from(new Set(activeRows.map((row) => String(row[`${prefix}PinPos`] || "").trim()).filter(Boolean)));
       const singlePosition = isSinglePositionTermination(activeRows.length ? activeRows : endpointRows, side);
+      const multipleConductorsPerPin = allowsMultipleConductorsPerPin(activeRows.length ? activeRows : endpointRows, side);
       const declared = declaredPositionCount(endpointRows, side);
       const capacityRows = declared
         ? endpointRows.filter((row) => {
@@ -119,6 +127,7 @@
         housingPart: String(endpointRows.find((row) => meaningful(row[`${prefix}HousingPart`]))?.[`${prefix}HousingPart`] || "").trim(),
         pinPart: String(endpointRows.find((row) => meaningful(row[`${prefix}PinPart`]))?.[`${prefix}PinPart`] || "").trim(),
         termination: singlePosition ? "single-position" : "connector",
+        multipleConductorsPerPin,
         positionCount,
         usedPins,
         unusedPins,
@@ -151,7 +160,9 @@
           seen.set(pin, (seen.get(pin) || 0) + 1);
         });
         for (const [pin, count] of seen) {
-          if (count > 1) add("error", "DUPLICATE_PIN", `${side.toUpperCase()} ${endpoint.name || endpoint.id} pin ${pin} is assigned to ${count} active wires.`);
+          if (count > 1 && !endpoint.multipleConductorsPerPin) {
+            add("error", "DUPLICATE_PIN", `${side.toUpperCase()} ${endpoint.name || endpoint.id} pin ${pin} is assigned to ${count} active wires.`);
+          }
         }
         if (endpoint.usedPins.some((pin) => numericPin(pin) > endpoint.positionCount)) {
           add("error", "PIN_EXCEEDS_CAPACITY", `${side.toUpperCase()} ${endpoint.name || endpoint.id} uses a pin beyond its ${endpoint.positionCount}-position capacity.`);
@@ -245,6 +256,7 @@
     isDnpRow,
     endpointKey,
     isSinglePositionTermination,
+    allowsMultipleConductorsPerPin,
     declaredPositionCount,
     buildEndpointRecords,
     validateRows,

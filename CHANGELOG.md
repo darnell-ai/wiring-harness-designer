@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.17 - 2026-10-16
+
+- Allowed multiple conductors to terminate in one Anderson Powerpole contact without producing a false duplicate-pin error.
+- Kept duplicate-pin validation active for ordinary connector families.
+- Added a W325 regression fixture covering four single-contact Powerpoles with two conductors per contact and eight pins at the circular connector.
+
 ## v2.5.16 - 2026-09-02
 
 - Preserved manually positioned cable-junction labels as routing hubs during optimization.

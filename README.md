@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.16**
+Current release: **v2.5.17**
 
-DigiWire 2.5.16 makes Optimize Routes follow the manually arranged routing strategy in the current session. Moved cable hubs remain fixed, repeated branches leave shared connectors on separate lanes, and the optimizer rebuilds clean parallel corridors around the preserved PCB layout.
+DigiWire 2.5.17 supports multiple conductors terminated in one Anderson Powerpole contact without reporting a false duplicate-pin error. Duplicate pin assignments on ordinary connectors remain validation errors.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -89,6 +89,7 @@ DIGIWIRE draws valid pairs as crossing, intertwined conductors in both the previ
 - Keeps pin-defined placeholder rows drawable even when wire names and manufacturing details are still blank; a blank 16-position pin-to-pin template produces 16 editable conductors ready for design work.
 - Treats `Not in use` (along with DNP/no-wire equivalents) as a physical connector-position placeholder: the cavity remains in the connector face and position count, but no conductor, terminal, right-side leg, or contact is generated.
 - Treats `DNP` in either `Left Leg Name` or `Right Leg Name` as a no-wire row, so placeholder rows never inflate routed-conductor totals or create gray wires.
+- Allows two or more submitted conductors to share one Anderson `POWER POLE` pin/contact while retaining duplicate-pin protection for ordinary connectors.
 - Accepts `Pin Pos`, `Pin Position`, `Pin Position Number`, and equivalent left/right header variants without losing pin assignments.
 - Uses the `Color` column for the rendered conductor; a recognized right-side RJ45 wire name is only a fallback when the physical color is blank.
 - Draws complete eight-pin color mappings as a standard T568B 8P8C face and omits redundant `TWISTED PAIR` text while preserving the intertwined geometry.

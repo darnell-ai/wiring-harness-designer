@@ -38,6 +38,16 @@ assert.equal(w300.sheet.diagnostics.filter((item) => item.severity === "error").
 assert.match(api.buildSheetHarnessSvg(w300.result), /W300/);
 assert.match(api.buildSheetDrawioXml(w300.result), /BATT J49|SENS J1/);
 
+const w325 = loadFixture("W325.csv");
+const w325Active = w325.sheet.objects.filter((row) => !core.isDnpRow(row));
+const w325Left = core.buildEndpointRecords(w325.sheet.objects, "left").filter((endpoint) => endpoint.activeRows.length);
+assert.equal(w325Active.length, 8, "W325 must render its eight active conductors");
+assert.equal(w325Left.length, 4, "W325 must group its four Anderson Powerpole contacts by leg");
+assert.ok(w325Left.every((endpoint) => endpoint.multipleConductorsPerPin), "each W325 Powerpole must accept its submitted two-conductor termination");
+assert.equal(w325.sheet.diagnostics.filter((item) => item.code === "DUPLICATE_PIN").length, 0, "two conductors in one Powerpole contact must not be reported as an accidental duplicate pin");
+assert.equal(w325.sheet.diagnostics.filter((item) => item.severity === "error").length, 0);
+assert.match(api.buildSheetDrawioXml(w325.result), /W325/);
+
 const w320 = loadFixture("W320.csv");
 assert.equal(w320.sheet.objects.filter((row) => !core.isDnpRow(row)).length, 4);
 assert.deepEqual(Array.from(core.buildEndpointRecords(w320.sheet.objects, "left")[0].unusedPins), ["1", "2", "3", "4", "5", "6", "7", "12", "13"]);
@@ -179,4 +189,4 @@ assert.deepEqual(
   [["a", "b"]]
 );
 
-console.log("Harness matrix regression passed: BOTBLOX, W126, W127, W300, W320, DNP filtering, part profiles, malformed imports, endpoints, and collision checks.");
+console.log("Harness matrix regression passed: BOTBLOX, W126, W127, W300, W320, W325, DNP filtering, part profiles, malformed imports, endpoints, and collision checks.");
