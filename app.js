@@ -1077,9 +1077,11 @@ function designerConfigForSheet(sheet) {
   const config = defaultDesignerConfig();
   ["left", "right"].forEach((side) => {
     const prefix = side === "left" ? "left" : "right";
-    const pins = sheet.objects.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
-    const declaredPositions = inferKiCadDeclaredPositionCount(sheet.objects, side);
-    config[side].positions = declaredPositions || (pins.length ? Math.max(...pins) : 2);
+    const endpoints = HarnessCore.buildEndpointRecords(sheet.objects, side).filter((endpoint) => endpoint.activeRows.length);
+    const activeRows = sheet.objects.filter((row) => !isNoWireRow(row));
+    const pins = activeRows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
+    const declaredPositions = inferKiCadDeclaredPositionCount(activeRows, side);
+    config[side].positions = Math.max(0, ...endpoints.map((endpoint) => endpoint.positionCount)) || declaredPositions || (pins.length ? Math.max(...pins) : 2);
   });
   return config;
 }

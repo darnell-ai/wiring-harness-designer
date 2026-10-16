@@ -14,7 +14,7 @@ for (const name of ["harness-core.js", "master-diagram.js", "connector-visuals.j
   vm.runInContext(fs.readFileSync(path.join(root, name), "utf8"), context, { filename: name });
 }
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
-source += "\nglobalThis.visualTest = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildSheetDrawioXml, buildSheetHarnessSvg, CONNECTOR_EDITOR_LIBRARY };";
+source += "\nglobalThis.visualTest = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildSheetDrawioXml, buildSheetHarnessSvg, designerConfigForSheet, CONNECTOR_EDITOR_LIBRARY };";
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.visualTest;
 
@@ -46,6 +46,8 @@ for (let count = 1; count <= 64; count++) {
 const fixture = fs.readFileSync(path.join(root, "tests", "fixtures", "W325.csv"), "utf8");
 const sheet = api.normalizeSheetMatrix(api.parseDelimitedText(fixture));
 const result = api.compileSheetHarnessResult(sheet, "W325.csv");
+assert.equal(api.designerConfigForSheet(sheet).left.positions, 1, "DNP template rows must not inflate a single-pole Powerpole control");
+assert.equal(api.designerConfigForSheet(sheet).right.positions, 10);
 const xml = api.buildSheetDrawioXml(result);
 const cell = (id) => xml.match(new RegExp(`<mxCell id="${id}"[\\s\\S]*?<\\/mxCell>`))?.[0] || "";
 for (let index = 1; index <= 8; index++) {
