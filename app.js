@@ -930,6 +930,8 @@ async function loadSheetFiles(files) {
     } else if (isMasterMode()) {
       const summary = MasterDiagram.projectSummary(masterProject);
       setStatus(`Added ${imported} sheet${imported === 1 ? "" : "s"}. Master project now has ${summary.boardCount} board${summary.boardCount === 1 ? "" : "s"} and ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
+    } else {
+      setStatus(`Loaded ${appState.sheet?.objects?.length || 0} harness rows from ${appState.sourceName || "your file"}. Ready to edit or save your project.`);
     }
   } catch (error) {
     console.error(error);
