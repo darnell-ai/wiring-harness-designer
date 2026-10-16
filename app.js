@@ -1,6 +1,6 @@
 "use strict";
 
-const APP_VERSION = "2.5.17";
+const APP_VERSION = "2.5.18";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -2810,6 +2810,68 @@ function sheetRouteLayout(rows, {
   }));
 }
 
+function isPowerpoleSheetEndpointGroup(group, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const text = normalizeText([
+    group.title,
+    ...(group.details || []),
+    ...(group.rows || []).flatMap((row) => [
+      row[`${prefix}LegName`],
+      row[`${prefix}HousingType`],
+      row[`${prefix}HousingPart`]
+    ])
+  ].join(" "));
+  return text.includes("POWERPOLE") ||
+    text.includes("POWER POLE") ||
+    text.includes("ANDERSON") ||
+    /\b(?:2243|2403) 13(?:27|30)/.test(text);
+}
+
+function sheetSharedPowerpoleTerminations(groups, routes, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const sharedByRouteIndex = new Map();
+  groups.filter((group) => isPowerpoleSheetEndpointGroup(group, side)).forEach((group) => {
+    const membersByPin = new Map();
+    group.rowIndexes.forEach((rowIndex, memberIndex) => {
+      const pin = String(group.rows[memberIndex]?.[`${prefix}PinPos`] || "").trim();
+      if (!pin) return;
+      if (!membersByPin.has(pin)) membersByPin.set(pin, []);
+      membersByPin.get(pin).push(rowIndex);
+    });
+    membersByPin.forEach((rowIndexes, pin) => {
+      if (rowIndexes.length < 2) return;
+      const anchorY = average(rowIndexes.map((rowIndex) => routes[rowIndex].y));
+      rowIndexes.forEach((rowIndex, memberIndex) => {
+        sharedByRouteIndex.set(rowIndex, {
+          pin,
+          anchorY,
+          primary: memberIndex === 0,
+          count: rowIndexes.length
+        });
+      });
+    });
+  });
+  return sharedByRouteIndex;
+}
+
+function sheetSharedTerminationPoints(route, leftShared, rightShared, leftX, rightX) {
+  const points = [[leftX, leftShared?.anchorY ?? route.y]];
+  if (leftShared) {
+    points.push([leftX + 82, leftShared.anchorY]);
+    if (leftShared.anchorY !== route.y) points.push([leftX + 82, route.y]);
+  }
+  if (rightShared) {
+    points.push([rightX - 82, route.y]);
+    if (rightShared.anchorY !== route.y) points.push([rightX - 82, rightShared.anchorY]);
+  }
+  points.push([rightX, rightShared?.anchorY ?? route.y]);
+  return points.filter((point, index, values) => index === 0 || point[0] !== values[index - 1][0] || point[1] !== values[index - 1][1]);
+}
+
+function orthogonalSvgPath(points) {
+  return points.map((point, index) => `${index ? "L" : "M"} ${point[0]} ${point[1]}`).join(" ");
+}
+
 function sheetTwistedPairId(row) {
   const value = String(row?.twistedPairId || "").trim();
   if (isMeaningfulSheetValue(value)) {
@@ -3878,6 +3940,8 @@ function buildSheetHarnessSvg(result) {
   const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
   const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
   const pairAnalysis = analyzeSheetTwistedPairs(routes);
+  const leftSharedTerminations = sheetSharedPowerpoleTerminations(leftGroups, routes, "left");
+  const rightSharedTerminations = sheetSharedPowerpoleTerminations(rightGroups, routes, "right");
   const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
   const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   const rowLines = routes.map((route) => {
@@ -3889,16 +3953,22 @@ function buildSheetHarnessSvg(result) {
     const lengthText = row.length ? formatLengthMeasurement(row.length) : "";
     const branchText = sheetRouteBranchLabel(row);
     const geometry = sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX);
+    const leftShared = leftSharedTerminations.get(index);
+    const rightShared = rightSharedTerminations.get(index);
+    const sharedPoints = leftShared || rightShared
+      ? sheetSharedTerminationPoints(route, leftShared, rightShared, leftX, rightX)
+      : null;
+    const wirePath = sharedPoints ? orthogonalSvgPath(sharedPoints) : geometry.svgPath;
     return `
       <g class="sheet-row">
-        <path class="sheet-wire${geometry.twisted ? " sheet-wire-twisted" : ""}" d="${geometry.svgPath}" stroke="${color}"${dashed} />
-        ${colorSpec.stripeStroke ? `<path class="sheet-wire" d="${geometry.svgPath}" stroke="${colorSpec.stripeStroke}" stroke-width="2.5" stroke-dasharray="11 9" />` : ""}
-        <circle class="sheet-pin" cx="${leftX}" cy="${y}" r="4" />
-        <circle class="sheet-pin" cx="${rightX}" cy="${y}" r="4" />
+        <path class="sheet-wire${geometry.twisted && !sharedPoints ? " sheet-wire-twisted" : ""}" d="${wirePath}" stroke="${color}"${dashed} />
+        ${colorSpec.stripeStroke ? `<path class="sheet-wire" d="${wirePath}" stroke="${colorSpec.stripeStroke}" stroke-width="2.5" stroke-dasharray="11 9" />` : ""}
+        ${!leftShared || leftShared.primary ? `<circle class="sheet-pin" cx="${leftX}" cy="${leftShared?.anchorY ?? y}" r="4" />` : ""}
+        ${!rightShared || rightShared.primary ? `<circle class="sheet-pin" cx="${rightX}" cy="${rightShared?.anchorY ?? y}" r="4" />` : ""}
         <text class="sheet-wire-label" x="${(leftX + rightX) / 2}" y="${y - 6}">${label}</text>
         <text class="sheet-small" x="${(leftX + rightX) / 2}" y="${y + 12}">${escapeXml([lengthText, branchText].filter(Boolean).join(" | "))}</text>
-        <text class="sheet-pin-label" x="${leftX - 18}" y="${y + 5}">${escapeXml(route.leftPin)}</text>
-        <text class="sheet-pin-label" x="${rightX + 18}" y="${y + 5}">${escapeXml(route.rightPin)}</text>
+        ${!leftShared || leftShared.primary ? `<text class="sheet-pin-label" x="${leftX - 18}" y="${(leftShared?.anchorY ?? y) + 5}">${escapeXml(route.leftPin)}</text>` : ""}
+        ${!rightShared || rightShared.primary ? `<text class="sheet-pin-label" x="${rightX + 18}" y="${(rightShared?.anchorY ?? y) + 5}">${escapeXml(route.rightPin)}</text>` : ""}
       </g>
     `;
   }).join("");
@@ -9339,6 +9409,8 @@ function buildSheetDrawioXml(result) {
   const sharedBundle = shouldUseSharedSheetBundle(rows, leftGroups, rightGroups);
   const routes = sheetRouteLayout(rows, sharedBundle ? { top: 214, bottom: 430 } : {});
   const pairAnalysis = analyzeSheetTwistedPairs(routes);
+  const leftSharedTerminations = sheetSharedPowerpoleTerminations(leftGroups, routes, "left");
+  const rightSharedTerminations = sheetSharedPowerpoleTerminations(rightGroups, routes, "right");
   const sharedBundleGeometry = sharedBundle ? sheetSharedBundleGeometry(routes, leftX, rightX) : null;
   const sharedLengthLabel = sharedBundle ? sheetLengthSummary(rows) : "";
   add(mxCell({ id: "0" }));
@@ -9420,13 +9492,24 @@ function buildSheetDrawioXml(result) {
       sheetRouteBranchLabel(row)
     ].filter(Boolean).join(" | ");
     const geometry = sheetWireRouteGeometry(route, pairAnalysis, leftX, rightX);
-    addVertex(`left_pin_${index + 1}`, route.leftPin, leftX - 42, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
-    addVertex(`right_pin_${index + 1}`, route.rightPin, rightX + 8, y - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
+    const leftShared = leftSharedTerminations.get(index);
+    const rightShared = rightSharedTerminations.get(index);
+    const sharedPoints = leftShared || rightShared
+      ? sheetSharedTerminationPoints(route, leftShared, rightShared, leftX, rightX)
+      : null;
+    if (!leftShared || leftShared.primary) {
+      addVertex(`left_pin_${index + 1}`, route.leftPin, leftX - 42, (leftShared?.anchorY ?? y) - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
+    }
+    if (!rightShared || rightShared.primary) {
+      addVertex(`right_pin_${index + 1}`, route.rightPin, rightX + 8, (rightShared?.anchorY ?? y) - 12, 34, 24, "text;html=1;strokeColor=none;fillColor=none;fontSize=11;fontStyle=1;fontColor=#000000;align=center;");
+    }
     const wireLabel = `${hasDistinctNames ? "" : escapeHtml(leftWireName)}${details ? `<br><font style="font-size:9px">${escapeHtml(details)}</font>` : ""}`;
     const wireStyle = geometry.twisted
       ? `edgeStyle=none;curved=1;rounded=1;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`
       : `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${stroke};strokeWidth=5;endArrow=none;startArrow=none;fontStyle=1;fontSize=11;${dashed}`;
-    if (geometry.twisted) {
+    if (sharedPoints) {
+      addRoutedEdge(`sheet_wire_${index + 1}`, wireLabel, sharedPoints, wireStyle);
+    } else if (geometry.twisted) {
       addRoutedEdge(`sheet_wire_${index + 1}`, wireLabel, geometry.points, wireStyle);
     } else {
       addEdge(`sheet_wire_${index + 1}`, wireLabel, leftX, y, rightX, y, wireStyle);
@@ -9435,7 +9518,9 @@ function buildSheetDrawioXml(result) {
       const stripeStyle = geometry.twisted
         ? `edgeStyle=none;curved=1;rounded=1;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`
         : `edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;strokeColor=${colorSpec.stripeStroke};strokeWidth=2.2;dashed=1;dashPattern=10 9;fixDash=1;endArrow=none;startArrow=none;`;
-      if (geometry.twisted) {
+      if (sharedPoints) {
+        addRoutedEdge(`sheet_wire_stripe_${index + 1}`, "", sharedPoints, stripeStyle);
+      } else if (geometry.twisted) {
         addRoutedEdge(`sheet_wire_stripe_${index + 1}`, "", geometry.points, stripeStyle);
       } else {
         addEdge(`sheet_wire_stripe_${index + 1}`, "", leftX, y, rightX, y, stripeStyle);

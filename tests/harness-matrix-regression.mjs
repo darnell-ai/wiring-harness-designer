@@ -46,7 +46,18 @@ assert.equal(w325Left.length, 4, "W325 must group its four Anderson Powerpole co
 assert.ok(w325Left.every((endpoint) => endpoint.multipleConductorsPerPin), "each W325 Powerpole must accept its submitted two-conductor termination");
 assert.equal(w325.sheet.diagnostics.filter((item) => item.code === "DUPLICATE_PIN").length, 0, "two conductors in one Powerpole contact must not be reported as an accidental duplicate pin");
 assert.equal(w325.sheet.diagnostics.filter((item) => item.severity === "error").length, 0);
-assert.match(api.buildSheetDrawioXml(w325.result), /W325/);
+assert.equal(api.createSheetRenderPlan(w325.result).kind, "generic");
+const w325Drawio = api.buildSheetDrawioXml(w325.result);
+assert.match(w325Drawio, /W325/);
+const w325Cell = (id) => w325Drawio.match(new RegExp(`<mxCell id="${id}"[\\s\\S]*?<\\/mxCell>`))?.[0] || "";
+const firstGroundSource = w325Cell("sheet_wire_1").match(/<mxPoint x="260" y="([^"]+)" as="sourcePoint"/);
+const secondGroundSource = w325Cell("sheet_wire_2").match(/<mxPoint x="260" y="([^"]+)" as="sourcePoint"/);
+assert.ok(firstGroundSource && secondGroundSource, "both GND conductors must have explicit Powerpole source anchors");
+assert.equal(firstGroundSource[1], secondGroundSource[1], "both GND conductors must converge on one shared Powerpole contact point");
+assert.match(w325Cell("sheet_wire_1"), /<mxPoint x="342"/, "the shared contact must fan out through a visible junction lane");
+assert.match(w325Drawio, /id="left_pin_1"/);
+assert.doesNotMatch(w325Drawio, /id="left_pin_2"/, "a shared Powerpole contact must show pin 1 only once");
+assert.doesNotMatch(w325Drawio, /id="left_pin_4"|id="left_pin_6"|id="left_pin_8"/, "each two-wire Powerpole contact must use one visible pin label");
 
 const w320 = loadFixture("W320.csv");
 assert.equal(w320.sheet.objects.filter((row) => !core.isDnpRow(row)).length, 4);

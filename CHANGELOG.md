@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.5.18 - 2026-10-16
+
+- Drew multiple conductors in one Anderson Powerpole contact from one shared termination point and trunk before their visible fan-out.
+- Displayed the shared Powerpole pin number only once instead of repeating pin 1 for every conductor.
+- Added W325 drawing regression coverage for shared source anchors, fan-out geometry, and single pin labels.
+
 ## v2.5.17 - 2026-10-16
 
 - Allowed multiple conductors to terminate in one Anderson Powerpole contact without producing a false duplicate-pin error.
