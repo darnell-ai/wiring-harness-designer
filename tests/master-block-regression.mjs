@@ -15,6 +15,7 @@ const context = vm.createContext({
 });
 vm.runInContext(fs.readFileSync(path.join(root, "harness-core.js"), "utf8"), context, { filename: "harness-core.js" });
 vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
+vm.runInContext(fs.readFileSync(path.join(root, "connector-visuals.js"), "utf8"), context, { filename: "connector-visuals.js" });
 let appSource = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");
 appSource += "\nglobalThis.__masterParsing = { parseDelimitedText, normalizeSheetMatrix, createUndoHistory, cloneMasterProject };";
 vm.runInContext(appSource, context, { filename: "app.js" });

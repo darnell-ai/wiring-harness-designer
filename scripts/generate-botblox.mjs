@@ -21,6 +21,7 @@ const context = vm.createContext({
 });
 vm.runInContext(coreSource, context, { filename: "harness-core.js" });
 vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
+vm.runInContext(fs.readFileSync(path.join(root, "connector-visuals.js"), "utf8"), context, { filename: "connector-visuals.js" });
 vm.runInContext(source, context, { filename: "app.js" });
 
 const api = context.__digiwireGenerate;

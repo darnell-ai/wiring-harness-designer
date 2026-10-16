@@ -4,7 +4,15 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.6.0**
+Current release: **v2.7.0**
+
+### Connector visuals
+
+Configure now previews every supported connector family, with locally packaged manufacturer reference photographs for Powerpole, CPC, Micro-Fit, Mini-Fit and PicoBlade. Generic harness endpoints have self-contained vector illustrations instead of blank boxes. Housing color is taken from recognized Powerpole part numbers, independently of wire color.
+
+Wire labels sit above the conductors, and the cable identifier is below multi-leg bundles. Illustrations and reference photos identify a family; they do not substitute for the exact housing drawing or establish physical contact numbering. A circular connector without a housing part number is deliberately marked as a generic face.
+
+Photograph sources are recorded in `assets/connectors/sources.json`. All selectable families have a vector preview, including custom housings, terminal blocks, ferrules, PCB terminations and RJ45.
 
 DigiWire 2.6 adds a cleaner workspace, complete project files, browser draft recovery, and downloadable original Excel templates. Manual drawing edits survive switching modes and undoing tables, and adding master tables keeps moved boards and connectors in place. Anderson Powerpole shared contacts, twisted pairs, branched cables, and master routing remain supported.
 

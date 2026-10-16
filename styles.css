@@ -332,6 +332,32 @@ h1 {
   gap: 10px;
 }
 
+.connector-preview {
+  grid-column: 1 / -1;
+  padding: 14px;
+  border: 1px solid #dce5e9;
+  border-radius: 12px;
+  background: #f8fafb;
+  color: #263d4b;
+}
+
+.connector-preview-images {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  gap: 14px;
+  margin-bottom: 10px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+.connector-preview-images img { width: 150px; height: 116px; object-fit: contain; max-width: 100%; }
+.connector-preview-images figure { margin: 0; text-align: center; }
+.connector-preview-images figcaption { font-size: 10px; color: #60717a; padding-bottom: 8px; }
+.connector-preview p { font-size: 12px; line-height: 1.5; margin: 6px 0; }
+.connector-preview a { color: #206b54; font-size: 12px; }
+.connector-preview-images > * { min-width: 0; flex: 1; }
+
 .connector-editor-grid legend {
   padding: 0 6px;
   font-size: 13px;

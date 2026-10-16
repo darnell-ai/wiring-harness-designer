@@ -22,7 +22,7 @@ const context = vm.createContext({
   window: { localStorage: { getItem: (key) => storage.get(key) || null, setItem: (key, value) => storage.set(key, value) } },
   setTimeout: () => 1, clearTimeout() {}
 });
-for (const name of ["harness-core.js", "master-diagram.js", "workspace-session.js"]) {
+for (const name of ["harness-core.js", "master-diagram.js", "workspace-session.js", "connector-visuals.js"]) {
   vm.runInContext(fs.readFileSync(path.join(root, name), "utf8"), context, { filename: name });
 }
 let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\ninit\(\);\r?\n/, "\n");

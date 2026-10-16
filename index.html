@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="Turn Excel wiring tables into editable harness drawings and master PCB routing diagrams. Save your complete workspace and resume exactly where you left off.">
     <meta name="theme-color" content="#173326">
-    <title>DIGIWIRE v2.6.0</title>
-    <link rel="stylesheet" href="styles.css?v=2.6.0">
+    <title>DIGIWIRE v2.7.0</title>
+    <link rel="stylesheet" href="styles.css?v=2.7.0">
   </head>
   <body>
     <main class="app-shell">
@@ -14,7 +14,7 @@
         <div class="brand">
           <div class="brand-mark">DW</div>
           <div>
-            <h1>DIGIWIRE <span class="release-tag">2.6</span></h1>
+            <h1>DIGIWIRE <span class="release-tag">2.7</span></h1>
             <p>Wire harnesses. Board connections. One editable workspace.</p>
           </div>
         </div>
@@ -142,6 +142,7 @@
                 <label>View<select id="leftConnectorView"><option>Front</option><option>Rear</option></select></label>
                 <label>Sex<select id="leftConnectorSex"><option value="">Unspecified</option><option>Plug</option><option>Receptacle</option><option>Genderless</option></select></label>
                 <label>Key<select id="leftConnectorKey"><option value="">Unspecified</option><option>Up</option><option>Down</option><option>Left</option><option>Right</option><option>A</option><option>B</option></select></label>
+                <div id="leftConnectorPreview" class="connector-preview" aria-live="polite"></div>
               </fieldset>
               <fieldset>
                 <legend>Right connector</legend>
@@ -151,6 +152,7 @@
                 <label>View<select id="rightConnectorView"><option>Front</option><option>Rear</option></select></label>
                 <label>Sex<select id="rightConnectorSex"><option value="">Unspecified</option><option>Plug</option><option>Receptacle</option><option>Genderless</option></select></label>
                 <label>Key<select id="rightConnectorKey"><option value="">Unspecified</option><option>Up</option><option>Down</option><option>Left</option><option>Right</option><option>A</option><option>B</option></select></label>
+                <div id="rightConnectorPreview" class="connector-preview" aria-live="polite"></div>
               </fieldset>
             </div>
             <div class="designer-actions">
@@ -189,9 +191,10 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="harness-core.js?v=2.6.0" defer></script>
-    <script src="master-diagram.js?v=2.6.0" defer></script>
-    <script src="workspace-session.js?v=2.6.0" defer></script>
-    <script src="app.js?v=2.6.0-r1" defer></script>
+    <script src="harness-core.js?v=2.7.0" defer></script>
+    <script src="master-diagram.js?v=2.7.0" defer></script>
+    <script src="workspace-session.js?v=2.7.0" defer></script>
+    <script src="connector-visuals.js?v=2.7.0" defer></script>
+    <script src="app.js?v=2.7.0" defer></script>
   </body>
 </html>

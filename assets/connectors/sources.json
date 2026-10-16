@@ -1,0 +1,12 @@
+{
+  "purpose": "Manufacturer photographs used as visual identification references. Product names and photographs belong to their respective manufacturers. Exact contact numbering requires the submitted part's drawing.",
+  "sources": [
+    {"file":"powerpole-red.jpg","manufacturer":"Anderson Power","part":"1327","page":"https://www.andersonpower.com/product/powerpole-connector-housing-red/","image":"https://p1.aprimocdn.net/idealindustries/ddf11768-cadf-4354-865e-b3f00073b5a9/ap-web_product-assets_default_product-images_1327-BK_Original%20file.jpg?width=600&fit=bounds&height=600&format=auto&quality=82"},
+    {"file":"powerpole-white.jpg","manufacturer":"Anderson Power","part":"1327G7","page":"https://www.andersonpower.com/product/powerpole-15-45-standard-housings-white/","image":"https://p1.aprimocdn.net/idealindustries/473dbb10-2532-4952-a491-b3f00073b606/ap-web_product-assets_default_product-images_1327G7_Original%20file.jpg?width=600&fit=bounds&height=600&format=auto&quality=82"},
+    {"file":"cpc-reference.jpg","manufacturer":"TE Connectivity","part":"213893-1 (10-position CPC family reference, not an assumed W325 identity)","page":"https://www.te.com/en/product-213893-1.html","image":"https://mm.digikey.com/Volume0/opasdata/d220001/derivates/1/100/663/432/213893-1_sml.jpg"},
+    {"file":"microfit.jpg","manufacturer":"Molex","part":"43025-0200","page":"https://www.molex.com/en-us/products/part-detail/430250200","image":"https://assets.molex.com/is/image/molex/0430250200_hires"},
+    {"file":"minifit-sr.jpg","manufacturer":"Molex","part":"42816-0612","page":"https://www.molex.com/en-us/products/connectors/wire-to-board-connectors/mini-fit-sr-connectors","image":"https://assets.molex.com/is/image/molex/0428160612_hires"},
+    {"file":"minifit-jr.jpg","manufacturer":"Molex","part":"46992-0610","page":"https://www.molex.com/en-us/products/part-detail/469920610","image":"https://assets.molex.com/is/image/molex/0469920610_hires"},
+    {"file":"picoblade.webp","manufacturer":"Molex","part":"PicoBlade family reference","page":"https://www.molex.com/en-us/products/connectors/wire-to-board-connectors/picoblade-connectors","image":"https://assets.molex.com/is/image/molex/PicoBladeWB125smt?dpr=off&fmt=webp&ts=1787242042097&wid=320"}
+  ]
+}

@@ -36,7 +36,8 @@ jobs:
       - name: Stage browser app
         run: |
           mkdir _site
-          cp index.html harness-core.js master-diagram.js workspace-session.js app.js styles.css _site/
+          cp index.html harness-core.js master-diagram.js workspace-session.js connector-visuals.js app.js styles.css _site/
+          cp -R assets _site/assets
           mkdir _site/examples
           cp examples/harness-template.tsv examples/master-board-placement-template.tsv _site/examples/
           cp examples/W325-powerpole.csv _site/examples/

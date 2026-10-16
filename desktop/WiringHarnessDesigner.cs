@@ -8,8 +8,8 @@ using System.Windows.Forms;
 [assembly: AssemblyDescription("Offline sketch-to-schematic wiring harness reader")]
 [assembly: AssemblyCompany("DIGIWIRE")]
 [assembly: AssemblyProduct("DIGIWIRE")]
-[assembly: AssemblyVersion("2.6.0.0")]
-[assembly: AssemblyFileVersion("2.6.0.0")]
+[assembly: AssemblyVersion("2.7.0.0")]
+[assembly: AssemblyFileVersion("2.7.0.0")]
 
 internal static class WiringHarnessDesignerProgram
 {
@@ -21,6 +21,15 @@ internal static class WiringHarnessDesignerProgram
         "harness-core.js",
         "master-diagram.js",
         "workspace-session.js",
+        "connector-visuals.js",
+        @"assets\connectors\sources.json",
+        @"assets\connectors\powerpole-red.jpg",
+        @"assets\connectors\powerpole-white.jpg",
+        @"assets\connectors\cpc-reference.jpg",
+        @"assets\connectors\microfit.jpg",
+        @"assets\connectors\minifit-sr.jpg",
+        @"assets\connectors\minifit-jr.jpg",
+        @"assets\connectors\picoblade.webp",
         @"examples\harness-template.tsv",
         @"examples\master-board-placement-template.tsv",
         @"examples\W325-powerpole.csv",
@@ -136,6 +145,7 @@ internal static class WiringHarnessDesignerProgram
             && File.Exists(Path.Combine(directory, "harness-core.js"))
             && File.Exists(Path.Combine(directory, "master-diagram.js"))
             && File.Exists(Path.Combine(directory, "workspace-session.js"))
+            && File.Exists(Path.Combine(directory, "connector-visuals.js"))
             && File.Exists(Path.Combine(directory, "app.js"))
             && File.Exists(Path.Combine(directory, @"vendor\tesseract\tesseract.min.js"))
             && File.Exists(Path.Combine(directory, @"vendor\tesseract\worker.min.js"))

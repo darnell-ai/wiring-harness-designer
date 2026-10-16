@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.7.0 - 2026-10-16
+
+- Added manufacturer-referenced connector illustrations and local photo references in Configure.
+- Replaced generic endpoint boxes with illustrated connector cards, including single-pole Anderson housings and 10-position circular connectors.
+- Added explicit Powerpole, RJ45, PicoBlade and ferrule selections.
+- Kept connector housing color independent of conductor color; recognized Powerpole part numbers control housing color.
+- Moved generic wire names and wire details above the conductors and cable IDs below shared bundles.
+- Increased multi-leg wire spacing while preserving two-conductor shared-contact fanout.
+- Packaged connector assets for GitHub Pages and the standalone Windows executable.
+- Added connector-family, contact-count, label-clearance and asset regressions.
+
 ## v2.6.0 - 2026-10-16
 
 - Refreshed the workspace with a compact responsive toolbar, clearer project actions, keyboard focus styles, and a live conductor/project summary.
