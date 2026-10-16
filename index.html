@@ -3,8 +3,10 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DIGIWIRE v2.5.18</title>
-    <link rel="stylesheet" href="styles.css?v=2.5.18">
+    <meta name="description" content="Turn Excel wiring tables into editable harness drawings and master PCB routing diagrams. Save your complete workspace and resume exactly where you left off.">
+    <meta name="theme-color" content="#173326">
+    <title>DIGIWIRE v2.6.0</title>
+    <link rel="stylesheet" href="styles.css?v=2.6.0">
   </head>
   <body>
     <main class="app-shell">
@@ -12,9 +14,15 @@
         <div class="brand">
           <div class="brand-mark">DW</div>
           <div>
-            <h1>DIGIWIRE</h1>
-            <p>Paste Excel rows. Edit the finished harness directly in Draw.io.</p>
+            <h1>DIGIWIRE <span class="release-tag">2.6</span></h1>
+            <p>Wire harnesses. Board connections. One editable workspace.</p>
           </div>
+        </div>
+        <div class="project-actions" aria-label="Project files">
+          <span id="draftStatus" class="draft-status" role="status">Local workspace</span>
+          <button id="restoreDraftButton" type="button" hidden title="Recover the last project saved in this browser">Restore draft</button>
+          <button id="openProjectButton" type="button">Open project</button>
+          <button id="saveProjectButton" class="primary" type="button" title="Save both workspaces and editable drawings. Shortcut: Ctrl+S outside the Draw.io editor." disabled>Save project</button>
         </div>
       </header>
 
@@ -24,7 +32,7 @@
             <div class="pane-title">
               <span class="panel-label">Excel to Draw.io harness workspace</span>
               <strong id="drawingTitle">Draw.io editor</strong>
-              <span id="statusText" class="pane-status">Loading Draw.io. You can paste a table as soon as it is ready.</span>
+              <span id="statusText" class="pane-status" role="status" aria-live="polite">Loading Draw.io. You can paste a table as soon as it is ready.</span>
               <div id="importDiagnostics" class="import-diagnostics" hidden></div>
             </div>
             <div class="pane-tools">
@@ -37,7 +45,7 @@
                 <span class="icon">PST</span>
                 <span>Paste image</span>
               </button>
-              <button id="tablePasteButton" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
+              <button id="tablePasteButton" class="primary" type="button" title="Paste copied rows from Excel, Google Sheets, or a text table">
                 <span class="icon">TAB</span>
                 <span>Paste table</span>
               </button>
@@ -49,6 +57,7 @@
                 <span class="icon">SET</span>
                 <span>Configure</span>
               </button>
+              <button id="templatesButton" type="button" aria-expanded="false" aria-controls="templatesPanel">Templates</button>
               <button id="undoTableButton" type="button" title="Undo the last pasted or uploaded table" disabled>
                 <span class="icon">UND</span>
                 <span>Undo table</span>
@@ -67,6 +76,19 @@
           </div>
 
           <input id="sheetFileInput" class="hidden-input" type="file" multiple accept=".xlsx,.xls,.csv,.tsv,text/csv,text/tab-separated-values">
+          <input id="projectFileInput" class="hidden-input" type="file" accept=".digiwire.json,.json,application/json">
+
+          <section id="templatesPanel" class="templates-panel" hidden aria-label="Original Excel templates">
+            <div><strong>Your familiar Excel format</strong><p>Keep the headers. Fill in the pins, wire names, and endpoints, then paste rows or add the file.</p></div>
+            <a href="examples/harness-template.tsv" download>Harness template <span>25 original columns · 16 pin rows</span></a>
+            <a href="examples/master-board-placement-template.tsv" download>Board placement template <span>Sides · corners · center · arrangement</span></a>
+            <a href="examples/W325-powerpole.csv" download>Powerpole example <span>Two wires into one contact</span></a>
+          </section>
+
+          <div class="workspace-strip">
+            <span id="workspaceSummary">Paste your first table to start</span>
+            <span>Save project keeps edits <span aria-hidden="true">·</span> Draw.io Save exports PDF</span>
+          </div>
 
           <section id="masterSessionPanel" class="master-session-panel" hidden>
             <div class="master-session-copy">
@@ -167,8 +189,9 @@
 
     <canvas id="workCanvas" hidden></canvas>
     <script src="vendor/tesseract/tesseract.min.js" defer></script>
-    <script src="harness-core.js?v=2.5.18" defer></script>
-    <script src="master-diagram.js?v=2.5.18" defer></script>
-    <script src="app.js?v=2.5.18" defer></script>
+    <script src="harness-core.js?v=2.6.0" defer></script>
+    <script src="master-diagram.js?v=2.6.0" defer></script>
+    <script src="workspace-session.js?v=2.6.0" defer></script>
+    <script src="app.js?v=2.6.0" defer></script>
   </body>
 </html>

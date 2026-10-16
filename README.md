@@ -4,9 +4,9 @@ A streamlined Excel-to-Draw.io wiring harness converter and editor.
 
 **Live app:** https://darnell-ai.github.io/wiring-harness-designer/
 
-Current release: **v2.5.18**
+Current release: **v2.6.0**
 
-DigiWire 2.5.18 draws multiple conductors terminated in one Anderson Powerpole contact as one shared pin and trunk that visibly fans out to the separate destination pins. Duplicate pin assignments on ordinary connectors remain validation errors.
+DigiWire 2.6 adds a cleaner workspace, complete project files, browser draft recovery, and downloadable original Excel templates. Manual drawing edits survive switching modes and undoing tables, and adding master tables keeps moved boards and connectors in place. Anderson Powerpole shared contacts, twisted pairs, branched cables, and master routing remain supported.
 
 Connector housings are resolved from the left/right housing part-number columns before descriptive housing text. Known Molex and TE part-number families select their matching connector-face profile. An unknown part number is shown as an explicit unverified profile with an exact DigiKey lookup link instead of being guessed from a label such as `3 POS FRONT LOCK`.
 
@@ -18,7 +18,21 @@ Open the live app in a modern desktop browser, or run `DigiWire.exe` for the off
 
 DIGIWIRE is table-first: paste copied harness rows and it builds a clean professional electrical drawing directly inside a full embedded Draw.io editor.
 
-The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness immediately in Draw.io without opening a popup or switching tools. Click Save in Draw.io to download the edited drawing as a PDF, then use Clear for the next harness. Paste image and Ctrl+V remain available for automatic sketch reading.
+The daily workflow is intentionally simple: copy the harness rows, click Paste table, and edit the generated harness in Draw.io. **Save project** downloads a `.digiwire.json` backup. **Save inside Draw.io** downloads the edited drawing as a PDF. Clear starts the next harness and can be reversed with Undo table. Paste image and Ctrl+V remain available for sketch reading.
+
+## Project Files and Recovery
+
+**Save project** stores both Harness and Master block workspaces in one file: the imported table data, connector settings, and exact editable drawing XML including manual routes, positions, labels, and colors. **Open project** reloads that file; a `.digiwire.json` file can also be dragged onto the workspace. Existing `DWMS1` Master Session Codes remain supported in Master block mode.
+
+DigiWire also saves a draft in the current browser after imports and editor autosaves. **Restore draft** recovers that workspace after a reload or a later visit. Draft storage is local to that browser and device; use a downloaded project file for a portable backup. If browser storage is full or disabled, the status asks you to use Save project. Projects up to 25 MB are supported. Original source-image pixels are not included; the generated editable drawing is saved.
+
+Switching between Harness and Master block keeps the exact edited drawing in each mode. Undo table restores the previous data and drawing, including manual edits made before the import. Clearing a drawing also creates an undo step. The keyboard shortcut Ctrl+S downloads a project when focus is outside the embedded Draw.io editor; inside Draw.io its own shortcuts apply.
+
+## Original Templates
+
+Click **Templates** in the toolbar to download the 25-column harness template, the full board placement template, or the W325 shared Powerpole example. The harness template keeps both `Wire Name` columns, the blank spacer column, and 16 pin rows. Existing `AWGuage`, `BOTTEM`, alternate pin headers, feet/inches, branch, tap, and twisted-pair columns remain accepted.
+
+Validation is available in a compact expandable panel with every error and warning. Connector settings are validated again after configuration changes, and pins outside a declared housing capacity are reported. If the external Draw.io editor takes longer to connect, the app provides Retry editor and Download editable drawing actions while table imports and project backups remain available.
 
 ## Master Block Diagram Mode
 

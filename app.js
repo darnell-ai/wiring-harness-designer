@@ -1,6 +1,7 @@
 "use strict";
 
-const APP_VERSION = "2.5.18";
+const APP_VERSION = "2.6.0";
+const WORKSPACE_DRAFT_KEY = "digiwire.workspace.v1";
 const MAX_TABLE_UNDO_STEPS = 50;
 const HarnessCore = globalThis.DigiWireCore;
 if (!HarnessCore) {
@@ -300,6 +301,14 @@ const POWERPOLE_HOUSING_PARTS = Object.freeze({
 });
 
 const dom = {
+  saveProjectButton: document.querySelector("#saveProjectButton"),
+  openProjectButton: document.querySelector("#openProjectButton"),
+  projectFileInput: document.querySelector("#projectFileInput"),
+  restoreDraftButton: document.querySelector("#restoreDraftButton"),
+  draftStatus: document.querySelector("#draftStatus"),
+  workspaceSummary: document.querySelector("#workspaceSummary"),
+  templatesButton: document.querySelector("#templatesButton"),
+  templatesPanel: document.querySelector("#templatesPanel"),
   drawingModeInputs: Array.from(document.querySelectorAll('input[name="drawingMode"]')),
   tablePasteButton: document.querySelector("#tablePasteButton"),
   addSheetButton: document.querySelector("#addSheetButton"),
@@ -378,12 +387,46 @@ let masterProject = MasterDiagram.createProject();
 let masterRoutesOptimized = false;
 let masterGeometryOverrides = {};
 let masterSessionCodeTimer = null;
+let workspaceDraftTimer = null;
+let workspaceRestoring = false;
+let drawingCache = { harness: "", master: "" };
+let editorConnectTimer = null;
 const masterUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 const harnessUndoHistory = createUndoHistory(MAX_TABLE_UNDO_STEPS);
 
 init();
 
 function init() {
+  dom.saveProjectButton.addEventListener("click", saveWorkspaceProject);
+  dom.openProjectButton.addEventListener("click", () => dom.projectFileInput.click());
+  dom.projectFileInput.addEventListener("change", async () => {
+    const file = dom.projectFileInput.files[0];
+    dom.projectFileInput.value = "";
+    if (!file) return;
+    try {
+      if (file.size > globalThis.DigiWireSession.MAX_BYTES) throw new Error("Choose a project smaller than 25 MB.");
+      restoreWorkspaceProject(globalThis.DigiWireSession.parse(await file.text()));
+      setStatus(`Opened ${file.name}. Your saved drawings and table data are restored.`);
+    } catch (error) { setStatus(error.message || "The project could not be opened."); }
+  });
+  dom.restoreDraftButton.addEventListener("click", restoreWorkspaceDraft);
+  dom.templatesButton.addEventListener("click", () => {
+    dom.templatesPanel.hidden = !dom.templatesPanel.hidden;
+    dom.templatesButton.setAttribute("aria-expanded", String(!dom.templatesPanel.hidden));
+  });
+  window.addEventListener("pagehide", persistWorkspaceDraft);
+  dom.drawioLoading.addEventListener("click", (event) => {
+    const action = event.target.closest("button")?.dataset.editorAction;
+    if (action === "retry") {
+      drawioSession.ready = false;
+      setDrawioLoading(true, "Connecting to Draw.io", "Your generated drawing and saved edits are kept while the editor reconnects.");
+      dom.drawioFrame.src = DRAWIO_EDITOR_URL;
+      armDrawioConnectionTimeout();
+    } else if (action === "download") {
+      downloadBlob(drawioSession.title || "digiwire.drawio", new Blob([drawioSession.xml], { type: "application/xml" }));
+      setStatus("Downloaded the editable .drawio drawing. Open it in diagrams.net or the Draw.io desktop app.");
+    }
+  });
   ["dragenter", "dragover"].forEach((eventName) => {
     dom.drawingPane.addEventListener(eventName, (event) => {
       event.preventDefault();
@@ -443,6 +486,17 @@ function init() {
   document.addEventListener("keydown", (event) => {
     const target = event.target;
     const isEditingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target?.isContentEditable;
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && hasWorkspaceContent()) {
+      event.preventDefault();
+      saveWorkspaceProject();
+      return;
+    }
+    if (event.key === "Escape") {
+      closePasteTablePanel();
+      closeDesignerPanel();
+      dom.templatesPanel.hidden = true;
+      dom.templatesButton.setAttribute("aria-expanded", "false");
+    }
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && event.key.toLowerCase() === "z" && !isEditingText && currentUndoHistory().size) {
       event.preventDefault();
       undoLastTableImport();
@@ -453,6 +507,118 @@ function init() {
   writeDesignerControls(defaultDesignerConfig());
   initializeDrawioEditor();
   renderEmpty();
+  checkWorkspaceDraft();
+}
+
+function hasWorkspaceContent() {
+  return Boolean(appState.result || masterProject.boards.length || masterProject.harnesses.length);
+}
+
+function captureMasterSnapshot() {
+  return {
+    project: cloneMasterProject(masterProject),
+    routesOptimized: masterRoutesOptimized,
+    geometryOverrides: { ...masterGeometryOverrides },
+    xml: drawingCache.master || ""
+  };
+}
+
+function captureHarnessSnapshot() {
+  return { state: { ...appState, designerConfig: JSON.parse(JSON.stringify(appState.designerConfig)) }, xml: drawingCache.harness || "" };
+}
+
+function buildWorkspaceProject() {
+  return {
+    format: "DIGIWIRE_WORKSPACE", formatVersion: 1, appVersion: APP_VERSION,
+    savedAt: new Date().toISOString(), mode: drawingMode,
+    harness: {
+      fileName: appState.fileName, sourceName: appState.sourceName,
+      sheet: appState.sheet, designerConfig: appState.designerConfig,
+      result: appState.result, xml: drawingCache.harness
+    },
+    master: captureMasterSnapshot()
+  };
+}
+
+function restoreWorkspaceProject(saved) {
+  globalThis.DigiWireSession.validate(saved);
+  // Prepare both modes before replacing the active workspace.
+  const nextMaster = cloneMasterProject(saved.master.project);
+  MasterDiagram.resolveProject(nextMaster);
+  const config = saved.harness.designerConfig || defaultDesignerConfig();
+  const nextResult = saved.harness.sheet
+    ? compileConfiguredHarnessResult(saved.harness.sheet, saved.harness.sourceName || "Saved harness", config)
+    : saved.harness.result || null;
+  workspaceRestoring = true;
+  try {
+    masterProject = nextMaster;
+    masterRoutesOptimized = Boolean(saved.master.routesOptimized);
+    masterGeometryOverrides = saved.master.geometryOverrides || {};
+    appState = {
+      fileName: saved.harness.fileName || "", sourceName: saved.harness.sourceName || "",
+      dataUrl: "", image: null, manualRotation: 0,
+      sheet: saved.harness.sheet || null, result: nextResult, designerConfig: config
+    };
+    drawingCache = { harness: saved.harness.xml || "", master: saved.master.xml || "" };
+    harnessUndoHistory.clear();
+    masterUndoHistory.clear();
+    writeDesignerControls(config);
+    dom.drawingModeInputs.forEach((input) => { input.checked = input.value === saved.mode; });
+    setDrawingMode(saved.mode);
+    if (nextResult && saved.mode === "harness") updateDetectedLayout(nextResult);
+  } finally { workspaceRestoring = false; }
+  scheduleWorkspaceDraft();
+}
+
+function saveWorkspaceProject() {
+  if (!hasWorkspaceContent()) return;
+  try {
+    const json = globalThis.DigiWireSession.serialize(buildWorkspaceProject());
+    const name = isMasterMode() ? "digiwire-master" : (appState.result?.sheetHarness?.cableName || appState.fileName || "digiwire-harness");
+    downloadBlob(`${String(name).replace(/[^a-z0-9_-]+/gi, "-")}.digiwire.json`, new Blob([json], { type: "application/json" }));
+    setStatus("Project downloaded with both workspaces, editable drawings, positions, colors, and table data.");
+    persistWorkspaceDraft();
+  } catch (error) { setStatus(error.message || "The project could not be saved."); }
+}
+
+function scheduleWorkspaceDraft() {
+  if (workspaceRestoring) return;
+  if (dom.saveProjectButton) dom.saveProjectButton.disabled = !hasWorkspaceContent();
+  if (dom.draftStatus && hasWorkspaceContent()) dom.draftStatus.textContent = "Saving draft…";
+  clearTimeout(workspaceDraftTimer);
+  workspaceDraftTimer = setTimeout(persistWorkspaceDraft, 450);
+}
+
+function persistWorkspaceDraft() {
+  clearTimeout(workspaceDraftTimer);
+  if (workspaceRestoring || !hasWorkspaceContent()) return;
+  try {
+    window.localStorage.setItem(WORKSPACE_DRAFT_KEY, globalThis.DigiWireSession.serialize(buildWorkspaceProject()));
+    if (dom.draftStatus) dom.draftStatus.textContent = "Draft saved in this browser";
+    if (dom.restoreDraftButton) dom.restoreDraftButton.hidden = false;
+  } catch {
+    if (dom.draftStatus) dom.draftStatus.textContent = "Use Save project for a backup";
+  }
+}
+
+function checkWorkspaceDraft() {
+  try {
+    const json = window.localStorage.getItem(WORKSPACE_DRAFT_KEY);
+    if (!json) return;
+    const saved = globalThis.DigiWireSession.parse(json);
+    dom.restoreDraftButton.hidden = false;
+    const date = new Date(saved.savedAt);
+    dom.draftStatus.textContent = Number.isNaN(date.getTime()) ? "Saved draft available" : `Draft from ${date.toLocaleDateString()} available`;
+  } catch { /* A corrupt or unavailable browser draft must never prevent startup. */ }
+}
+
+function restoreWorkspaceDraft() {
+  try {
+    const json = window.localStorage.getItem(WORKSPACE_DRAFT_KEY);
+    if (!json) throw new Error("No saved draft was found in this browser.");
+    restoreWorkspaceProject(globalThis.DigiWireSession.parse(json));
+    setStatus("Recovered your browser draft, including the last saved drawing edits.");
+  } catch (error) { setStatus(error.message || "The draft could not be restored."); }
 }
 
 function isMasterMode() {
@@ -538,6 +704,7 @@ function restoreMasterSessionCode() {
     masterGeometryOverrides = saved.geometryOverrides && typeof saved.geometryOverrides === "object"
       ? saved.geometryOverrides
       : MasterDiagram.extractGeometryOverrides(saved.drawioXml || "");
+    drawingCache.master = saved.drawioXml || "";
     masterUndoHistory.clear();
     renderMasterProject();
     if (saved.drawioXml) {
@@ -579,14 +746,20 @@ function setDrawingMode(mode) {
   dom.pasteTablePanel.hidden = true;
   updateUndoTableButton();
   if (master) {
+    const editedXml = drawingCache.master;
     renderMasterProject();
+    if (editedXml) queueDrawioDiagram(editedXml, "digiwire-master-routing.drawio", "digiwire-master-routing.pdf");
     updateMasterSessionCode();
     setStatus("Master Block mode is ready. Add board placement sheets and harness sheets; every import joins the same project.");
   } else if (appState.result) {
-    renderDrawioDiagram(appState.result);
+    if (drawingCache.harness) {
+      const title = `${appState.fileName || "digiwire-harness"}.drawio`;
+      queueDrawioDiagram(drawingCache.harness, title, title.replace(/\.drawio$/, ".pdf"));
+    } else renderDrawioDiagram(appState.result);
     renderFacts(appState.result);
     renderImportDiagnostics(appState.result.diagnostics || []);
     renderFindings(appState.result.findings || []);
+    if (dom.workspaceSummary) dom.workspaceSummary.textContent = harnessSummaryText();
     setStatus(`${appState.result.fileName || "Harness"} restored in Harness Drawing mode.`);
   } else {
     renderImportDiagnostics([]);
@@ -594,9 +767,19 @@ function setDrawingMode(mode) {
     setStatus("Harness Drawing mode is ready. Paste one harness table or image.");
   }
   document.querySelector("#engineBadge").textContent = master ? "Cumulative project" : "Multi-cable engine";
+  scheduleWorkspaceDraft();
 }
 
 async function loadDroppedFiles(files) {
+  const project = files.find((file) => /\.digiwire\.json$/i.test(file.name));
+  if (project) {
+    try {
+      if (project.size > globalThis.DigiWireSession.MAX_BYTES) throw new Error("Choose a project smaller than 25 MB.");
+      restoreWorkspaceProject(globalThis.DigiWireSession.parse(await project.text()));
+      setStatus(`Opened ${project.name}.`);
+    } catch (error) { setStatus(error.message); }
+    return;
+  }
   const sheets = files.filter(isSpreadsheetFile);
   if (sheets.length) {
     await loadSheetFiles(sheets);
@@ -778,7 +961,7 @@ async function readHarnessSheetFile(file) {
 }
 
 function applyMasterSheet(sheet, sourceName) {
-  const previousProject = cloneMasterProject(masterProject);
+  const previousProject = captureMasterSnapshot();
   const result = MasterDiagram.addSheet(cloneMasterProject(masterProject), sheet, sourceName);
   if (!result.addedBoards && !result.addedHarnesses) {
     throw new Error(`${sourceName} did not contain board placements or active harness connections.`);
@@ -786,7 +969,7 @@ function applyMasterSheet(sheet, sourceName) {
   masterUndoHistory.push(previousProject);
   masterProject = result.project;
   masterRoutesOptimized = false;
-  masterGeometryOverrides = {};
+  masterGeometryOverrides = MasterDiagram.extractGeometryOverrides(previousProject.xml || "");
   renderMasterProject();
   updateUndoTableButton();
   return result;
@@ -795,6 +978,7 @@ function applyMasterSheet(sheet, sourceName) {
 function renderMasterProject() {
   const graph = MasterDiagram.resolveProject(masterProject);
   const summary = MasterDiagram.projectSummary(masterProject);
+  if (dom.workspaceSummary) dom.workspaceSummary.textContent = `${summary.boardCount} boards · ${summary.connectorCount} connectors · ${summary.harnessCount} cables · ${summary.wireCount} conductors`;
   dom.masterProjectBadge.textContent = `${summary.boardCount} boards | ${summary.connectorCount} connectors | ${summary.harnessCount} cables`;
   dom.drawingTitle.textContent = "Master Wire Routing";
   dom.sourceTitle.textContent = masterProject.imports.length
@@ -823,7 +1007,7 @@ function renderMasterProject() {
 function applyHarnessSheet(sheet, sourceName) {
   const designerConfig = designerConfigForSheet(sheet);
   const result = compileConfiguredHarnessResult(sheet, sourceName, designerConfig);
-  harnessUndoHistory.push(appState);
+  harnessUndoHistory.push(captureHarnessSnapshot());
   appState = {
     fileName: cleanFileName(sourceName),
     dataUrl: "",
@@ -843,7 +1027,16 @@ function applyHarnessSheet(sheet, sourceName) {
   renderFindings(result.findings);
   renderSourcePreview(result);
   updateUndoTableButton();
+  if (dom.workspaceSummary) dom.workspaceSummary.textContent = harnessSummaryText();
   return result;
+}
+
+function harnessSummaryText() {
+  const rows = appState.result?.sheetHarness?.rows || [];
+  const active = rows.filter((row) => !HarnessCore.isDnpRow(row));
+  return rows.length
+    ? `${appState.result.sheetHarness.cableName || "Harness"} · ${active.length} conductors · ${rows.length - active.length} unused positions`
+    : (appState.result ? "Editable harness drawing" : "Paste your first table to start");
 }
 
 function defaultDesignerConfig() {
@@ -975,7 +1168,10 @@ function compileConfiguredHarnessResult(sheet, sourceName, config) {
     ? classifySheetLayout(configuredSheet)
     : config.layoutMode;
   result.importMessages = sheet.importMessages || [];
-  result.diagnostics = sheet.diagnostics || HarnessCore.validateRows(configuredSheet.objects || []);
+  result.diagnostics = [
+    ...HarnessCore.validateRows(configuredSheet.objects || []),
+    ...validateKnownHousingPartRows(configuredSheet.objects || [])
+  ];
   return result;
 }
 
@@ -8781,6 +8977,7 @@ function renderEmpty() {
   dom.sourceTitle.textContent = "None";
   dom.findingCount.textContent = "0 items";
   dom.findingsList.innerHTML = `<span class="quiet">No findings yet.</span>`;
+  if (dom.workspaceSummary) dom.workspaceSummary.textContent = "Paste your first table to start";
   renderSourcePreview();
 }
 
@@ -8791,6 +8988,9 @@ function setBusy(isBusy) {
   dom.undoTableButton.disabled = isBusy || currentUndoHistory().size === 0;
   dom.optimizeRoutesButton.disabled = isBusy || !isMasterMode() || MasterDiagram.projectSummary(masterProject).harnessCount === 0;
   dom.resetButton.disabled = isBusy;
+  if (dom.openProjectButton) dom.openProjectButton.disabled = isBusy;
+  if (dom.saveProjectButton) dom.saveProjectButton.disabled = isBusy || !hasWorkspaceContent();
+  if (dom.restoreDraftButton) dom.restoreDraftButton.disabled = isBusy;
   dom.drawingModeInputs.forEach((input) => { input.disabled = isBusy; });
 }
 
@@ -8800,11 +9000,14 @@ function setStatus(text) {
 
 function renderImportDiagnostics(diagnostics = []) {
   if (!dom.importDiagnostics) return;
-  const visible = diagnostics.slice(0, 6);
-  dom.importDiagnostics.hidden = !visible.length;
-  dom.importDiagnostics.innerHTML = visible.map((item) =>
-    `<span class="diagnostic-chip ${item.severity === "error" ? "error" : "warning"}" title="${escapeHtml(item.message)}">${escapeHtml(diagnosticChipLabel(item))}</span>`
-  ).join("");
+  dom.importDiagnostics.hidden = !diagnostics.length;
+  const errors = diagnostics.filter((item) => item.severity === "error").length;
+  const warnings = diagnostics.length - errors;
+  const ordered = [...diagnostics].sort((left, right) => (left.severity === "error" ? 0 : 1) - (right.severity === "error" ? 0 : 1));
+  dom.importDiagnostics.innerHTML = diagnostics.length ? `<details class="validation-details">
+    <summary class="diagnostic-chip ${errors ? "error" : "warning"}">${errors} error${errors === 1 ? "" : "s"} · ${warnings} warning${warnings === 1 ? "" : "s"} <span>Review details</span></summary>
+    <ol>${ordered.map((item) => `<li class="${item.severity === "error" ? "error" : "warning"}"><strong>${escapeHtml(diagnosticChipLabel(item))}</strong><p>${escapeHtml(item.message || item.code)}</p></li>`).join("")}</ol>
+  </details>` : "";
 }
 
 function diagnosticChipLabel(item) {
@@ -8828,18 +9031,19 @@ function diagnosticChipLabel(item) {
 
 function resetApp() {
   if (isMasterMode()) {
+    if (masterProject.boards.length || masterProject.harnesses.length) masterUndoHistory.push(captureMasterSnapshot());
     masterProject = MasterDiagram.createProject();
     masterRoutesOptimized = false;
     masterGeometryOverrides = {};
-    masterUndoHistory.clear();
     dom.pasteTablePanel.hidden = true;
     dom.tablePasteInput.value = "";
     renderImportDiagnostics([]);
     renderMasterProject();
-    setStatus("Master project cleared. Add the first board placement or harness sheet.");
+    setStatus("Master project cleared. Undo table can bring it back.");
     updateUndoTableButton();
     return;
   }
+  if (appState.result) harnessUndoHistory.push(captureHarnessSnapshot());
   appState = {
     fileName: "",
     dataUrl: "",
@@ -8850,7 +9054,6 @@ function resetApp() {
     sourceName: "",
     designerConfig: defaultDesignerConfig()
   };
-  harnessUndoHistory.clear();
   writeDesignerControls(appState.designerConfig);
   dom.pasteButton.disabled = false;
   dom.tablePasteButton.disabled = false;
@@ -8860,7 +9063,7 @@ function resetApp() {
   dom.layoutDetectionText.textContent = "Paste a harness table to detect a layout.";
   renderImportDiagnostics([]);
   document.querySelector("#engineBadge").textContent = "Multi-cable engine";
-  setStatus("Cleared. Paste the next Excel table or image.");
+  setStatus("Cleared. Paste the next table, or use Undo table to bring the drawing back.");
   renderEmpty();
   updateUndoTableButton();
 }
@@ -8870,11 +9073,13 @@ function undoLastTableImport() {
     const previousProject = masterUndoHistory.pop();
     if (!previousProject) return;
     const removedImport = masterProject.imports[masterProject.imports.length - 1];
-    masterProject = previousProject;
-    masterRoutesOptimized = false;
-    masterGeometryOverrides = {};
+    masterProject = previousProject.project;
+    masterRoutesOptimized = previousProject.routesOptimized;
+    masterGeometryOverrides = previousProject.geometryOverrides;
     dom.pasteTablePanel.hidden = true;
     renderMasterProject();
+    if (previousProject.xml) queueDrawioDiagram(previousProject.xml, "digiwire-master-routing.drawio", "digiwire-master-routing.pdf");
+    updateMasterSessionCode();
     updateUndoTableButton();
     const summary = MasterDiagram.projectSummary(masterProject);
     setStatus(`Undid ${removedImport?.sourceName || "the last table"}. Master project now has ${summary.boardCount} board${summary.boardCount === 1 ? "" : "s"} and ${summary.harnessCount} cable${summary.harnessCount === 1 ? "" : "s"}.`);
@@ -8884,13 +9089,14 @@ function undoLastTableImport() {
   const previousState = harnessUndoHistory.pop();
   if (!previousState) return;
   const removedSource = appState.sourceName || appState.fileName || "the last table";
-  appState = previousState;
+  appState = previousState.state;
   dom.pasteTablePanel.hidden = true;
   if (appState.result) {
     writeDesignerControls(appState.designerConfig);
     updateDetectedLayout(appState.result);
     dom.sourceTitle.textContent = appState.sourceName || appState.fileName;
     renderDrawioDiagram(appState.result);
+    if (previousState.xml) queueDrawioDiagram(previousState.xml, `${appState.fileName || "harness"}.drawio`, `${appState.fileName || "harness"}.pdf`);
     renderFacts(appState.result);
     renderImportDiagnostics(appState.result.diagnostics || []);
     renderFindings(appState.result.findings || []);
@@ -8900,6 +9106,7 @@ function undoLastTableImport() {
     renderEmpty();
   }
   updateUndoTableButton();
+  if (dom.workspaceSummary) dom.workspaceSummary.textContent = harnessSummaryText();
   setStatus(`Undid ${removedSource}.`);
 }
 
@@ -8929,6 +9136,19 @@ function initializeDrawioEditor() {
     ready: false
   };
   setDrawioLoading(true, "Loading Draw.io editor", "Your pasted harness will appear here automatically.");
+  armDrawioConnectionTimeout();
+}
+
+function armDrawioConnectionTimeout() {
+  clearTimeout(editorConnectTimer);
+  editorConnectTimer = setTimeout(() => {
+    if (drawioSession?.ready) return;
+    dom.drawioLoading.hidden = false;
+    dom.drawioLoading.classList.add("editor-delayed");
+    dom.drawioLoading.innerHTML = `<strong>The editor is taking longer to connect</strong>
+      <span>You can keep importing tables and saving projects while it reconnects.</span>
+      <div class="editor-recovery-actions"><button type="button" data-editor-action="retry">Retry editor</button><button type="button" data-editor-action="download">Download editable drawing</button></div>`;
+  }, 15000);
 }
 
 function queueDrawioDiagram(xml, title, pdfTitle) {
@@ -8937,12 +9157,14 @@ function queueDrawioDiagram(xml, title, pdfTitle) {
   }
   drawioSession.frame = dom.drawioFrame.contentWindow;
   drawioSession.xml = xml;
+  drawingCache[drawingMode] = xml;
   drawioSession.title = title;
   drawioSession.pdfTitle = pdfTitle;
   drawioSession.loaded = false;
   if (drawioSession.ready) {
     postDrawioLoad();
   }
+  scheduleWorkspaceDraft();
 }
 
 function postDrawioLoad() {
@@ -8961,6 +9183,7 @@ function postDrawioLoad() {
 
 function setDrawioLoading(visible, title = "", detail = "") {
   dom.drawioLoading.hidden = !visible;
+  dom.drawioLoading.classList.remove("editor-delayed");
   if (!visible) {
     return;
   }
@@ -8981,6 +9204,7 @@ function handleDrawioMessage(event) {
   drawioSession.frame = event.source;
   drawioSession.origin = event.origin;
   if (message.event === "init") {
+    clearTimeout(editorConnectTimer);
     drawioSession.ready = true;
     postDrawioLoad();
     setStatus(isMasterMode() && masterProject.imports.length
@@ -8992,11 +9216,15 @@ function handleDrawioMessage(event) {
   }
   if (message.event === "save") {
     drawioSession.xml = message.xml || drawioSession.xml;
+    drawingCache[drawingMode] = drawioSession.xml;
+    scheduleWorkspaceDraft();
     requestDrawioPdfExport();
     return;
   }
   if (message.event === "autosave") {
     drawioSession.xml = message.xml || drawioSession.xml;
+    drawingCache[drawingMode] = drawioSession.xml;
+    scheduleWorkspaceDraft();
     if (isMasterMode()) scheduleMasterSessionCodeUpdate();
     return;
   }
@@ -9028,6 +9256,7 @@ function handleDrawioMessage(event) {
     setDrawioLoading(true, "Restarting Draw.io editor", "Your current DIGIWIRE harness will reload automatically.");
     setStatus("Restarting Draw.io without leaving DIGIWIRE...");
     dom.drawioFrame.src = DRAWIO_EDITOR_URL;
+    armDrawioConnectionTimeout();
   }
 }
 
@@ -11555,7 +11784,7 @@ function downloadBlob(fileName, blob) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function waitForFrame() {

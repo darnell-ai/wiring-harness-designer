@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.6.0 - 2026-10-16
+
+- Refreshed the workspace with a compact responsive toolbar, clearer project actions, keyboard focus styles, and a live conductor/project summary.
+- Added complete `.digiwire.json` project download/open, including both modes and the exact edited drawing in each, plus local browser draft recovery.
+- Preserved manual edits when switching drawing modes, restored exact drawings during table undo, and made Clear recoverable through Undo table.
+- Kept moved master boards, connectors, and cable hubs in place when adding more tables.
+- Added downloadable original 25-column harness, full board placement, and shared Powerpole example templates.
+- Replaced truncated validation chips with an expandable list of all errors and warnings; recalculated diagnostics after connector configuration changes.
+- Fixed declared connector capacity validation and diagnostic row indexes following DNP rows.
+- Added retry and editable drawing download options if Draw.io cannot connect promptly.
+- Extended automated checks to cover project round trips, browser drafts, mode switching, exact-layout undo, original templates, and invalid project input.
+- Updated Windows executable packaging for the new module and templates, and repaired the W323/BOTBLOX asset generators.
+
 ## v2.5.18 - 2026-10-16
 
 - Drew multiple conductors in one Anderson Powerpole contact from one shared termination point and trunk before their visible fan-out.

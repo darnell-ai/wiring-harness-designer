@@ -111,7 +111,7 @@
         : endpointRows;
       const pins = capacityRows.map((row) => numericPin(row[`${prefix}PinPos`])).filter(Number.isFinite);
       const highestPin = pins.length ? Math.max(...pins) : 0;
-      const positionCount = singlePosition ? 1 : Math.max(1, declared, highestPin, usedPins.length);
+      const positionCount = singlePosition ? 1 : declared || Math.max(1, highestPin, usedPins.length);
       const unusedPins = Array.from(new Set(endpointRows
         .filter(isDnpRow)
         .map((row) => String(row[`${prefix}PinPos`] || "").trim())
@@ -145,7 +145,8 @@
       return diagnostics;
     }
     const activeRows = rows.filter((row) => !isDnpRow(row));
-    activeRows.forEach((row, index) => {
+    activeRows.forEach((row) => {
+      const index = rows.indexOf(row);
       if (!meaningful(row.wireName) && !meaningful(row.rightWireName)) add("error", "MISSING_WIRE_NAME", `Active row ${index + 1} has no wire name.`, [index]);
       if (!meaningful(row.leftPinPos)) add("warning", "MISSING_LEFT_PIN", `Active row ${index + 1} has no left pin position.`, [index]);
       if (!meaningful(row.rightPinPos)) add("warning", "MISSING_RIGHT_PIN", `Active row ${index + 1} has no right pin position.`, [index]);

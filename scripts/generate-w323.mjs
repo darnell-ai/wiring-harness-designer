@@ -9,7 +9,7 @@ let source = fs.readFileSync(path.join(root, "app.js"), "utf8").replace(/\r?\nin
 source += `\nglobalThis.__digiwireGenerate = { parseDelimitedText, normalizeSheetMatrix, compileSheetHarnessResult, buildSheetHarnessSvg, buildSheetDrawioXml };`;
 const context = vm.createContext({
   console,
-  document: { querySelector: () => null },
+  document: { querySelector: () => null, querySelectorAll: () => [] },
   window: {},
   navigator: {},
   TextEncoder,
@@ -20,13 +20,14 @@ const context = vm.createContext({
   clearTimeout
 });
 vm.runInContext(coreSource, context, { filename: "harness-core.js" });
+vm.runInContext(fs.readFileSync(path.join(root, "master-diagram.js"), "utf8"), context, { filename: "master-diagram.js" });
 vm.runInContext(source, context, { filename: "app.js" });
 const api = context.__digiwireGenerate;
 const csv = fs.readFileSync(path.join(root, "examples", "W323-approved.csv"), "utf8");
 const sheet = api.normalizeSheetMatrix(api.parseDelimitedText(csv));
 if (sheet.importError) throw new Error(sheet.importError);
 const result = api.compileSheetHarnessResult(sheet, "W323-approved.csv");
-const outputDir = path.join(root, "examples", "generated");
+const outputDir = process.argv[2] ? path.resolve(process.argv[2]) : path.join(root, "examples", "generated");
 fs.mkdirSync(outputDir, { recursive: true });
 const cleanGeneratedText = (value) => `${String(value).split(/\r?\n/).map((line) => line.trimEnd()).join("\n").trim()}\n`;
 fs.writeFileSync(path.join(outputDir, "W323-approved.svg"), cleanGeneratedText(api.buildSheetHarnessSvg(result)));

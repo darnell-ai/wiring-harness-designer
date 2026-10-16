@@ -190,6 +190,14 @@ const malformed = core.validateRows([
 ]);
 assert.ok(malformed.some((item) => item.code === "DUPLICATE_PIN"));
 assert.ok(malformed.some((item) => item.code === "INVALID_TWISTED_PAIR"));
+assert.ok(core.validateRows([
+  { wireName: "PWR", leftLeg: "1", leftPinPos: "3", leftHousingType: "2 POS MOLEX", rightLeg: "1", rightPinPos: "1" }
+]).some((item) => item.code === "PIN_EXCEEDS_CAPACITY"), "a declared two-position housing must reject pin 3 rather than silently increasing its capacity");
+const sourceRows = core.validateRows([
+  { leftLegName: "DNP", wireName: "DNP", leftPinPos: "1", rightPinPos: "1" },
+  { leftLeg: "1", leftPinPos: "2", rightLeg: "1", rightPinPos: "2" }
+]);
+assert.deepEqual(Array.from(sourceRows.find((item) => item.code === "MISSING_WIRE_NAME").rowIndexes), [1], "diagnostic row references must include preceding DNP rows");
 
 assert.deepEqual(
   Array.from(core.findRectangleCollisions([

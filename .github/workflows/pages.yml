@@ -36,7 +36,10 @@ jobs:
       - name: Stage browser app
         run: |
           mkdir _site
-          cp index.html harness-core.js master-diagram.js app.js styles.css _site/
+          cp index.html harness-core.js master-diagram.js workspace-session.js app.js styles.css _site/
+          mkdir _site/examples
+          cp examples/harness-template.tsv examples/master-board-placement-template.tsv _site/examples/
+          cp examples/W325-powerpole.csv _site/examples/
           cp -R vendor _site/vendor
 
       - name: Upload GitHub Pages artifact
